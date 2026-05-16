@@ -1,11 +1,41 @@
 using System.Diagnostics;
 using System.IO;
+using System.Collections.Concurrent;
 
 namespace Loaderly;
 
 internal static class ToolResolver
 {
+    private static readonly ConcurrentDictionary<string, string> ToolPathCache = new(StringComparer.OrdinalIgnoreCase);
+
     public static string ResolveToolPath(string toolName)
+    {
+        return ToolPathCache.GetOrAdd(NormalizeToolName(toolName), ResolveToolPathUncached);
+    }
+
+    public static string? TryResolveBundledToolPath(string toolName)
+    {
+        foreach (var directory in CandidateToolDirectories(includeCurrentDirectory: false))
+        {
+            foreach (var executableName in ExecutableNames(toolName))
+            {
+                var candidate = Path.Combine(directory, executableName);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    internal static void ClearCacheForTest()
+    {
+        ToolPathCache.Clear();
+    }
+
+    private static string ResolveToolPathUncached(string toolName)
     {
         foreach (var directory in CandidateToolDirectories())
         {
@@ -37,7 +67,7 @@ internal static class ToolResolver
 
     public static void AddToolDirectoriesToPath(ProcessStartInfo startInfo)
     {
-        var toolDirectories = CandidateToolDirectories().ToArray();
+        var toolDirectories = CandidateToolDirectories(includeCurrentDirectory: false).ToArray();
         if (toolDirectories.Length == 0)
         {
             return;
@@ -51,6 +81,7 @@ internal static class ToolResolver
 
     private static IEnumerable<string> ExecutableNames(string toolName)
     {
+        toolName = NormalizeToolName(toolName);
         if (toolName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
             yield return toolName;
@@ -61,10 +92,13 @@ internal static class ToolResolver
         yield return toolName;
     }
 
-    private static IEnumerable<string> CandidateToolDirectories()
+    private static IEnumerable<string> CandidateToolDirectories(bool includeCurrentDirectory = true)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var anchor in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+        var anchors = includeCurrentDirectory
+            ? new[] { AppContext.BaseDirectory, Environment.CurrentDirectory }
+            : [AppContext.BaseDirectory];
+        foreach (var anchor in anchors)
         {
             var directory = new DirectoryInfo(anchor);
             while (directory is not null)
@@ -99,5 +133,10 @@ internal static class ToolResolver
                 yield return directory;
             }
         }
+    }
+
+    private static string NormalizeToolName(string toolName)
+    {
+        return toolName.Trim();
     }
 }

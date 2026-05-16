@@ -24,11 +24,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/loaderly-downloads.png" alt="واجهة التنزيلات في Loaderly" width="92%">
+  <img src="docs/images/loaderly-downloads-ar.png" alt="واجهة التنزيلات في Loaderly" width="92%">
 </p>
 
 <p align="center">
-  <img src="docs/images/loaderly-settings.png" alt="إعدادات Loaderly" width="76%">
+  <img src="docs/images/loaderly-settings-ar.png" alt="إعدادات Loaderly" width="76%">
 </p>
 
 ## ماذا يفعل Loaderly؟

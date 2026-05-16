@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -14,7 +15,8 @@ internal sealed class MainForm : Form
     private const int SettingChangedMessage = 0x001A;
     private const int HistoryRenderThrottleMs = 1000;
     private const int ProgressLogThrottleMs = 1200;
-    private const int HistoryCardHeight = 108;
+    private const int DownloadProgressUiThrottleMs = 250;
+    private const int HistoryCardHeight = 98;
     private const int HistoryCardTitleRowHeight = 30;
     private const int HistoryCardMetaRowHeight = 22;
     private const int HistoryCardDetailRowHeight = 24;
@@ -25,7 +27,9 @@ internal sealed class MainForm : Form
     private const string QueueProgressBarName = "queue-progress";
 
     public static int HistoryRenderThrottleMillisecondsForTest => HistoryRenderThrottleMs;
+    public static int DownloadProgressUiThrottleMillisecondsForTest => DownloadProgressUiThrottleMs;
     internal static int HistoryCardHeightForTest => HistoryCardHeight;
+    internal static bool AutoCopiesFinishedDownloadsForTest => false;
 
     internal static FormWindowState ChildWindowStateForParentForTest(FormWindowState parentWindowState)
     {
@@ -55,10 +59,9 @@ internal sealed class MainForm : Form
     private readonly AppSettingsStore settingsStore;
     private readonly DownloadQueueStore queueStore = new();
     private readonly AppSettings settings;
-    private readonly List<DownloadItem> history;
+    private readonly List<DownloadItem> history = [];
 
     private readonly TextBox urlTextBox = new();
-    private readonly TextBox logTextBox = new();
     private readonly TextBox searchTextBox = new();
     private readonly ModernSelect qualityComboBox = new();
     private readonly ModernSelect folderSelect = new();
@@ -71,7 +74,7 @@ internal sealed class MainForm : Form
     private readonly Label detailsTitle = new();
     private readonly Label detailsMeta = new();
     private readonly Label detailsPath = new();
-    private readonly PictureBox detailsThumbnail = new();
+    private readonly CoverPictureBox detailsThumbnail = new();
     private readonly ModernButton downloadButton = new();
     private readonly ModernButton browseButton = new();
     private readonly ModernButton copyButton = new();
@@ -85,6 +88,7 @@ internal sealed class MainForm : Form
     private readonly ModernButton toolsButton = new();
     private readonly ModernButton aboutButton = new();
     private readonly ModernButton logsButton = new();
+    private readonly ModernInfoBadge savedItemsBadge = new();
     private readonly NotifyIcon trayIcon = new();
     private readonly ContextMenuStrip trayMenu = new();
     private readonly List<DownloadQueueItem> downloadQueue = [];
@@ -103,6 +107,7 @@ internal sealed class MainForm : Form
     private bool exitingFromTray;
     private bool updatingFolderSelect;
     private bool historyRenderPending;
+    private bool startupWorkStarted;
 
     private enum TrayMenuIconKind
     {
@@ -134,8 +139,6 @@ internal sealed class MainForm : Form
         settings = settingsStore.Load();
         LoaderlyLanguage.Set(settings.AppLanguage);
         EnsureSavedFolders();
-        history = historyStore.Load();
-        downloadQueue.AddRange(queueStore.Load());
         historyRenderTimer.Tick += (_, _) => FlushPendingHistoryRender();
 
         Text = ProductInfo.Name;
@@ -150,14 +153,12 @@ internal sealed class MainForm : Form
         LoaderlyTheme.SetMode(settings.ThemeMode);
 
         InitializeTray();
-        SelectFirstHistoryItem();
         BuildUi();
         LoaderlyLanguage.ApplyTo(this);
         BindEvents();
-        RenderHistory();
     }
 
-    protected override async void OnShown(EventArgs e)
+    protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
         WindowsTheme.ApplyTitleBarTheme(this);
@@ -168,8 +169,58 @@ internal sealed class MainForm : Form
             AppendLog("Global shortcut Ctrl+Alt+L could not be registered.");
         }
 
+        Application.Idle += StartStartupWorkAfterFirstIdle;
+    }
+
+    private void StartStartupWorkAfterFirstIdle(object? sender, EventArgs e)
+    {
+        if (startupWorkStarted)
+        {
+            return;
+        }
+
+        startupWorkStarted = true;
+        Application.Idle -= StartStartupWorkAfterFirstIdle;
+        _ = InitializeAfterFirstIdleAsync();
+    }
+
+    private async Task InitializeAfterFirstIdleAsync()
+    {
+        await Task.Yield();
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        await LoadSavedStateAsync();
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        SafeRenderHistory(throttle: false);
         await CheckDependenciesAsync();
         _ = ProcessQueueAsync();
+    }
+
+    private async Task LoadSavedStateAsync()
+    {
+        var state = await Task.Run(() => (
+            History: historyStore.Load(),
+            Queue: queueStore.Load()));
+
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        history.Clear();
+        history.AddRange(state.History);
+        downloadQueue.Clear();
+        downloadQueue.AddRange(state.Queue);
+        SelectFirstHistoryItem();
+        UpdateSavedItemsBadge();
+        SetQueueProgress(downloadQueue.Any(item => item.State == DownloadTaskState.Queued || item.State == DownloadTaskState.Running));
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -326,21 +377,18 @@ internal sealed class MainForm : Form
         }, 0, 1);
         layout.Controls.Add(brand, 0, 0);
 
-        var stats = new ModernInfoBadge
-        {
-            Dock = DockStyle.None,
-            Anchor = AnchorStyles.Left | AnchorStyles.Top,
-            Size = new Size(186, 60),
-            Radius = 14,
-            FillColor = LoaderlyTheme.SidebarCard,
-            BorderColor = LoaderlyTheme.SidebarCardBorder,
-            Text = LoaderlyLanguage.SavedItems(history.Count),
-            ForeColor = LoaderlyTheme.SidebarText,
-            Font = LoaderlyTheme.BodyFont(12),
-            TextPadding = new Padding(16, 0, 16, 0),
-            Margin = new Padding(0, 0, 0, 14)
-        };
-        layout.Controls.Add(stats, 0, 1);
+        savedItemsBadge.Dock = DockStyle.None;
+        savedItemsBadge.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+        savedItemsBadge.Size = new Size(186, 60);
+        savedItemsBadge.Radius = LoaderlyTheme.PanelRadius;
+        savedItemsBadge.FillColor = LoaderlyTheme.SidebarCard;
+        savedItemsBadge.BorderColor = LoaderlyTheme.SidebarCardBorder;
+        savedItemsBadge.ForeColor = LoaderlyTheme.SidebarText;
+        savedItemsBadge.Font = LoaderlyTheme.BodyFont(12);
+        savedItemsBadge.TextPadding = new Padding(16, 0, 16, 0);
+        savedItemsBadge.Margin = new Padding(0, 0, 0, 14);
+        UpdateSavedItemsBadge();
+        layout.Controls.Add(savedItemsBadge, 0, 1);
 
         updateButton.Text = "Updates";
         StyleSidebarButton(updateButton);
@@ -379,7 +427,7 @@ internal sealed class MainForm : Form
         var content = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 4,
+            RowCount = 3,
             ColumnCount = 1,
             Padding = new Padding(24),
             BackColor = LoaderlyTheme.Window
@@ -387,12 +435,10 @@ internal sealed class MainForm : Form
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 154));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
 
         content.Controls.Add(BuildHeader(), 0, 0);
         content.Controls.Add(BuildCommandPanel(), 0, 1);
         content.Controls.Add(BuildMainArea(), 0, 2);
-        content.Controls.Add(BuildLogPanel(), 0, 3);
         return content;
     }
 
@@ -450,7 +496,7 @@ internal sealed class MainForm : Form
         var panel = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 12,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(16),
@@ -550,7 +596,7 @@ internal sealed class MainForm : Form
         downloadButton.Text = "Add to queue";
         downloadButton.DisplayText = LoaderlyLanguage.Text("Add to queue");
         downloadButton.Dock = DockStyle.Fill;
-        downloadButton.Radius = 8;
+        downloadButton.Radius = LoaderlyTheme.ControlRadius;
         downloadButton.FillColor = LoaderlyTheme.Accent;
         downloadButton.HoverColor = LoaderlyTheme.AccentHover;
         downloadButton.PressedColor = LoaderlyTheme.AccentPressed;
@@ -617,7 +663,7 @@ internal sealed class MainForm : Form
         var historyPanel = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 12,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(16),
@@ -637,7 +683,7 @@ internal sealed class MainForm : Form
         var searchHost = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Margin = new Padding(0, 0, 0, 12)
@@ -674,7 +720,7 @@ internal sealed class MainForm : Form
         var panel = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 12,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(16),
@@ -698,8 +744,7 @@ internal sealed class MainForm : Form
         panel.Controls.Add(layout);
 
         detailsThumbnail.Dock = DockStyle.Fill;
-        detailsThumbnail.BackColor = LoaderlyTheme.ThumbnailBack;
-        detailsThumbnail.SizeMode = PictureBoxSizeMode.Zoom;
+        detailsThumbnail.BackColor = LoaderlyTheme.Surface;
         detailsThumbnail.Margin = new Padding(0, 0, 0, 12);
         layout.Controls.Add(detailsThumbnail, 0, 0);
 
@@ -735,7 +780,7 @@ internal sealed class MainForm : Form
         revealButton.Text = "Show";
         StyleSecondaryButton(revealButton);
         watchTrimButton.Text = "Watch / Trim";
-        watchTrimButton.Radius = 8;
+        watchTrimButton.Radius = LoaderlyTheme.ControlRadius;
         watchTrimButton.FillColor = LoaderlyTheme.TrimSurface;
         watchTrimButton.HoverColor = LoaderlyTheme.TrimHover;
         watchTrimButton.ForeColor = LoaderlyTheme.TrimText;
@@ -745,7 +790,7 @@ internal sealed class MainForm : Form
         sourceButton.Text = "Source";
         StyleSecondaryButton(sourceButton);
         removeButton.Text = "Remove";
-        removeButton.Radius = 8;
+        removeButton.Radius = LoaderlyTheme.ControlRadius;
         removeButton.FillColor = LoaderlyTheme.DangerSurface;
         removeButton.HoverColor = LoaderlyTheme.DangerHover;
         removeButton.ForeColor = LoaderlyTheme.Danger;
@@ -773,35 +818,12 @@ internal sealed class MainForm : Form
         return row;
     }
 
-    private Control BuildLogPanel()
-    {
-        var panel = new RoundedPanel
-        {
-            Dock = DockStyle.Fill,
-            Radius = 12,
-            BackColor = LoaderlyTheme.Surface,
-            BorderColor = LoaderlyTheme.Border,
-            Padding = new Padding(14),
-            Margin = new Padding(0)
-        };
-        logTextBox.Dock = DockStyle.Fill;
-        logTextBox.Multiline = true;
-        logTextBox.ReadOnly = true;
-        logTextBox.ScrollBars = ScrollBars.None;
-        logTextBox.BorderStyle = BorderStyle.None;
-        logTextBox.BackColor = LoaderlyTheme.Surface;
-        logTextBox.ForeColor = LoaderlyTheme.MutedText;
-        logTextBox.Font = LoaderlyTheme.BodyFont(8.8F);
-        panel.Controls.Add(logTextBox);
-        return panel;
-    }
-
     private static void StyleSidebarButton(ModernButton button)
     {
         button.Dock = DockStyle.None;
         button.Anchor = AnchorStyles.Left | AnchorStyles.Top;
         button.Size = new Size(186, 34);
-        button.Radius = 10;
+        button.Radius = LoaderlyTheme.ControlRadius;
         button.FillColor = LoaderlyTheme.SidebarButton;
         button.HoverColor = LoaderlyTheme.SidebarButtonHover;
         button.PressedColor = LoaderlyTheme.SidebarButtonPressed;
@@ -811,7 +833,7 @@ internal sealed class MainForm : Form
 
     private static void StyleSecondaryButton(ModernButton button)
     {
-        button.Radius = 8;
+        button.Radius = LoaderlyTheme.ControlRadius;
         button.FillColor = LoaderlyTheme.SurfaceMuted;
         button.HoverColor = Color.Empty;
         button.PressedColor = Color.Empty;
@@ -967,7 +989,7 @@ internal sealed class MainForm : Form
     {
         try
         {
-            await downloadService.EnsureDependenciesAsync(CancellationToken.None);
+            await downloadService.EnsureBundledDependenciesAsync(CancellationToken.None);
             SetStatus("Ready");
         }
         catch (Exception ex)
@@ -1204,18 +1226,10 @@ internal sealed class MainForm : Form
 
             try
             {
-                var progress = new Progress<DownloadProgress>(update =>
-                {
-                    task.Percent = update.Percent;
-                    task.Status = update.Status;
-                    task.Speed = update.Speed ?? task.Speed;
-                    task.Eta = update.Eta ?? task.Eta;
-                    task.DownloadedBytes = update.DownloadedBytes ?? task.DownloadedBytes;
-                    task.TotalBytes = update.TotalBytes ?? task.TotalBytes;
-                    AppendProgressLog(update.Message);
-
-                    RefreshQueueTaskCard(task, throttle: true);
-                });
+                using var progress = new CoalescingProgress<DownloadProgress>(
+                    PostToUi,
+                    update => ApplyDownloadProgress(task, update),
+                    DownloadProgressUiThrottleMs);
 
                 var results = await DownloadExecution.RunAsync(
                     () => downloadService.DownloadManyAsync(
@@ -1225,6 +1239,7 @@ internal sealed class MainForm : Form
                         progress,
                         task.Cancellation.Token),
                     task.Cancellation.Token);
+                progress.Flush();
 
                 DownloadItem? firstItem = null;
                 foreach (var result in results)
@@ -1244,9 +1259,9 @@ internal sealed class MainForm : Form
 
                 if (firstItem is not null)
                 {
-                    CopyFileToClipboard(firstItem.FilePath);
                     historyStore.Save(history);
                     selectedItemId = firstItem.Id;
+                    UpdateSavedItemsBadge();
                 }
 
                 task.State = DownloadTaskState.Completed;
@@ -1291,6 +1306,39 @@ internal sealed class MainForm : Form
 
         SetQueueProgress(false);
         SetStatus("Ready");
+    }
+
+    private void ApplyDownloadProgress(DownloadQueueItem task, DownloadProgress update)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        task.Percent = update.Percent;
+        task.Status = update.Status;
+        task.Speed = update.Speed ?? task.Speed;
+        task.Eta = update.Eta ?? task.Eta;
+        task.DownloadedBytes = update.DownloadedBytes ?? task.DownloadedBytes;
+        task.TotalBytes = update.TotalBytes ?? task.TotalBytes;
+        AppendProgressLog(update.Message);
+        RefreshQueueTaskCard(task, throttle: false);
+    }
+
+    private void PostToUi(Action action)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke(action);
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 
     private void CancelQueueItem(DownloadQueueItem task)
@@ -1408,7 +1456,7 @@ internal sealed class MainForm : Form
             Name = QueueCardName(task.Id),
             Width = HistoryCardWidth(),
             Height = 128,
-            Radius = 8,
+            Radius = LoaderlyTheme.CardRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = task.State == DownloadTaskState.Failed
                 ? LoaderlyTheme.Danger
@@ -1589,41 +1637,79 @@ internal sealed class MainForm : Form
         return $"queue-{id:N}";
     }
 
+    private static string HistoryCardName(Guid id)
+    {
+        return $"history-{id:N}";
+    }
+
+    private static string HistoryThumbnailName(Guid id)
+    {
+        return $"history-thumbnail-{id:N}";
+    }
+
+    private static string HistoryAccentName(Guid id)
+    {
+        return $"history-accent-{id:N}";
+    }
+
     private Control BuildHistoryCard(DownloadItem item)
     {
         var selected = selectedItemId == item.Id;
         var card = new RoundedPanel
         {
+            Name = HistoryCardName(item.Id),
             Width = HistoryCardWidth(),
             Height = HistoryCardHeight,
-            Radius = 8,
+            Radius = LoaderlyTheme.CardRadius,
             BackColor = selected ? LoaderlyTheme.SelectedSurface : LoaderlyTheme.SurfaceMuted,
             BorderColor = selected ? LoaderlyTheme.SelectedBorder : LoaderlyTheme.Border,
-            Padding = new Padding(10),
-            Margin = new Padding(0, 0, 0, 12),
+            Padding = new Padding(8),
+            Margin = new Padding(0, 0, 0, 10),
             Cursor = Cursors.Hand
         };
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 3,
             RowCount = 1,
-            BackColor = card.BackColor
+            BackColor = card.BackColor,
+            RightToLeft = RightToLeft.No
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 4));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         card.Controls.Add(layout);
 
-        var thumbnail = new PictureBox
+        var accent = new Panel
         {
+            Name = HistoryAccentName(item.Id),
             Dock = DockStyle.Fill,
-            BackColor = LoaderlyTheme.ThumbnailBack,
-            SizeMode = PictureBoxSizeMode.Zoom,
-            Image = LoadItemImage(item),
-            Margin = new Padding(0, 0, 12, 0)
+            BackColor = selected ? LoaderlyTheme.Accent : LoaderlyTheme.Border,
+            Margin = new Padding(0, 10, 8, 10)
         };
-        layout.Controls.Add(thumbnail, 0, 0);
+        layout.Controls.Add(accent, 0, 0);
+
+        var thumbnailFrame = new RoundedPanel
+        {
+            Name = "history-thumbnail-frame",
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.ControlRadius,
+            BackColor = card.BackColor,
+            BorderColor = LoaderlyTheme.Border,
+            ClipToRoundedRegion = true,
+            Margin = new Padding(0, 0, 14, 0)
+        };
+        var thumbnail = new CoverPictureBox
+        {
+            Name = HistoryThumbnailName(item.Id),
+            Dock = DockStyle.Fill,
+            BackColor = card.BackColor,
+            Image = CachedItemImage(item),
+            Margin = new Padding(0)
+        };
+        thumbnailFrame.Controls.Add(thumbnail);
+        layout.Controls.Add(thumbnailFrame, 1, 0);
 
         var text = new TableLayoutPanel
         {
@@ -1637,7 +1723,7 @@ internal sealed class MainForm : Form
         text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardMetaRowHeight));
         text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardDetailRowHeight));
         text.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        layout.Controls.Add(text, 1, 0);
+        layout.Controls.Add(text, 2, 0);
 
         text.Controls.Add(new Label
         {
@@ -1650,7 +1736,7 @@ internal sealed class MainForm : Form
         }, 0, 1);
         text.Controls.Add(new Label
         {
-            Text = item.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm"),
+            Text = HistoryMetaLabel(item),
             Dock = DockStyle.Fill,
             AutoEllipsis = true,
             ForeColor = LoaderlyTheme.MutedText,
@@ -1662,7 +1748,7 @@ internal sealed class MainForm : Form
             Text = HistoryFileLabel(item),
             Dock = DockStyle.Fill,
             AutoEllipsis = true,
-            ForeColor = File.Exists(item.FilePath) ? LoaderlyTheme.MutedText : LoaderlyTheme.Danger,
+            ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9F),
             TextAlign = HistoryTextAlign()
         }, 0, 3);
@@ -1700,11 +1786,73 @@ internal sealed class MainForm : Form
 
     private void SelectHistoryItem(Guid id)
     {
+        if (selectedItemId == id)
+        {
+            UpdateDetails();
+            if (SelectedItem() is { } currentItem)
+            {
+                _ = EnsureThumbnailAsync(currentItem);
+            }
+
+            return;
+        }
+
+        var previousId = selectedItemId;
         selectedItemId = id;
-        RenderHistory();
+        UpdateHistoryCardSelection(previousId, selected: false);
+        UpdateHistoryCardSelection(selectedItemId, selected: true);
+        UpdateDetails();
         if (SelectedItem() is { } item)
         {
             _ = EnsureThumbnailAsync(item);
+        }
+    }
+
+    private void UpdateHistoryCardSelection(Guid? id, bool selected)
+    {
+        if (id is null)
+        {
+            return;
+        }
+
+        var card = historyFlow.Controls
+            .Find(HistoryCardName(id.Value), searchAllChildren: false)
+            .OfType<RoundedPanel>()
+            .FirstOrDefault();
+        if (card is null)
+        {
+            return;
+        }
+
+        var surface = selected ? LoaderlyTheme.SelectedSurface : LoaderlyTheme.SurfaceMuted;
+        card.BackColor = surface;
+        card.BorderColor = selected ? LoaderlyTheme.SelectedBorder : LoaderlyTheme.Border;
+        UpdateHistoryCardSurface(card, id.Value, surface, selected);
+        card.Invalidate();
+    }
+
+    private void UpdateHistoryCardSurface(Control control, Guid id, Color surface, bool selected)
+    {
+        if (control.Name == HistoryAccentName(id))
+        {
+            control.BackColor = selected ? LoaderlyTheme.Accent : LoaderlyTheme.Border;
+            control.Invalidate();
+            return;
+        }
+
+        if (control.Name == "history-thumbnail-frame" || control is CoverPictureBox)
+        {
+            return;
+        }
+
+        if (control is TableLayoutPanel || control is Label)
+        {
+            control.BackColor = surface;
+        }
+
+        foreach (Control child in control.Controls)
+        {
+            UpdateHistoryCardSurface(child, id, surface, selected);
         }
     }
 
@@ -1714,6 +1862,12 @@ internal sealed class MainForm : Form
         {
             selectedItemId = history[0].Id;
         }
+    }
+
+    private void UpdateSavedItemsBadge()
+    {
+        savedItemsBadge.Text = LoaderlyLanguage.SavedItems(history.Count);
+        savedItemsBadge.Invalidate();
     }
 
     private async Task EnsureThumbnailAsync(DownloadItem item)
@@ -1744,7 +1898,7 @@ internal sealed class MainForm : Form
 
             item.ThumbnailPath = thumbnail;
             historyStore.Save(history);
-            BeginInvoke(() => SafeRenderHistory(throttle: true));
+            BeginInvoke(() => UpdateHistoryThumbnail(item));
             }
             finally
             {
@@ -1778,7 +1932,7 @@ internal sealed class MainForm : Form
         }
 
         detailsTitle.Text = DisplayHistoryTitle(item);
-        detailsMeta.Text = item.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+        detailsMeta.Text = FormatHistoryTimestamp(item.CreatedAt);
         detailsPath.Text = DetailsFileLabel(item.FilePath);
         detailsThumbnail.Image = LoadItemImage(item) ?? LoaderlyAssets.Logo512;
     }
@@ -1791,6 +1945,16 @@ internal sealed class MainForm : Form
     internal static string WatchTrimButtonTextForTest(bool hasItem)
     {
         return WatchTrimButtonText(hasItem);
+    }
+
+    internal static string FormatHistoryTimestampForTest(DateTimeOffset createdAt)
+    {
+        return FormatHistoryTimestamp(createdAt);
+    }
+
+    internal static string HistoryMetaLabelForTest(DownloadItem item)
+    {
+        return HistoryMetaLabel(item);
     }
 
     private static string WatchTrimButtonText(bool hasItem)
@@ -1826,13 +1990,22 @@ internal sealed class MainForm : Form
 
     private static string HistoryFileLabel(DownloadItem item)
     {
-        if (!File.Exists(item.FilePath))
-        {
-            return LoaderlyLanguage.Text("Missing file");
-        }
-
         var fileName = Path.GetFileName(item.FilePath);
         return string.IsNullOrWhiteSpace(fileName) ? item.FilePath : fileName;
+    }
+
+    private static string HistoryMetaLabel(DownloadItem item)
+    {
+        var extension = Path.GetExtension(item.FilePath).TrimStart('.').ToUpperInvariant();
+        var createdAt = FormatHistoryTimestamp(item.CreatedAt);
+        return string.IsNullOrWhiteSpace(extension)
+            ? createdAt
+            : $"{createdAt}  -  {extension}";
+    }
+
+    private static string FormatHistoryTimestamp(DateTimeOffset createdAt)
+    {
+        return createdAt.LocalDateTime.ToString("yyyy-MM-dd h:mm tt", CultureInfo.InvariantCulture);
     }
 
     private static string DetailsFileLabel(string filePath)
@@ -1878,6 +2051,87 @@ internal sealed class MainForm : Form
         }
 
         return LoaderlyAssets.Logo512;
+    }
+
+    private Image? CachedItemImage(DownloadItem item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.ThumbnailPath) &&
+            thumbnailImageCache.TryGetValue(item.ThumbnailPath, out var cachedImage))
+        {
+            return cachedImage;
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.ThumbnailPath))
+        {
+            _ = LoadThumbnailImageAsync(item.ThumbnailPath);
+        }
+
+        return LoaderlyAssets.Logo512;
+    }
+
+    private async Task LoadThumbnailImageAsync(string thumbnailPath)
+    {
+        if (string.IsNullOrWhiteSpace(thumbnailPath) || thumbnailImageCache.ContainsKey(thumbnailPath))
+        {
+            return;
+        }
+
+        var image = await Task.Run(() =>
+        {
+            if (!File.Exists(thumbnailPath))
+            {
+                return null;
+            }
+
+            return LoadImageWithoutLock(thumbnailPath);
+        });
+        if (image is null || IsDisposed)
+        {
+            image?.Dispose();
+            return;
+        }
+
+        thumbnailImageCache[thumbnailPath] = image;
+        if (IsHandleCreated)
+        {
+            BeginInvoke(() =>
+            {
+                foreach (var item in history.Where(item =>
+                             thumbnailPath.Equals(item.ThumbnailPath, StringComparison.OrdinalIgnoreCase)).ToList())
+                {
+                    UpdateHistoryThumbnail(item);
+                }
+            });
+        }
+    }
+
+    private void UpdateHistoryThumbnail(DownloadItem item)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => UpdateHistoryThumbnail(item));
+            return;
+        }
+
+        var thumbnail = historyFlow.Controls
+            .Find(HistoryThumbnailName(item.Id), searchAllChildren: true)
+            .OfType<CoverPictureBox>()
+            .FirstOrDefault();
+        if (thumbnail is not null)
+        {
+            thumbnail.Image = LoadItemImage(item) ?? LoaderlyAssets.Logo512;
+            thumbnail.Invalidate();
+        }
+
+        if (selectedItemId == item.Id)
+        {
+            UpdateDetails();
+        }
     }
 
     private static Image? LoadImageWithoutLock(string path)
@@ -2105,6 +2359,7 @@ internal sealed class MainForm : Form
     {
         selectedItemId = selectedId;
         historyStore.Save(history);
+        UpdateSavedItemsBadge();
         RenderHistory();
     }
 
@@ -2197,7 +2452,11 @@ internal sealed class MainForm : Form
 
     private static void DetachCachedImages(Control control)
     {
-        if (control is PictureBox pictureBox)
+        if (control is CoverPictureBox coverPictureBox)
+        {
+            coverPictureBox.Image = null;
+        }
+        else if (control is PictureBox pictureBox)
         {
             pictureBox.Image = null;
         }
@@ -2326,6 +2585,7 @@ internal sealed class MainForm : Form
     private void OpenSettings()
     {
         var previousLanguage = settings.AppLanguage;
+        settings.OpenRouterApiKey = AppSettingsStore.OpenRouterApiKeyForRuntime(settings);
         using var form = new SettingsForm(settings);
         form.Icon = LoaderlyAssets.AppIcon;
         if (form.ShowDialog(this) != DialogResult.OK)
@@ -2389,12 +2649,8 @@ internal sealed class MainForm : Form
 
     private void OpenAbout()
     {
-        MessageBox.Show(
-            this,
-            AboutText(),
-            LoaderlyLanguage.Text("About Loaderly"),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
+        using var form = new AboutForm();
+        form.ShowDialog(this);
     }
 
     private void OpenLogsFolder()
@@ -2568,8 +2824,7 @@ internal sealed class MainForm : Form
             return;
         }
 
-        logTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
-        AppLog.Write(message);
+        _ = Task.Run(() => AppLog.Write(message));
     }
 
     private void AppendProgressLog(string? message)

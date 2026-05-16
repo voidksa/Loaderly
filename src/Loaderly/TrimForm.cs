@@ -268,7 +268,7 @@ internal sealed class TrimForm : WinForms.Form
         var timelinePanel = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(10),
@@ -320,7 +320,7 @@ internal sealed class TrimForm : WinForms.Form
         var panel = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(1)
@@ -388,7 +388,7 @@ internal sealed class TrimForm : WinForms.Form
         var panel = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.CardRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(12, 8, 12, 8),
@@ -501,7 +501,7 @@ internal sealed class TrimForm : WinForms.Form
         var panel = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.CardRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(12, 8, 12, 8),
@@ -577,7 +577,7 @@ internal sealed class TrimForm : WinForms.Form
         var panel = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.CardRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(12, 8, 12, 8),
@@ -609,7 +609,7 @@ internal sealed class TrimForm : WinForms.Form
         var summary = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.CardRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(14, 10, 14, 10),
@@ -678,7 +678,7 @@ internal sealed class TrimForm : WinForms.Form
     private static void ConfigureButton(ModernButton button, string text, bool primary)
     {
         button.Text = LoaderlyLanguage.Text(text);
-        button.Radius = 8;
+        button.Radius = LoaderlyTheme.ControlRadius;
         button.FillColor = primary ? LoaderlyTheme.Accent : LoaderlyTheme.SurfaceMuted;
         button.HoverColor = primary ? LoaderlyTheme.AccentHover : Color.Empty;
         button.PressedColor = primary ? LoaderlyTheme.AccentPressed : Color.Empty;
@@ -941,7 +941,8 @@ internal sealed class TrimForm : WinForms.Form
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(settings.OpenRouterApiKey) || string.IsNullOrWhiteSpace(settings.OpenRouterModel))
+        var openRouterApiKey = AppSettingsStore.OpenRouterApiKeyForRuntime(settings);
+        if (string.IsNullOrWhiteSpace(openRouterApiKey) || string.IsNullOrWhiteSpace(settings.OpenRouterModel))
         {
             WinForms.MessageBox.Show(
                 this,
@@ -975,7 +976,7 @@ internal sealed class TrimForm : WinForms.Form
             var translator = new OpenRouterSubtitleTranslator();
             var translatedCues = await translator.TranslateAsync(
                 cuesToTranslate,
-                settings.OpenRouterApiKey,
+                openRouterApiKey,
                 settings.OpenRouterModel,
                 settings.AiSubtitleTargetLanguage,
                 new Progress<string>(SetStatus),

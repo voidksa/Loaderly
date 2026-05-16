@@ -446,7 +446,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         var frame = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = Color.Black,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(1),
@@ -480,7 +480,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         var panel = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(10),
@@ -611,7 +611,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         var host = new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(10, 9, 10, 8),
@@ -1506,7 +1506,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         return new RoundedPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            Radius = 10,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new WinForms.Padding(14),
@@ -1601,7 +1601,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
     private static void ConfigureButton(ModernButton button, string text, bool primary)
     {
         button.Text = LoaderlyLanguage.Text(text);
-        button.Radius = 8;
+        button.Radius = LoaderlyTheme.ControlRadius;
         button.FillColor = primary ? LoaderlyTheme.Accent : LoaderlyTheme.SurfaceMuted;
         button.HoverColor = primary ? LoaderlyTheme.AccentHover : Color.Empty;
         button.PressedColor = primary ? LoaderlyTheme.AccentPressed : Color.Empty;

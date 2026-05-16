@@ -9,9 +9,11 @@ namespace Loaderly;
 
 internal sealed class ToolsForm : Form
 {
+    private static readonly TimeSpan ToolCommandTimeout = TimeSpan.FromSeconds(12);
     private readonly Label ytDlpStatus = new();
     private readonly Label ffmpegStatus = new();
     private readonly Label ffprobeStatus = new();
+    private readonly Label denoStatus = new();
     private readonly Label operationStatus = new();
     private readonly ModernButton refreshButton = new();
     private readonly ModernButton updateYtDlpButton = new();
@@ -22,9 +24,16 @@ internal sealed class ToolsForm : Form
     {
         Timeout = TimeSpan.FromSeconds(8)
     };
+    internal static int ToolCommandTimeoutMillisecondsForTest => (int)ToolCommandTimeout.TotalMilliseconds;
 
     public ToolsForm()
     {
+        SetStyle(
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw,
+            true);
+        DoubleBuffered = true;
         Text = LoaderlyLanguage.Text("Tools");
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterParent;
@@ -42,7 +51,8 @@ internal sealed class ToolsForm : Form
     {
         base.OnShown(e);
         WindowsTheme.ApplyTitleBarTheme(this);
-        await RefreshStatusAsync();
+        await Task.Yield();
+        await RefreshLocalStatusAsync();
     }
 
     private void BuildUi()
@@ -72,7 +82,7 @@ internal sealed class ToolsForm : Form
         var panel = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 12,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(18)
@@ -82,13 +92,14 @@ internal sealed class ToolsForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 6,
+            RowCount = 7,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -97,13 +108,14 @@ internal sealed class ToolsForm : Form
         layout.Controls.Add(ToolRow("yt-dlp", ytDlpStatus), 0, 0);
         layout.Controls.Add(ToolRow("ffmpeg", ffmpegStatus), 0, 1);
         layout.Controls.Add(ToolRow("ffprobe", ffprobeStatus), 0, 2);
+        layout.Controls.Add(ToolRow("deno", denoStatus), 0, 3);
 
         operationStatus.Dock = DockStyle.Fill;
         operationStatus.Text = "Ready.";
         operationStatus.ForeColor = LoaderlyTheme.MutedText;
         operationStatus.Font = LoaderlyTheme.BodyFont(9.4F);
         operationStatus.TextAlign = ContentAlignment.MiddleLeft;
-        layout.Controls.Add(operationStatus, 0, 3);
+        layout.Controls.Add(operationStatus, 0, 4);
 
         var actions = new TableLayoutPanel
         {
@@ -115,7 +127,7 @@ internal sealed class ToolsForm : Form
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-        layout.Controls.Add(actions, 0, 4);
+        layout.Controls.Add(actions, 0, 5);
 
         ConfigureButton(refreshButton, "Check versions", primary: false);
         ConfigureButton(updateYtDlpButton, "Update yt-dlp only", primary: false);
@@ -137,7 +149,7 @@ internal sealed class ToolsForm : Form
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.3F),
             TextAlign = ContentAlignment.TopLeft
-        }, 0, 5);
+        }, 0, 6);
 
         var bottom = new TableLayoutPanel
         {
@@ -166,13 +178,22 @@ internal sealed class ToolsForm : Form
 
     private static Control ToolRow(string name, Label statusLabel)
     {
+        var rowHost = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.CardRadius,
+            BackColor = LoaderlyTheme.SurfaceMuted,
+            BorderColor = LoaderlyTheme.Border,
+            Padding = new Padding(14, 8, 14, 8),
+            Margin = new Padding(0, 0, 0, 10)
+        };
+
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface,
-            Margin = new Padding(0, 0, 0, 10)
+            BackColor = LoaderlyTheme.SurfaceMuted
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -192,37 +213,56 @@ internal sealed class ToolsForm : Form
         statusLabel.TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft;
         statusLabel.AutoEllipsis = true;
         row.Controls.Add(statusLabel, 1, 0);
-        return row;
+        rowHost.Controls.Add(row);
+        return rowHost;
     }
 
     private async Task RefreshStatusAsync()
     {
         SetBusy(true, "Checking tools...");
-        var statuses = await GetToolSnapshotsAsync();
+        var statuses = await GetToolSnapshotsAsync(includeLatestVersions: true);
         lastSnapshots = statuses;
-        ytDlpStatus.Text = FormatStatus(statuses[0]);
-        ffmpegStatus.Text = FormatStatus(statuses[1]);
-        ffprobeStatus.Text = FormatStatus(statuses[2]);
+        ApplyToolStatuses(statuses);
         SetBusy(false, "Ready.");
     }
 
-    private static async Task<IReadOnlyList<ToolStatusSnapshot>> GetToolSnapshotsAsync()
+    private async Task RefreshLocalStatusAsync()
+    {
+        SetBusy(true, "Checking tools...");
+        var statuses = await GetToolSnapshotsAsync(includeLatestVersions: false);
+        lastSnapshots = statuses;
+        ApplyToolStatuses(statuses);
+        SetBusy(false, "Ready.");
+    }
+
+    private void ApplyToolStatuses(IReadOnlyList<ToolStatusSnapshot> statuses)
+    {
+        ytDlpStatus.Text = FormatStatus(statuses.First(snapshot => snapshot.Name.Equals("yt-dlp", StringComparison.OrdinalIgnoreCase)));
+        ffmpegStatus.Text = FormatStatus(statuses.First(snapshot => snapshot.Name.Equals("ffmpeg", StringComparison.OrdinalIgnoreCase)));
+        ffprobeStatus.Text = FormatStatus(statuses.First(snapshot => snapshot.Name.Equals("ffprobe", StringComparison.OrdinalIgnoreCase)));
+        denoStatus.Text = FormatStatus(statuses.First(snapshot => snapshot.Name.Equals("deno", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static async Task<IReadOnlyList<ToolStatusSnapshot>> GetToolSnapshotsAsync(bool includeLatestVersions)
     {
         var statuses = await Task.WhenAll(
-            ToolStatusSnapshotAsync("yt-dlp"),
-            ToolStatusSnapshotAsync("ffmpeg"),
-            ToolStatusSnapshotAsync("ffprobe"));
+            ToolStatusSnapshotAsync("yt-dlp", includeLatestVersions),
+            ToolStatusSnapshotAsync("ffmpeg", includeLatestVersions),
+            ToolStatusSnapshotAsync("ffprobe", includeLatestVersions),
+            ToolStatusSnapshotAsync("deno", includeLatestVersions));
         return statuses;
     }
 
-    private static async Task<ToolStatusSnapshot> ToolStatusSnapshotAsync(string tool)
+    private static async Task<ToolStatusSnapshot> ToolStatusSnapshotAsync(string tool, bool includeLatestVersion)
     {
         try
         {
-            var path = ToolResolver.ResolveToolPath(tool);
-            var output = await RunProcessAsync(path, VersionArgument(tool));
+            var path = await ToolLookup.ResolveAsync(tool, CancellationToken.None).ConfigureAwait(false);
+            var output = await RunProcessAsync(path, VersionArgument(tool)).ConfigureAwait(false);
             var installedVersion = ParseInstalledVersion(tool, output);
-            var latestVersion = await LatestVersionAsync(tool);
+            var latestVersion = includeLatestVersion
+                ? await LatestVersionAsync(tool).ConfigureAwait(false)
+                : string.Empty;
             return new ToolStatusSnapshot(tool, Installed: true, installedVersion, latestVersion, path);
         }
         catch (Exception ex)
@@ -236,7 +276,7 @@ internal sealed class ToolsForm : Form
         try
         {
             SetBusy(true, "Updating yt-dlp...");
-            var path = ToolResolver.ResolveToolPath("yt-dlp");
+            var path = await ToolLookup.ResolveAsync("yt-dlp", CancellationToken.None);
             var output = await RunProcessAsync(path, "-U");
             operationStatus.Text = LoaderlyLanguage.Text(string.IsNullOrWhiteSpace(output) ? "yt-dlp update finished." : "yt-dlp update finished.");
             await RefreshStatusAsync();
@@ -259,7 +299,7 @@ internal sealed class ToolsForm : Form
         try
         {
             SetBusy(true, "Checking required tools...");
-            var snapshots = lastSnapshots.Count == 0 ? await GetToolSnapshotsAsync() : lastSnapshots;
+            var snapshots = lastSnapshots.Count == 0 ? await GetToolSnapshotsAsync(includeLatestVersions: false) : lastSnapshots;
             var plan = RepairPlan(snapshots);
             if (plan.ToolsToRepair.Count == 0)
             {
@@ -321,6 +361,7 @@ internal sealed class ToolsForm : Form
 
     private static async Task<string> RunProcessAsync(string fileName, string arguments)
     {
+        using var timeout = new CancellationTokenSource(ToolCommandTimeout);
         var output = new List<string>();
         using var process = new Process
         {
@@ -370,14 +411,21 @@ internal sealed class ToolsForm : Form
             }
         };
 
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        await ProcessRunner.WaitForExitAndStreamsAsync(
-            process,
-            outputClosed.Task,
-            errorClosed.Task,
-            CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await ProcessRunner.WaitForExitAndStreamsAsync(
+                process,
+                outputClosed.Task,
+                errorClosed.Task,
+                timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new TimeoutException("Tool command timed out.");
+        }
 
         string text;
         lock (output)
@@ -456,7 +504,9 @@ internal sealed class ToolsForm : Form
         {
             var repository = tool.Equals("yt-dlp", StringComparison.OrdinalIgnoreCase)
                 ? "yt-dlp/yt-dlp"
-                : "GyanD/codexffmpeg";
+                : tool.Equals("deno", StringComparison.OrdinalIgnoreCase)
+                    ? "denoland/deno"
+                    : "GyanD/codexffmpeg";
             using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{repository}/releases/latest");
             request.Headers.UserAgent.ParseAdd($"{ProductInfo.Name}/{ProductInfo.Version}");
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
@@ -519,6 +569,18 @@ internal sealed class ToolsForm : Form
         {
             skipped.Add("ffmpeg");
             skipped.Add("ffprobe");
+        }
+
+        if (byName.TryGetValue("deno", out var deno))
+        {
+            if (NeedsRepair(deno))
+            {
+                toolsToRepair.Add("deno");
+            }
+            else
+            {
+                skipped.Add("deno");
+            }
         }
 
         return new ToolRepairPlan(toolsToRepair, skipped);
@@ -601,7 +663,7 @@ internal sealed class ToolsForm : Form
     private static void ConfigureButton(ModernButton button, string text, bool primary)
     {
         button.Text = text;
-        button.Radius = 8;
+        button.Radius = LoaderlyTheme.ControlRadius;
         button.FillColor = primary ? LoaderlyTheme.Accent : LoaderlyTheme.SurfaceMuted;
         button.HoverColor = primary ? LoaderlyTheme.AccentHover : Color.Empty;
         button.PressedColor = primary ? LoaderlyTheme.AccentPressed : Color.Empty;

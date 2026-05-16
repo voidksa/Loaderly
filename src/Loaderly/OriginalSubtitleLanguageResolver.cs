@@ -8,6 +8,11 @@ internal static class OriginalSubtitleLanguageResolver
 {
     public static async Task<string?> ResolveAsync(string ytDlpPath, string sourceUrl, CancellationToken cancellationToken)
     {
+        return await ResolveAsync(ytDlpPath, null, sourceUrl, cancellationToken).ConfigureAwait(false);
+    }
+
+    public static async Task<string?> ResolveAsync(string ytDlpPath, string? denoPath, string sourceUrl, CancellationToken cancellationToken)
+    {
         try
         {
             var startInfo = new ProcessStartInfo
@@ -22,6 +27,12 @@ internal static class OriginalSubtitleLanguageResolver
             startInfo.ArgumentList.Add("--skip-download");
             startInfo.ArgumentList.Add("--dump-json");
             startInfo.ArgumentList.Add("--no-playlist");
+            if (!string.IsNullOrWhiteSpace(denoPath))
+            {
+                startInfo.ArgumentList.Add("--js-runtimes");
+                startInfo.ArgumentList.Add($"deno:{denoPath}");
+            }
+
             startInfo.ArgumentList.Add(sourceUrl);
 
             var output = new StringBuilder();

@@ -1,5 +1,5 @@
 param(
-    [string[]]$Tools = @("yt-dlp", "ffmpeg", "ffprobe")
+    [string[]]$Tools = @("yt-dlp", "ffmpeg", "ffprobe", "deno")
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +9,7 @@ $ToolsPath = Join-Path $Root "tools\windows"
 $YtDlpPath = Join-Path $ToolsPath "yt-dlp.exe"
 $FfmpegPath = Join-Path $ToolsPath "ffmpeg.exe"
 $FfprobePath = Join-Path $ToolsPath "ffprobe.exe"
+$DenoPath = Join-Path $ToolsPath "deno.exe"
 
 New-Item -ItemType Directory -Force -Path $ToolsPath | Out-Null
 
@@ -97,6 +98,27 @@ if (Test-Requested "yt-dlp") {
 }
 else {
     Write-Host "Skipping yt-dlp."
+}
+
+if (Test-Requested "deno") {
+    Write-Host "Installing Deno JavaScript runtime..."
+    $DenoZip = Join-Path ([System.IO.Path]::GetTempPath()) "loaderly-deno.zip"
+    $DenoExtract = Join-Path ([System.IO.Path]::GetTempPath()) "loaderly-deno"
+    if (Test-Path $DenoExtract) {
+        Remove-Item -LiteralPath $DenoExtract -Recurse -Force
+    }
+
+    Invoke-Download `
+        -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" `
+        -OutFile $DenoZip
+    Expand-Archive -LiteralPath $DenoZip -DestinationPath $DenoExtract -Force
+    Copy-ToolExecutable -Source (Join-Path $DenoExtract "deno.exe") -Destination $DenoPath
+
+    Write-Host "deno:"
+    & $DenoPath --version | Select-Object -First 1
+}
+else {
+    Write-Host "Skipping deno."
 }
 
 $InstallFfmpeg = (Test-Requested "ffmpeg") -or (Test-Requested "ffprobe")

@@ -114,7 +114,7 @@ internal sealed class FirstRunForm : Form
         var folderHost = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Margin = new Padding(0, 0, 10, 0)
@@ -212,7 +212,7 @@ internal sealed class FirstRunForm : Form
     private static void StyleButton(ModernButton button, bool primary)
     {
         button.Dock = DockStyle.Fill;
-        button.Radius = 8;
+        button.Radius = LoaderlyTheme.ControlRadius;
         button.FillColor = primary ? LoaderlyTheme.Accent : LoaderlyTheme.SurfaceMuted;
         button.HoverColor = primary ? LoaderlyTheme.AccentHover : LoaderlyTheme.ControlHover;
         button.PressedColor = primary ? LoaderlyTheme.AccentPressed : LoaderlyTheme.ControlPressed;

@@ -124,6 +124,7 @@ internal sealed class AppSettingsStore
     public void Save(AppSettings settings)
     {
         NormalizeForRuntime(settings);
+        ProtectSecretsForSave(settings);
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(settingsPath, json);
@@ -132,6 +133,7 @@ internal sealed class AppSettingsStore
     internal static string SerializeForTest(AppSettings settings)
     {
         NormalizeForRuntime(settings);
+        ProtectSecretsForSave(settings);
         return JsonSerializer.Serialize(settings, JsonOptions);
     }
 
@@ -140,6 +142,11 @@ internal sealed class AppSettingsStore
         var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
         NormalizeForRuntime(settings);
         return settings;
+    }
+
+    internal static string OpenRouterApiKeyForRuntime(AppSettings settings)
+    {
+        return RuntimeOpenRouterApiKey(settings);
     }
 
     internal static void NormalizeForRuntime(AppSettings settings)
@@ -180,11 +187,15 @@ internal sealed class AppSettingsStore
         settings.SubtitleStyle.BackgroundOpacity = Math.Clamp(settings.SubtitleStyle.BackgroundOpacity, 0, 100);
         settings.SubtitleStyle.TextColor = NormalizeColor(settings.SubtitleStyle.TextColor, "#FFFFFF");
         settings.SubtitleStyle.BackgroundColor = NormalizeColor(settings.SubtitleStyle.BackgroundColor, "#000000");
-        settings.OpenRouterApiKey = RuntimeOpenRouterApiKey(settings);
-        settings.OpenRouterApiKeyProtected = string.IsNullOrWhiteSpace(settings.OpenRouterApiKey)
-            ? string.Empty
-            : SecretProtector.Protect(settings.OpenRouterApiKey);
-        settings.LegacyOpenRouterApiKey = null;
+        settings.OpenRouterApiKey = settings.OpenRouterApiKey?.Trim() ?? string.Empty;
+        settings.OpenRouterApiKeyProtected = settings.OpenRouterApiKeyProtected?.Trim() ?? string.Empty;
+        settings.LegacyOpenRouterApiKey = settings.LegacyOpenRouterApiKey?.Trim();
+        if (!string.IsNullOrWhiteSpace(settings.LegacyOpenRouterApiKey) &&
+            string.IsNullOrWhiteSpace(settings.OpenRouterApiKey))
+        {
+            settings.OpenRouterApiKey = settings.LegacyOpenRouterApiKey;
+        }
+
         settings.OpenRouterModel = settings.OpenRouterModel?.Trim() ?? string.Empty;
         settings.AiSubtitleTargetLanguage = string.IsNullOrWhiteSpace(settings.AiSubtitleTargetLanguage)
             ? "Arabic"
@@ -192,6 +203,20 @@ internal sealed class AppSettingsStore
         settings.AppLanguage = string.IsNullOrWhiteSpace(settings.AppLanguage)
             ? LoaderlyLanguage.FromInstallerOrSystem()
             : LoaderlyLanguage.Normalize(settings.AppLanguage);
+    }
+
+    private static void ProtectSecretsForSave(AppSettings settings)
+    {
+        var runtimeKey = settings.OpenRouterApiKey?.Trim() ?? string.Empty;
+        var legacyKey = settings.LegacyOpenRouterApiKey?.Trim() ?? string.Empty;
+        var keyToProtect = string.IsNullOrWhiteSpace(runtimeKey) ? legacyKey : runtimeKey;
+        if (!string.IsNullOrWhiteSpace(keyToProtect))
+        {
+            settings.OpenRouterApiKeyProtected = SecretProtector.Protect(keyToProtect);
+        }
+
+        settings.OpenRouterApiKey = string.Empty;
+        settings.LegacyOpenRouterApiKey = null;
     }
 
     internal static AppSettings NewInstallDefaultsForTest()

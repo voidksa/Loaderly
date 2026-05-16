@@ -8,6 +8,10 @@ namespace Loaderly;
 
 internal static class LoaderlyTheme
 {
+    public const int PanelRadius = 14;
+    public const int CardRadius = 12;
+    public const int ControlRadius = 10;
+
     private static string mode = "System";
     private static ThemePalette current = WindowsTheme.AppsUseLightTheme()
         ? ThemePalette.Light
@@ -85,6 +89,19 @@ internal static class LoaderlyTheme
     public static GraphicsPath RoundedRect(Rectangle bounds, int radius)
     {
         var path = new GraphicsPath();
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            return path;
+        }
+
+        radius = Math.Max(0, Math.Min(radius, Math.Min(bounds.Width, bounds.Height) / 2));
+        if (radius == 0)
+        {
+            path.AddRectangle(bounds);
+            path.CloseFigure();
+            return path;
+        }
+
         var diameter = radius * 2;
         var arc = new Rectangle(bounds.Location, new Size(diameter, diameter));
         path.AddArc(arc, 180, 90);
@@ -167,36 +184,36 @@ internal sealed record ThemePalette(
 
     public static ThemePalette Dark { get; } = new(
         IsDark: true,
-        Window: Color.FromArgb(12, 14, 20),
-        Sidebar: Color.FromArgb(8, 10, 15),
+        Window: Color.FromArgb(16, 17, 22),
+        Sidebar: Color.FromArgb(17, 19, 24),
         SidebarText: Color.FromArgb(246, 248, 255),
-        SidebarMuted: Color.FromArgb(145, 156, 178),
-        SidebarCard: Color.FromArgb(22, 26, 38),
-        SidebarCardBorder: Color.FromArgb(42, 48, 66),
-        SidebarButton: Color.FromArgb(28, 33, 47),
-        SidebarButtonHover: Color.FromArgb(39, 46, 64),
-        SidebarButtonPressed: Color.FromArgb(50, 58, 80),
-        Surface: Color.FromArgb(22, 25, 35),
-        SurfaceMuted: Color.FromArgb(31, 36, 49),
-        ControlHover: Color.FromArgb(39, 45, 61),
-        ControlPressed: Color.FromArgb(49, 57, 76),
-        DisabledSurface: Color.FromArgb(27, 31, 42),
-        Border: Color.FromArgb(48, 55, 72),
-        Text: Color.FromArgb(239, 243, 250),
-        MutedText: Color.FromArgb(155, 166, 185),
-        Accent: Color.FromArgb(75, 145, 255),
-        AccentHover: Color.FromArgb(93, 158, 255),
-        AccentPressed: Color.FromArgb(51, 122, 224),
-        Accent2: Color.FromArgb(166, 111, 255),
-        Danger: Color.FromArgb(255, 112, 125),
-        DangerSurface: Color.FromArgb(63, 31, 38),
-        DangerHover: Color.FromArgb(82, 38, 47),
-        SelectedSurface: Color.FromArgb(28, 45, 78),
-        SelectedBorder: Color.FromArgb(94, 160, 255),
-        TrimSurface: Color.FromArgb(45, 35, 77),
-        TrimHover: Color.FromArgb(57, 43, 94),
-        TrimText: Color.FromArgb(212, 195, 255),
-        ThumbnailBack: Color.FromArgb(10, 12, 18));
+        SidebarMuted: Color.FromArgb(158, 166, 184),
+        SidebarCard: Color.FromArgb(27, 30, 38),
+        SidebarCardBorder: Color.FromArgb(55, 59, 72),
+        SidebarButton: Color.FromArgb(30, 33, 42),
+        SidebarButtonHover: Color.FromArgb(40, 44, 55),
+        SidebarButtonPressed: Color.FromArgb(49, 54, 67),
+        Surface: Color.FromArgb(27, 29, 36),
+        SurfaceMuted: Color.FromArgb(35, 38, 48),
+        ControlHover: Color.FromArgb(43, 47, 58),
+        ControlPressed: Color.FromArgb(52, 57, 70),
+        DisabledSurface: Color.FromArgb(28, 31, 39),
+        Border: Color.FromArgb(55, 59, 72),
+        Text: Color.FromArgb(244, 246, 251),
+        MutedText: Color.FromArgb(167, 176, 194),
+        Accent: Color.FromArgb(93, 168, 255),
+        AccentHover: Color.FromArgb(112, 181, 255),
+        AccentPressed: Color.FromArgb(67, 142, 240),
+        Accent2: Color.FromArgb(155, 109, 255),
+        Danger: Color.FromArgb(255, 107, 122),
+        DangerSurface: Color.FromArgb(74, 35, 43),
+        DangerHover: Color.FromArgb(90, 42, 52),
+        SelectedSurface: Color.FromArgb(36, 44, 59),
+        SelectedBorder: Color.FromArgb(93, 168, 255),
+        TrimSurface: Color.FromArgb(54, 43, 82),
+        TrimHover: Color.FromArgb(65, 51, 98),
+        TrimText: Color.FromArgb(221, 207, 255),
+        ThumbnailBack: Color.FromArgb(12, 13, 18));
 }
 
 internal static class WindowsTheme
@@ -299,6 +316,66 @@ internal class RoundedPanel : Panel
         using var path = LoaderlyTheme.RoundedRect(rectangle, Radius);
         Region?.Dispose();
         Region = new Region(path);
+    }
+}
+
+internal sealed class CoverPictureBox : Control
+{
+    private Image? image;
+
+    public Image? Image
+    {
+        get => image;
+        set
+        {
+            if (ReferenceEquals(image, value))
+            {
+                return;
+            }
+
+            image = value;
+            Invalidate();
+        }
+    }
+
+    public CoverPictureBox()
+    {
+        SetStyle(
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw |
+            ControlStyles.UserPaint,
+            true);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        if (Image is null || ClientSize.Width <= 0 || ClientSize.Height <= 0)
+        {
+            using var fill = new SolidBrush(BackColor);
+            e.Graphics.FillRectangle(fill, ClientRectangle);
+            return;
+        }
+
+        e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
+        e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
+        e.Graphics.SetClip(ClientRectangle);
+
+        var scale = Math.Max(
+            ClientSize.Width / (float)Image.Width,
+            ClientSize.Height / (float)Image.Height);
+        var width = Image.Width * scale;
+        var height = Image.Height * scale;
+        var x = (ClientSize.Width - width) / 2F;
+        var y = (ClientSize.Height - height) / 2F;
+        e.Graphics.DrawImage(Image, x, y, width, height);
+    }
+
+    protected override void OnBackColorChanged(EventArgs e)
+    {
+        base.OnBackColorChanged(e);
+        Invalidate();
     }
 }
 
@@ -622,7 +699,7 @@ internal sealed class ModernCommandButton : RoundedPanel
 
     public ModernCommandButton()
     {
-        Radius = 8;
+        Radius = LoaderlyTheme.ControlRadius;
         BorderThickness = 0;
         BackColor = fillColor;
         ForeColor = Color.White;
@@ -732,7 +809,7 @@ internal sealed class NativeCommandButton : Panel
     private bool hovered;
     private bool pressed;
 
-    private int radius = 8;
+    private int radius = LoaderlyTheme.ControlRadius;
 
     public int Radius
     {
@@ -881,7 +958,7 @@ internal sealed class LabelCommandButton : Label
     private bool hovered;
     private bool pressed;
 
-    public int Radius { get; set; } = 8;
+    public int Radius { get; set; } = LoaderlyTheme.ControlRadius;
 
     public Color FillColor
     {
@@ -1269,7 +1346,7 @@ internal sealed class ModernSelect : Control
 
     public List<string> Items { get; } = [];
 
-    private int radius = 8;
+    private int radius = LoaderlyTheme.ControlRadius;
 
     public int Radius
     {

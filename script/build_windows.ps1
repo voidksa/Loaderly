@@ -21,8 +21,6 @@ $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Project = Join-Path $Root "src\Loaderly\Loaderly.csproj"
-$SetupProject = Join-Path $Root "src\Loaderly.Setup\Loaderly.Setup.csproj"
-$Version = "1.0.0"
 
 function Resolve-SignTool {
     if (-not [string]::IsNullOrWhiteSpace($SignToolPath)) {
@@ -106,8 +104,7 @@ $AppPublishArgs = @(
     "--configuration", $Configuration,
     "--runtime", "win-x64",
     "--self-contained", "true",
-    "-p:PublishSingleFile=true",
-    "-p:EnableCompressionInSingleFile=false",
+    "-p:PublishSingleFile=false",
     "--output", $OutputPath
 )
 
@@ -127,7 +124,7 @@ $SourceTools = Join-Path $Root "tools\windows"
 if (Test-Path $SourceTools) {
     $PublishedTools = Join-Path $OutputPath "tools\windows"
     New-Item -ItemType Directory -Force -Path $PublishedTools | Out-Null
-    foreach ($ToolName in @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe")) {
+    foreach ($ToolName in @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe")) {
         $ToolPath = Join-Path $SourceTools $ToolName
         if (Test-Path $ToolPath) {
             Copy-Item -Path $ToolPath -Destination $PublishedTools -Force
@@ -140,59 +137,3 @@ New-Item -ItemType Directory -Force -Path $PublishedScripts | Out-Null
 Copy-Item -LiteralPath (Join-Path $Root "script\install_windows_tools.ps1") -Destination $PublishedScripts -Force
 
 Write-Host "Windows build written to $OutputPath"
-
-$PayloadDirectory = Join-Path $Root "src\Loaderly.Setup\Payload"
-$PayloadPath = Join-Path $PayloadDirectory "LoaderlyPayload.zip"
-$InstallerOutput = Join-Path $Root "dist\installer"
-$InstallerPublishOutput = Join-Path $Root "dist\setup-publish"
-New-Item -ItemType Directory -Force -Path $PayloadDirectory | Out-Null
-if (Test-Path $PayloadPath) {
-    Remove-Item -LiteralPath $PayloadPath -Force
-}
-
-Compress-Archive -Path (Join-Path $OutputPath "*") -DestinationPath $PayloadPath -Force
-
-if (Test-Path $InstallerPublishOutput) {
-    $ResolvedRoot = (Resolve-Path $Root).Path
-    $ResolvedInstallerPublishOutput = (Resolve-Path $InstallerPublishOutput).Path
-    if (-not $ResolvedInstallerPublishOutput.StartsWith($ResolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to clean installer output outside repository: $ResolvedInstallerPublishOutput"
-    }
-
-    Get-ChildItem -LiteralPath $InstallerPublishOutput -Force | Remove-Item -Recurse -Force
-}
-
-New-Item -ItemType Directory -Force -Path $InstallerOutput | Out-Null
-
-$SetupPublishArgs = @(
-    $SetupProject,
-    "--configuration", $Configuration,
-    "--runtime", "win-x64",
-    "--self-contained", "true",
-    "-p:PublishSingleFile=true",
-    "-p:EnableCompressionInSingleFile=false",
-    "-p:Version=$Version",
-    "--output", $InstallerPublishOutput
-)
-
-if ($NoRestore) {
-    $SetupPublishArgs += "--no-restore"
-}
-
-dotnet publish @SetupPublishArgs
-
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
-
-$SetupExe = Join-Path $InstallerPublishOutput "Loaderly-Setup.exe"
-$VersionedSetupExe = Join-Path $InstallerOutput "Loaderly-Setup-$Version.exe"
-if (Test-Path $VersionedSetupExe) {
-    Remove-Item -LiteralPath $VersionedSetupExe -Force
-}
-
-Move-Item -LiteralPath $SetupExe -Destination $VersionedSetupExe
-Invoke-SignFile -Path $VersionedSetupExe
-Remove-Item -LiteralPath $PayloadPath -Force
-Remove-Item -LiteralPath $InstallerPublishOutput -Recurse -Force
-Write-Host "Installer written to $VersionedSetupExe"

@@ -8,6 +8,7 @@ namespace Loaderly;
 internal sealed class MediaDownloadService
 {
     private static readonly TimeSpan DestinationFolderProbeTimeout = TimeSpan.FromSeconds(5);
+    private static readonly string[] RequiredBundledTools = ["yt-dlp", "ffmpeg", "ffprobe"];
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp4",
@@ -22,10 +23,28 @@ internal sealed class MediaDownloadService
     public async Task EnsureDependenciesAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _ = ToolResolver.ResolveToolPath("yt-dlp");
-        _ = ToolResolver.ResolveToolPath("ffmpeg");
-        _ = ToolResolver.ResolveToolPath("ffprobe");
-        await Task.CompletedTask;
+        await Task.WhenAll(
+            ToolLookup.ResolveAsync("yt-dlp", cancellationToken),
+            ToolLookup.ResolveAsync("ffmpeg", cancellationToken),
+            ToolLookup.ResolveAsync("ffprobe", cancellationToken)).ConfigureAwait(false);
+    }
+
+    public Task EnsureBundledDependenciesAsync(CancellationToken cancellationToken)
+    {
+        return ToolLookup.RunForTest(() =>
+        {
+            foreach (var tool in RequiredBundledTools)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (ToolResolver.TryResolveBundledToolPath(tool) is null)
+                {
+                    throw new InvalidOperationException(
+                        $"{tool} was not found in Loaderly tools. Open Tools and run Install / repair all tools.");
+                }
+            }
+
+            return string.Empty;
+        }, cancellationToken);
     }
 
     public async Task<DownloadResult> DownloadAsync(
@@ -72,8 +91,10 @@ internal sealed class MediaDownloadService
 
         var ytDlpPath = ToolResolver.ResolveToolPath("yt-dlp");
         var ffmpegPath = ToolResolver.ResolveToolPath("ffmpeg");
+        var denoPath = ToolResolver.TryResolveBundledToolPath("deno");
         var effectiveOptions = await ResolveSubtitleOptionsAsync(
             ytDlpPath,
+            denoPath,
             sourceUrl,
             options,
             progress,
@@ -95,7 +116,7 @@ internal sealed class MediaDownloadService
         };
         ToolResolver.AddToolDirectoriesToPath(startInfo);
 
-        foreach (var argument in DownloadArguments(sourceUrl, destinationFolder, ffmpegPath, effectiveOptions))
+        foreach (var argument in DownloadArguments(sourceUrl, destinationFolder, ffmpegPath, denoPath, effectiveOptions))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -243,6 +264,7 @@ internal sealed class MediaDownloadService
 
     private static async Task<DownloadOptions> ResolveSubtitleOptionsAsync(
         string ytDlpPath,
+        string? denoPath,
         string sourceUrl,
         DownloadOptions options,
         IProgress<DownloadProgress>? progress,
@@ -254,7 +276,7 @@ internal sealed class MediaDownloadService
         }
 
         progress?.Report(new DownloadProgress(null, "Finding subtitles", "Finding the video's original subtitle language."));
-        var originalLanguage = await OriginalSubtitleLanguageResolver.ResolveAsync(ytDlpPath, sourceUrl, cancellationToken)
+        var originalLanguage = await OriginalSubtitleLanguageResolver.ResolveAsync(ytDlpPath, denoPath, sourceUrl, cancellationToken)
             .ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(originalLanguage))
         {
@@ -266,10 +288,21 @@ internal sealed class MediaDownloadService
         return options with { SubtitleLanguages = SubtitleLanguagePreference.Normalize(originalLanguage) };
     }
 
+    internal static List<string> DownloadArgumentsForTest(
+        string sourceUrl,
+        string destinationFolder,
+        string ffmpegPath,
+        string? denoPath,
+        DownloadOptions options)
+    {
+        return DownloadArguments(sourceUrl, destinationFolder, ffmpegPath, denoPath, options).ToList();
+    }
+
     private static IEnumerable<string> DownloadArguments(
         string sourceUrl,
         string destinationFolder,
         string ffmpegPath,
+        string? denoPath,
         DownloadOptions options)
     {
         yield return options.AllowPlaylist ? "--yes-playlist" : "--no-playlist";
@@ -281,6 +314,12 @@ internal sealed class MediaDownloadService
         yield return "--newline";
         yield return "--continue";
         yield return "--restrict-filenames";
+        if (!string.IsNullOrWhiteSpace(denoPath))
+        {
+            yield return "--js-runtimes";
+            yield return $"deno:{denoPath}";
+        }
+
         if (options.Quality == DownloadQuality.AudioOnly)
         {
             yield return "--extract-audio";

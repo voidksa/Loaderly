@@ -106,7 +106,7 @@ internal sealed class SettingsForm : Form
         var panel = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 12,
+            Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(18)
@@ -175,7 +175,7 @@ internal sealed class SettingsForm : Form
         var folderListHost = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(8),
@@ -229,7 +229,7 @@ internal sealed class SettingsForm : Form
         var folderHost = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Margin = new Padding(0, 5, 12, 7)
@@ -246,7 +246,7 @@ internal sealed class SettingsForm : Form
         var browseHost = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = Color.Transparent,
             Margin = new Padding(0, 4, 0, 7),
@@ -316,7 +316,7 @@ internal sealed class SettingsForm : Form
         subtitleRow.Controls.Add(customSubtitleCodeLabel, 1, 0);
 
         customSubtitleHost.Dock = DockStyle.Fill;
-        customSubtitleHost.Radius = 8;
+        customSubtitleHost.Radius = LoaderlyTheme.ControlRadius;
         customSubtitleHost.BackColor = LoaderlyTheme.SurfaceMuted;
         customSubtitleHost.BorderColor = LoaderlyTheme.Border;
         customSubtitleHost.Margin = new Padding(0, 5, 0, 7);
@@ -672,7 +672,7 @@ internal sealed class SettingsForm : Form
         var host = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Margin = new Padding(0, 5, 0, 5)
@@ -690,7 +690,7 @@ internal sealed class SettingsForm : Form
         var host = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Radius = 8,
+            Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
             Margin = new Padding(0, 5, 0, 5)
@@ -708,7 +708,7 @@ internal sealed class SettingsForm : Form
 
     private void ConfigureLanguageSuggestionPanel()
     {
-        aiLanguageSuggestionPanel.Radius = 8;
+        aiLanguageSuggestionPanel.Radius = LoaderlyTheme.ControlRadius;
         aiLanguageSuggestionPanel.BackColor = LoaderlyTheme.SurfaceMuted;
         aiLanguageSuggestionPanel.BorderColor = LoaderlyTheme.Border;
         aiLanguageSuggestionPanel.Visible = false;
@@ -1015,7 +1015,7 @@ internal sealed class SettingsForm : Form
     private static void ConfigureButton(ModernButton button, string text, bool primary)
     {
         button.Text = text;
-        button.Radius = 8;
+        button.Radius = LoaderlyTheme.ControlRadius;
         button.FillColor = primary ? LoaderlyTheme.Accent : LoaderlyTheme.SurfaceMuted;
         button.HoverColor = primary ? LoaderlyTheme.AccentHover : Color.Empty;
         button.PressedColor = primary ? LoaderlyTheme.AccentPressed : Color.Empty;
