@@ -18,6 +18,8 @@ internal sealed class TrimForm : WinForms.Form
     private const int TimelineThumbnailDelayMilliseconds = 350;
     private const int TransportRowHeight = 66;
     private const int StatusLabelVerticalMargin = 7;
+    private const string WindowsMediaPlayerCapabilityCommand = "DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0";
+    private const string WindowsMediaPlayerMissingStatus = "Windows Media Player feature is missing. Run as administrator: DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0";
 
     public static int TimelineThumbnailDelayMillisecondsForTest => TimelineThumbnailDelayMilliseconds;
     internal static int TransportRowHeightForTest => TransportRowHeight;
@@ -26,6 +28,11 @@ internal sealed class TrimForm : WinForms.Form
     internal static WinForms.FormWindowState SubtitleEditorWindowStateForParentForTest(WinForms.FormWindowState parentWindowState)
     {
         return ChildWindowStateForParent(parentWindowState);
+    }
+
+    internal static string MediaPreviewFailureStatusForTest(Exception? exception)
+    {
+        return MediaPreviewFailureStatus(exception);
     }
 
     private readonly string sourceFilePath;
@@ -86,6 +93,7 @@ internal sealed class TrimForm : WinForms.Form
     private string? subtitleFilePath;
     private string? originalSubtitleFilePath;
     private bool subtitlesVisible = true;
+    private bool mediaFeatureWarningShown;
 
     public string? LastSavedFilePath { get; private set; }
 
@@ -730,7 +738,7 @@ internal sealed class TrimForm : WinForms.Form
 
             InitializeDuration();
         };
-        player.MediaFailed += (_, args) => SetStatus(args.ErrorException?.Message ?? "Could not load video preview.");
+        player.MediaFailed += (_, args) => HandleMediaPreviewFailure(args.ErrorException);
         player.MediaEnded += (_, _) => StopPlayback();
         playbackTimer.Interval = 80;
         playbackTimer.Tick += (_, _) => UpdatePlaybackPosition();
@@ -2219,6 +2227,43 @@ internal sealed class TrimForm : WinForms.Form
     private void SetStatus(string message)
     {
         statusLabel.Text = LoaderlyLanguage.Text(message);
+    }
+
+    private void HandleMediaPreviewFailure(Exception? exception)
+    {
+        var status = MediaPreviewFailureStatus(exception);
+        SetStatus(status);
+        if (!IsWindowsMediaPlayerCapabilityFailure(exception) || mediaFeatureWarningShown)
+        {
+            return;
+        }
+
+        mediaFeatureWarningShown = true;
+        WinForms.MessageBox.Show(
+            this,
+            $"{LoaderlyLanguage.Text("Windows Media Player feature is missing.")}\n\n{LoaderlyLanguage.Text("Open PowerShell or Command Prompt as administrator and run:")}\n\n{WindowsMediaPlayerCapabilityCommand}\n\n{LoaderlyLanguage.Text("Restart Windows after the command finishes.")}",
+            LoaderlyLanguage.Text("Watch / Trim preview"),
+            WinForms.MessageBoxButtons.OK,
+            WinForms.MessageBoxIcon.Warning);
+    }
+
+    private static string MediaPreviewFailureStatus(Exception? exception)
+    {
+        if (IsWindowsMediaPlayerCapabilityFailure(exception))
+        {
+            return WindowsMediaPlayerMissingStatus;
+        }
+
+        return string.IsNullOrWhiteSpace(exception?.Message)
+            ? "Could not load video preview."
+            : exception.Message;
+    }
+
+    private static bool IsWindowsMediaPlayerCapabilityFailure(Exception? exception)
+    {
+        var message = exception?.Message;
+        return !string.IsNullOrWhiteSpace(message) &&
+            message.Contains("Windows Media Player version 10", StringComparison.OrdinalIgnoreCase);
     }
 
     private string ReadyStatus(string baseMessage)

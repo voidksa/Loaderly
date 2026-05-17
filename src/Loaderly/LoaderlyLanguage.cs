@@ -308,6 +308,31 @@ internal static class LoaderlyLanguage
             return text;
         }
 
+        if (text == "Windows Media Player feature is missing.")
+        {
+            return "ميزة Windows Media Player غير مثبتة.";
+        }
+
+        if (text == "Windows Media Player feature is missing. Run as administrator: DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0")
+        {
+            return "ميزة Windows Media Player غير مثبتة. شغّل كمسؤول: DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0";
+        }
+
+        if (text == "Open PowerShell or Command Prompt as administrator and run:")
+        {
+            return "افتح PowerShell أو Command Prompt كمسؤول وشغّل:";
+        }
+
+        if (text == "Restart Windows after the command finishes.")
+        {
+            return "أعد تشغيل ويندوز بعد انتهاء الأمر.";
+        }
+
+        if (text == "Watch / Trim preview")
+        {
+            return "معاينة المشاهدة / القص";
+        }
+
         return ArabicText.TryGetValue(text, out var translated) ? translated : text;
     }
 

@@ -58,7 +58,15 @@ Loaderly يجمع التعامل مع روابط الوسائط في تطبيق 
 
 ## متطلب Media Player
 
-ميزة Watch / Trim تعتمد على مكونات تشغيل الوسائط في ويندوز لعرض معاينة الفيديو. إذا ظهرت رسالة `Windows Media Player version 10 or later is required.` عند فتح Watch / Trim، ثبّت أو حدّث تطبيق Media Player على الجهاز:
+ميزة Watch / Trim تعتمد على مكونات تشغيل الوسائط في ويندوز لعرض معاينة الفيديو. إذا ظهرت رسالة `Windows Media Player version 10 or later is required.` عند فتح Watch / Trim، فهذا يعني غالبًا أن ميزة Windows Media Player الاختيارية غير مثبتة حتى لو كان تطبيق Media Player الجديد موجودًا.
+
+افتح PowerShell أو Command Prompt كمسؤول، شغّل هذا الأمر، ثم أعد تشغيل ويندوز:
+
+```powershell
+DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0
+```
+
+يمكنك أيضًا تثبيت أو تحديث Media Player من Microsoft Store، لكن أمر DISM بالأعلى هو الحل للمكوّن الناقص داخل ويندوز:
 
 <p align="center" dir="rtl">
   <a href="https://apps.microsoft.com/detail/9WZDNCRFJ3PT">
@@ -67,7 +75,7 @@ Loaderly يجمع التعامل مع روابط الوسائط في تطبيق 
   </a>
 </p>
 
-إذا كان الجهاز يعمل بإصدار Windows N واستمرت المشكلة، ثبّت Microsoft Media Feature Pack أيضًا.
+إذا كان الجهاز يعمل بإصدار Windows N واستمرت المشكلة بعد الأمر، ثبّت Microsoft Media Feature Pack أيضًا.
 
 ## الخصوصية
 

@@ -58,7 +58,15 @@ Run the installer and open Loaderly from the Start menu. Windows 10 or newer is 
 
 ## Media Player Requirement
 
-Watch / Trim uses Windows media components for video preview. If Watch / Trim shows `Windows Media Player version 10 or later is required.`, install or update Media Player on the device:
+Watch / Trim uses Windows media components for video preview. If Watch / Trim shows `Windows Media Player version 10 or later is required.`, the Windows Media Player optional feature is missing even if the newer Media Player app is installed.
+
+Open PowerShell or Command Prompt as administrator, run this command, then restart Windows:
+
+```powershell
+DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0
+```
+
+You can also install or update Media Player from Microsoft Store, but the DISM command above is the fix for the missing Windows capability:
 
 <p align="center">
   <a href="https://apps.microsoft.com/detail/9WZDNCRFJ3PT">
@@ -67,7 +75,7 @@ Watch / Trim uses Windows media components for video preview. If Watch / Trim sh
   </a>
 </p>
 
-On Windows N editions, install the Microsoft Media Feature Pack too if Media Player does not appear or playback still fails.
+On Windows N editions, install the Microsoft Media Feature Pack too if Media Player does not appear or playback still fails after the command.
 
 ## Privacy
 
