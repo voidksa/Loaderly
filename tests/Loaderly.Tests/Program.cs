@@ -31,6 +31,14 @@ ExpectTrue(
     "installer recognizes explicit repair argument",
     SetupMode.ShouldForceInstallForTest(["--repair"]));
 
+ExpectTrue(
+    "installer uninstall layout keeps actions below toggles",
+    SetupLayoutMetrics.OptionButtonGapForTest(uninstallMode: true) >= 24);
+
+ExpectTrue(
+    "installer install layout keeps actions below toggles",
+    SetupLayoutMetrics.OptionButtonGapForTest(uninstallMode: false) >= 24);
+
 ExpectSequence(
     "installer launches only after success acknowledgement",
     SetupMode.InstallCompletionStepsForTest(launchAfterInstall: true),

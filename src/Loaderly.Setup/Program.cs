@@ -121,7 +121,7 @@ internal static class Program
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = uninstallMode ? new Size(660, 460) : new Size(680, 540);
+            ClientSize = SetupLayoutMetrics.ClientSize(uninstallMode);
             MinimumSize = Size;
             MaximumSize = Size;
             Font = new Font("Segoe UI", 10F);
@@ -804,6 +804,43 @@ internal sealed record SetupPalette(
     Color Danger,
     Color DangerHover,
     Color DangerPressed);
+
+internal static class SetupLayoutMetrics
+{
+    private const int Top = 28;
+    private const int HeaderStep = 82;
+    private const int LanguageStep = 58;
+    private const int UninstallDetailsStep = 96;
+    private const int InstallDetailsStep = 84;
+    private const int UninstallOptionsStep = 90;
+    private const int InstallOptionsStep = 94;
+    private const int RowSpacing = 62;
+    private const int RowHeight = 56;
+    private const int ButtonBottomInset = 74;
+
+    public static Size ClientSize(bool uninstallMode)
+    {
+        return uninstallMode ? new Size(660, 580) : new Size(680, 580);
+    }
+
+    public static int ButtonTopForTest(bool uninstallMode)
+    {
+        return ClientSize(uninstallMode).Height - ButtonBottomInset;
+    }
+
+    public static int LastOptionBottomForTest(bool uninstallMode)
+    {
+        var y = Top + HeaderStep + LanguageStep;
+        y += uninstallMode ? UninstallDetailsStep : InstallDetailsStep;
+        y += uninstallMode ? UninstallOptionsStep : InstallOptionsStep;
+        return y + RowSpacing + RowHeight;
+    }
+
+    public static int OptionButtonGapForTest(bool uninstallMode)
+    {
+        return ButtonTopForTest(uninstallMode) - LastOptionBottomForTest(uninstallMode);
+    }
+}
 
 internal enum ButtonRole
 {

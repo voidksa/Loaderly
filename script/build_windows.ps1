@@ -144,7 +144,7 @@ Write-Host "Windows build written to $OutputPath"
 $PayloadDirectory = Join-Path $Root "src\Loaderly.Setup\Payload"
 $PayloadPath = Join-Path $PayloadDirectory "LoaderlyPayload.zip"
 $InstallerOutput = Join-Path $Root "dist\installer"
-$InstallerPublishOutput = Join-Path $Root "dist\setup-publish"
+$InstallerPublishOutput = Join-Path $Root ("dist\setup-publish-{0}" -f [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $PayloadDirectory | Out-Null
 if (Test-Path $PayloadPath) {
     Remove-Item -LiteralPath $PayloadPath -Force
