@@ -56,6 +56,19 @@ Download the Windows installer from the latest release:
 
 Run the installer and open Loaderly from the Start menu. Windows 10 or newer is recommended.
 
+## Media Player Requirement
+
+Watch / Trim uses Windows media components for video preview. If Watch / Trim shows `Windows Media Player version 10 or later is required.`, install or update Media Player on the device:
+
+<p align="center">
+  <a href="https://apps.microsoft.com/detail/9WZDNCRFJ3PT">
+    <img src="docs/images/windows-media-player.svg" alt="Media Player icon" width="72" height="72"><br>
+    <strong>Install Media Player from Microsoft Store</strong>
+  </a>
+</p>
+
+On Windows N editions, install the Microsoft Media Feature Pack too if Media Player does not appear or playback still fails.
+
 ## Privacy
 
 Loaderly keeps its app settings, download history, thumbnails, subtitle preferences, and local library data on your device. Features that download media, check for updates, or translate subtitles may contact the relevant online services only when you use them.

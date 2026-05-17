@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Media Player icon</title>
+  <desc id="desc">A circular media player icon with a play button.</desc>
+  <defs>
+    <linearGradient id="ring" x1="42" y1="38" x2="214" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff914d"/>
+      <stop offset=".48" stop-color="#d9787f"/>
+      <stop offset="1" stop-color="#805dd9"/>
+    </linearGradient>
+    <linearGradient id="core" x1="76" y1="52" x2="184" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#454545"/>
+      <stop offset="1" stop-color="#171717"/>
+    </linearGradient>
+    <linearGradient id="play" x1="105" y1="79" x2="160" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e8e8e8"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="124" fill="url(#ring)"/>
+  <circle cx="128" cy="128" r="102" fill="url(#core)"/>
+  <path fill="url(#play)" d="M103 84c0-9 10-14 18-9l65 42c8 5 8 17 0 22l-65 42c-8 5-18 0-18-9V84z"/>
+</svg>

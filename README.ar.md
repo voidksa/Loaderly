@@ -56,6 +56,19 @@ Loaderly يجمع التعامل مع روابط الوسائط في تطبيق 
 
 بعد التحميل شغّل المثبت، ثم افتح Loaderly من قائمة Start. يفضّل استخدام Windows 10 أو أحدث.
 
+## متطلب Media Player
+
+ميزة Watch / Trim تعتمد على مكونات تشغيل الوسائط في ويندوز لعرض معاينة الفيديو. إذا ظهرت رسالة `Windows Media Player version 10 or later is required.` عند فتح Watch / Trim، ثبّت أو حدّث تطبيق Media Player على الجهاز:
+
+<p align="center" dir="rtl">
+  <a href="https://apps.microsoft.com/detail/9WZDNCRFJ3PT">
+    <img src="docs/images/windows-media-player.svg" alt="أيقونة Media Player" width="72" height="72"><br>
+    <strong>تثبيت Media Player من Microsoft Store</strong>
+  </a>
+</p>
+
+إذا كان الجهاز يعمل بإصدار Windows N واستمرت المشكلة، ثبّت Microsoft Media Feature Pack أيضًا.
+
 ## الخصوصية
 
 Loaderly يحفظ إعدادات التطبيق، سجل التنزيلات، الصور المصغرة، تفضيلات الترجمة، وبيانات المكتبة المحلية على جهازك. ميزات تنزيل الوسائط أو البحث عن التحديثات أو ترجمة الترجمة قد تتصل بالخدمات المطلوبة فقط عند استخدامها.
