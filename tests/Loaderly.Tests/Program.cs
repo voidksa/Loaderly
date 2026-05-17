@@ -19,9 +19,17 @@ ExpectTrue(
     "installer explicit uninstall mode",
     SetupMode.ShouldUseUninstallModeForTest(true, null, "1.0.0"));
 
-ExpectFalse(
-    "installer same-version launch stays repair/install mode",
+ExpectTrue(
+    "installer opens as uninstall when app is already installed",
     SetupMode.ShouldUseUninstallModeForTest(false, "1.0.0", "1.0.0"));
+
+ExpectFalse(
+    "installer can force repair/install mode by argument",
+    SetupMode.ShouldUseUninstallModeForTest(false, true, "1.0.0", "1.0.0"));
+
+ExpectTrue(
+    "installer recognizes explicit repair argument",
+    SetupMode.ShouldForceInstallForTest(["--repair"]));
 
 ExpectSequence(
     "installer launches only after success acknowledgement",

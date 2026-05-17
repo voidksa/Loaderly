@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using static Loaderly.Setup.DrawingHelpers;
 using Microsoft.Win32;
 
 [assembly: InternalsVisibleTo("Loaderly.Tests")]
@@ -20,19 +22,21 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        var requestedUninstall = args.Any(arg => arg.Equals("--uninstall", StringComparison.OrdinalIgnoreCase));
         var installedVersion = InstalledVersion();
-        var uninstallMode = SetupMode.ShouldUseUninstallMode(requestedUninstall, installedVersion, ProductVersion);
+        var requestedUninstall = SetupMode.IsUninstallRequest(args);
+        var forceInstall = SetupMode.ShouldForceInstall(args);
+        var uninstallMode = SetupMode.ShouldUseUninstallMode(requestedUninstall, forceInstall, installedVersion, ProductVersion);
         var requestedInstallDirectory = SetupMode.InstallDirectoryArgument(args);
         var repairMode = !uninstallMode && !string.IsNullOrWhiteSpace(installedVersion);
+
+        using var form = new SetupForm(uninstallMode, requestedInstallDirectory, repairMode, installedVersion);
         if (SetupMode.IsQuiet(args))
         {
-            using var form = new SetupForm(uninstallMode, requestedInstallDirectory, repairMode);
             form.RunQuiet(SetupMode.ShouldLaunchAfterQuietInstall(args));
             return;
         }
 
-        Application.Run(new SetupForm(uninstallMode, requestedInstallDirectory, repairMode));
+        Application.Run(form);
     }
 
     private static string? InstalledVersion()
@@ -79,143 +83,183 @@ internal static class Program
     private sealed class SetupForm : Form
     {
         private const int WmSettingChange = 0x001A;
-
         private readonly bool uninstallMode;
-        private readonly ComboBox languageBox = new();
+        private readonly bool repairMode;
+        private readonly string? installedVersion;
+        private readonly Label appNameLabel = new();
         private readonly Label titleLabel = new();
         private readonly Label bodyLabel = new();
         private readonly Label installPathLabel = new();
+        private readonly Label installedLocationLabel = new();
+        private readonly Label installedLocationValue = new();
+        private readonly PictureBox iconBox = new();
+        private readonly ModernPill statusPill = new();
+        private readonly SegmentedToggle languageToggle = new(["English", "العربية"]);
+        private readonly RoundedPanel pathPanel = new();
+        private readonly RoundedPanel installedLocationPanel = new();
         private readonly TextBox installPathTextBox = new();
-        private readonly Button browseInstallPathButton = new();
-        private readonly Button primaryButton = new();
-        private readonly Button cancelButton = new();
-        private readonly CheckBox launchCheckBox = new();
-        private readonly TableLayoutPanel root = new();
-        private readonly TableLayoutPanel installPathPanel = new();
-        private readonly TableLayoutPanel installPathField = new();
-        private readonly TableLayoutPanel actions = new();
+        private readonly ModernButton browseButton = new(ButtonRole.Secondary);
+        private readonly ModernButton primaryButton = new(ButtonRole.Primary);
+        private readonly ModernButton cancelButton = new(ButtonRole.Secondary);
+        private readonly ToggleRow launchRow = new();
+        private readonly ToggleRow desktopShortcutRow = new();
+        private readonly ToggleRow removeShortcutsRow = new();
+        private readonly ToggleRow keepDataRow = new();
         private SetupPalette palette;
         private string language = "en";
-        private readonly bool repairMode;
 
-        public SetupForm(bool uninstallMode, string? requestedInstallDirectory = null, bool repairMode = false)
+        public SetupForm(bool uninstallMode, string? requestedInstallDirectory = null, bool repairMode = false, string? installedVersion = null)
         {
             this.uninstallMode = uninstallMode;
             this.repairMode = repairMode;
+            this.installedVersion = installedVersion;
             language = DefaultLanguage();
             palette = SetupTheme.CurrentPalette();
-            Text = uninstallMode ? "Uninstall Loaderly" : repairMode ? "Install / Repair Loaderly" : "Install Loaderly";
+
+            Text = uninstallMode ? "Uninstall Loaderly" : repairMode ? "Repair Loaderly" : "Install Loaderly";
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = uninstallMode ? new Size(520, 310) : new Size(560, 390);
+            ClientSize = uninstallMode ? new Size(660, 460) : new Size(680, 540);
+            MinimumSize = Size;
+            MaximumSize = Size;
             Font = new Font("Segoe UI", 10F);
             Icon = LoadIcon();
+            DoubleBuffered = true;
+
             installPathTextBox.Text = string.IsNullOrWhiteSpace(requestedInstallDirectory)
                 ? InstallDirectory()
                 : NormalizeInstallDirectory(requestedInstallDirectory);
+
             BuildUi();
             ApplyTheme();
             ApplyLanguage();
+            LayoutUi();
         }
 
         private void BuildUi()
         {
-            root.Dock = DockStyle.Fill;
-            root.RowCount = 6;
-            root.ColumnCount = 1;
-            root.Padding = new Padding(24);
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, uninstallMode ? 92 : 74));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, uninstallMode ? 0 : 82));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
-            Controls.Add(root);
+            appNameLabel.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            appNameLabel.Text = "Loaderly";
+            Controls.Add(appNameLabel);
 
-            titleLabel.Dock = DockStyle.Fill;
-            titleLabel.Font = new Font("Segoe UI", 18F, FontStyle.Bold);
-            titleLabel.ForeColor = Color.White;
-            titleLabel.TextAlign = ContentAlignment.MiddleLeft;
-            root.Controls.Add(titleLabel, 0, 0);
-
-            languageBox.Dock = DockStyle.Fill;
-            languageBox.DropDownStyle = ComboBoxStyle.DropDownList;
-            languageBox.FlatStyle = FlatStyle.Flat;
-            languageBox.DrawMode = DrawMode.OwnerDrawFixed;
-            languageBox.ItemHeight = 30;
-            languageBox.DropDownHeight = 96;
-            languageBox.IntegralHeight = false;
-            languageBox.Items.AddRange(["English", "العربية"]);
-            languageBox.SelectedIndex = language == "ar" ? 1 : 0;
-            languageBox.DrawItem += DrawLanguageItem;
-            languageBox.SelectedIndexChanged += (_, _) =>
+            var icon = LoadIcon();
+            if (icon is not null)
             {
-                language = languageBox.SelectedIndex == 1 ? "ar" : "en";
+                iconBox.Image = icon.ToBitmap();
+                iconBox.SizeMode = PictureBoxSizeMode.StretchImage;
+            }
+            Controls.Add(iconBox);
+
+            titleLabel.Font = new Font("Segoe UI", 24F, FontStyle.Bold);
+            titleLabel.AutoEllipsis = true;
+            Controls.Add(titleLabel);
+
+            statusPill.Text = uninstallMode ? "Installed" : repairMode ? "Repair" : "New install";
+            Controls.Add(statusPill);
+
+            languageToggle.SelectedIndex = language == "ar" ? 1 : 0;
+            languageToggle.SelectedIndexChanged += (_, _) =>
+            {
+                language = languageToggle.SelectedIndex == 1 ? "ar" : "en";
                 ApplyLanguage();
             };
-            root.Controls.Add(languageBox, 0, 1);
+            Controls.Add(languageToggle);
 
-            bodyLabel.Dock = DockStyle.Fill;
-            bodyLabel.ForeColor = Color.FromArgb(194, 207, 232);
             bodyLabel.Font = new Font("Segoe UI", 10.5F);
-            bodyLabel.TextAlign = ContentAlignment.TopLeft;
-            root.Controls.Add(bodyLabel, 0, 2);
+            Controls.Add(bodyLabel);
 
-            installPathPanel.Dock = DockStyle.Fill;
-            installPathPanel.RowCount = 2;
-            installPathPanel.ColumnCount = 1;
-            installPathPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            installPathPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            root.Controls.Add(installPathPanel, 0, 3);
+            installPathLabel.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            Controls.Add(installPathLabel);
 
-            installPathLabel.Dock = DockStyle.Fill;
-            installPathLabel.Font = new Font("Segoe UI", 9.5F);
-            installPathLabel.TextAlign = ContentAlignment.BottomLeft;
-            installPathPanel.Controls.Add(installPathLabel, 0, 0);
-
-            installPathField.Dock = DockStyle.Fill;
-            installPathField.ColumnCount = 2;
-            installPathField.RowCount = 1;
-            installPathField.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            installPathField.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
-            installPathPanel.Controls.Add(installPathField, 0, 1);
-
-            installPathTextBox.Dock = DockStyle.Fill;
-            installPathTextBox.BorderStyle = BorderStyle.FixedSingle;
+            pathPanel.Controls.Add(installPathTextBox);
+            installPathTextBox.BorderStyle = BorderStyle.None;
+            installPathTextBox.Font = new Font("Segoe UI", 10.5F);
             installPathTextBox.RightToLeft = RightToLeft.No;
-            installPathTextBox.Margin = new Padding(0, 4, 10, 4);
-            installPathField.Controls.Add(installPathTextBox, 0, 0);
+            Controls.Add(pathPanel);
 
-            browseInstallPathButton.Dock = DockStyle.Fill;
-            browseInstallPathButton.FlatStyle = FlatStyle.Flat;
-            browseInstallPathButton.Margin = new Padding(0, 4, 0, 4);
-            browseInstallPathButton.Click += (_, _) => BrowseInstallPath();
-            installPathField.Controls.Add(browseInstallPathButton, 1, 0);
+            browseButton.Click += (_, _) => BrowseInstallPath();
+            Controls.Add(browseButton);
 
-            launchCheckBox.Dock = DockStyle.Fill;
-            launchCheckBox.FlatStyle = FlatStyle.Flat;
-            launchCheckBox.Checked = !uninstallMode;
-            root.Controls.Add(launchCheckBox, 0, 4);
+            launchRow.Checked = true;
+            desktopShortcutRow.Checked = false;
+            removeShortcutsRow.Checked = true;
+            keepDataRow.Checked = true;
+            keepDataRow.CanToggle = false;
+            Controls.Add(launchRow);
+            Controls.Add(desktopShortcutRow);
+            Controls.Add(removeShortcutsRow);
+            Controls.Add(keepDataRow);
 
-            actions.Dock = DockStyle.Fill;
-            actions.ColumnCount = 3;
-            actions.RowCount = 1;
-            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
-            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
-            root.Controls.Add(actions, 0, 5);
+            installedLocationLabel.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            Controls.Add(installedLocationLabel);
+            installedLocationPanel.Controls.Add(installedLocationValue);
+            installedLocationValue.AutoEllipsis = true;
+            installedLocationValue.Font = new Font("Segoe UI", 10.5F);
+            installedLocationValue.TextAlign = ContentAlignment.MiddleLeft;
+            installedLocationValue.Text = InstallDirectory();
+            Controls.Add(installedLocationPanel);
 
-            cancelButton.Dock = DockStyle.Fill;
-            cancelButton.FlatStyle = FlatStyle.Flat;
             cancelButton.Click += (_, _) => Close();
-            actions.Controls.Add(cancelButton, 1, 0);
+            Controls.Add(cancelButton);
 
-            primaryButton.Dock = DockStyle.Fill;
-            primaryButton.FlatStyle = FlatStyle.Flat;
             primaryButton.Click += async (_, _) => await RunAsync();
-            actions.Controls.Add(primaryButton, 2, 0);
+            Controls.Add(primaryButton);
+        }
+
+        private void LayoutUi()
+        {
+            const int margin = 34;
+            var width = ClientSize.Width - margin * 2;
+            var y = 28;
+
+            iconBox.SetBounds(margin, y + 2, 48, 48);
+            appNameLabel.SetBounds(margin + 64, y, 220, 22);
+            titleLabel.SetBounds(margin + 62, y + 22, width - 220, 46);
+            statusPill.SetBounds(ClientSize.Width - margin - 128, y + 14, 128, 32);
+
+            y += 82;
+            languageToggle.SetBounds(margin, y, 264, 40);
+
+            y += 58;
+            bodyLabel.SetBounds(margin, y, width, uninstallMode ? 78 : 62);
+
+            if (uninstallMode)
+            {
+                y += 96;
+                installedLocationLabel.SetBounds(margin, y, width, 22);
+                installedLocationPanel.SetBounds(margin, y + 28, width, 44);
+                installedLocationValue.SetBounds(16, 0, installedLocationPanel.Width - 32, installedLocationPanel.Height);
+
+                y += 90;
+                removeShortcutsRow.SetBounds(margin, y, width, 56);
+                keepDataRow.SetBounds(margin, y + 62, width, 56);
+                launchRow.Visible = false;
+                desktopShortcutRow.Visible = false;
+                installPathLabel.Visible = false;
+                pathPanel.Visible = false;
+                browseButton.Visible = false;
+            }
+            else
+            {
+                y += 84;
+                installPathLabel.SetBounds(margin, y, width, 22);
+                pathPanel.SetBounds(margin, y + 28, width - 138, 44);
+                installPathTextBox.SetBounds(16, 12, pathPanel.Width - 32, 22);
+                browseButton.SetBounds(ClientSize.Width - margin - 118, y + 28, 118, 44);
+
+                y += 94;
+                launchRow.SetBounds(margin, y, width, 56);
+                desktopShortcutRow.SetBounds(margin, y + 62, width, 56);
+                removeShortcutsRow.Visible = false;
+                keepDataRow.Visible = false;
+                installedLocationLabel.Visible = false;
+                installedLocationPanel.Visible = false;
+            }
+
+            primaryButton.SetBounds(ClientSize.Width - margin - 150, ClientSize.Height - 74, 150, 44);
+            cancelButton.SetBounds(primaryButton.Left - 130, primaryButton.Top, 118, 44);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -238,60 +282,31 @@ internal static class Program
             palette = SetupTheme.CurrentPalette();
             BackColor = palette.Window;
             ForeColor = palette.Text;
-            root.BackColor = palette.Window;
-            installPathPanel.BackColor = palette.Window;
-            installPathField.BackColor = palette.Window;
-            actions.BackColor = palette.Window;
+            appNameLabel.ForeColor = palette.MutedText;
             titleLabel.ForeColor = palette.Text;
             bodyLabel.ForeColor = palette.MutedText;
             installPathLabel.ForeColor = palette.Text;
+            installedLocationLabel.ForeColor = palette.Text;
+            installedLocationValue.ForeColor = palette.Text;
+            installedLocationValue.BackColor = palette.Control;
             installPathTextBox.BackColor = palette.Control;
             installPathTextBox.ForeColor = palette.Text;
-            launchCheckBox.BackColor = palette.Window;
-            launchCheckBox.ForeColor = palette.Text;
-            launchCheckBox.FlatAppearance.BorderColor = palette.Border;
-            launchCheckBox.FlatAppearance.CheckedBackColor = palette.Accent;
-            languageBox.BackColor = palette.Control;
-            languageBox.ForeColor = palette.Text;
-            browseInstallPathButton.BackColor = palette.SecondaryButton;
-            browseInstallPathButton.ForeColor = palette.Text;
-            browseInstallPathButton.FlatAppearance.BorderColor = palette.Border;
-            browseInstallPathButton.FlatAppearance.MouseOverBackColor = palette.SecondaryHover;
-            browseInstallPathButton.FlatAppearance.MouseDownBackColor = palette.SecondaryPressed;
-            cancelButton.BackColor = palette.SecondaryButton;
-            cancelButton.ForeColor = palette.Text;
-            cancelButton.FlatAppearance.BorderColor = palette.Border;
-            cancelButton.FlatAppearance.MouseOverBackColor = palette.SecondaryHover;
-            cancelButton.FlatAppearance.MouseDownBackColor = palette.SecondaryPressed;
-            primaryButton.BackColor = palette.Accent;
-            primaryButton.ForeColor = Color.White;
-            primaryButton.FlatAppearance.BorderColor = palette.Accent;
-            primaryButton.FlatAppearance.MouseOverBackColor = palette.AccentHover;
-            primaryButton.FlatAppearance.MouseDownBackColor = palette.AccentPressed;
-            SetupTheme.ApplyTitleBarTheme(this, palette.IsDark);
-            languageBox.Invalidate();
-        }
+            pathPanel.Palette = palette;
+            installedLocationPanel.Palette = palette;
+            languageToggle.Palette = palette;
+            statusPill.Palette = palette;
+            browseButton.Palette = palette;
+            primaryButton.Palette = palette;
+            primaryButton.Role = uninstallMode ? ButtonRole.Danger : ButtonRole.Primary;
+            cancelButton.Palette = palette;
 
-        private void DrawLanguageItem(object? sender, DrawItemEventArgs e)
-        {
-            if (e.Index < 0)
+            foreach (var row in new[] { launchRow, desktopShortcutRow, removeShortcutsRow, keepDataRow })
             {
-                return;
+                row.Palette = palette;
             }
 
-            var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-            using var background = new SolidBrush(selected ? palette.Selected : palette.Control);
-            e.Graphics.FillRectangle(background, e.Bounds);
-            var textBounds = new Rectangle(e.Bounds.Left + 10, e.Bounds.Top, e.Bounds.Width - 20, e.Bounds.Height);
-            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis;
-            flags |= language == "ar" ? TextFormatFlags.RightToLeft | TextFormatFlags.Right : TextFormatFlags.Left;
-            TextRenderer.DrawText(
-                e.Graphics,
-                languageBox.Items[e.Index]?.ToString() ?? string.Empty,
-                e.Font ?? Font,
-                textBounds,
-                palette.Text,
-                flags);
+            SetupTheme.ApplyTitleBarTheme(this, palette.IsDark);
+            Invalidate(true);
         }
 
         private void ApplyLanguage()
@@ -299,30 +314,64 @@ internal static class Program
             var ar = language == "ar";
             RightToLeft = ar ? RightToLeft.Yes : RightToLeft.No;
             RightToLeftLayout = ar;
+
             Text = uninstallMode
-                ? ar ? "إزالة Loaderly" : "Uninstall Loaderly"
+                ? ar ? "إلغاء تثبيت Loaderly" : "Uninstall Loaderly"
                 : repairMode
-                    ? ar ? "تثبيت / إصلاح Loaderly" : "Install / Repair Loaderly"
+                    ? ar ? "إصلاح Loaderly" : "Repair Loaderly"
                     : ar ? "تثبيت Loaderly" : "Install Loaderly";
+
+            appNameLabel.Text = ar ? "مثبت Loaderly" : "Loaderly Setup";
             titleLabel.Text = Text;
+            statusPill.Text = uninstallMode
+                ? ar ? "مثبت حاليا" : "Installed"
+                : repairMode
+                    ? ar ? "إصلاح" : "Repair"
+                    : ar ? "تثبيت جديد" : "New install";
+
             bodyLabel.Text = uninstallMode
                 ? ar
-                    ? "سيتم إغلاق Loaderly إذا كان يعمل ثم إزالة ملفات البرنامج. لن يتم حذف تنزيلاتك."
-                    : "Loaderly will be closed if it is running, then the app files will be removed. Your downloads will not be deleted."
-                : ar
-                    ? "اختر اللغة ومجلد التثبيت. سيتم استبدال ملفات Loaderly في هذا المجلد فقط، ولن يتم حذف تنزيلاتك."
-                    : "Choose a language and install folder. Loaderly files in that folder will be replaced, and your downloads will not be deleted.";
+                    ? $"تم العثور على Loaderly مثبتا{InstalledVersionText(ar)}. فتح المثبت الآن سيزيل التطبيق وملفات الاختصارات فقط، ولن يحذف التنزيلات أو الإعدادات."
+                    : $"Loaderly is already installed{InstalledVersionText(ar)}. Opening setup now will uninstall the app and shortcuts only; downloads and settings stay in place."
+                : repairMode
+                    ? ar
+                        ? "سيتم إصلاح ملفات Loaderly في مجلد التثبيت الحالي. استخدم هذا الوضع فقط عند تشغيل المثبت بخيار إصلاح أو تثبيت صريح."
+                        : "Loaderly files will be repaired in the selected folder. This mode is only used when setup is launched with an explicit install or repair option."
+                    : ar
+                        ? "اختر اللغة ومجلد التثبيت. سيتم نسخ Loaderly والأدوات المطلوبة مع الحفاظ على تنزيلاتك."
+                        : "Choose the language and install folder. Loaderly and its bundled tools will be copied without touching your downloads.";
+
             installPathLabel.Text = ar ? "مجلد التثبيت" : "Install folder";
-            browseInstallPathButton.Text = ar ? "استعراض" : "Browse";
-            installPathPanel.Visible = !uninstallMode;
-            launchCheckBox.Text = ar ? "تشغيل Loaderly بعد التثبيت" : "Launch Loaderly after install";
-            launchCheckBox.Visible = !uninstallMode;
+            installedLocationLabel.Text = ar ? "مجلد Loaderly المثبت" : "Installed location";
+            browseButton.Text = ar ? "استعراض" : "Browse";
+            launchRow.Title = ar ? "تشغيل Loaderly بعد التثبيت" : "Launch Loaderly after install";
+            launchRow.Description = ar ? "يفتح التطبيق مباشرة بعد انتهاء المثبت." : "Open the app immediately after setup finishes.";
+            desktopShortcutRow.Title = ar ? "إنشاء اختصار سطح المكتب" : "Create desktop shortcut";
+            desktopShortcutRow.Description = ar ? "يضيف اختصارا اختياريا بجانب اختصار قائمة ابدأ." : "Adds an optional desktop shortcut in addition to Start Menu entries.";
+            removeShortcutsRow.Title = ar ? "إزالة اختصارات Loaderly" : "Remove Loaderly shortcuts";
+            removeShortcutsRow.Description = ar ? "يحذف اختصارات قائمة ابدأ وسطح المكتب التي أنشأها المثبت." : "Deletes Start Menu and desktop shortcuts created by setup.";
+            keepDataRow.Title = ar ? "الاحتفاظ بالتنزيلات والإعدادات" : "Keep downloads and settings";
+            keepDataRow.Description = ar ? "إلغاء التثبيت لا يحذف ملفاتك أو إعداداتك الشخصية." : "Uninstall keeps your media files and personal settings.";
             cancelButton.Text = ar ? "إلغاء" : "Cancel";
             primaryButton.Text = uninstallMode
-                ? ar ? "إزالة" : "Uninstall"
+                ? ar ? "إلغاء التثبيت" : "Uninstall"
                 : repairMode
-                    ? ar ? "تثبيت / إصلاح" : "Install / Repair"
+                    ? ar ? "إصلاح" : "Repair"
                     : ar ? "تثبيت" : "Install";
+
+            foreach (var row in new[] { launchRow, desktopShortcutRow, removeShortcutsRow, keepDataRow })
+            {
+                row.RightToLeftLayout = ar;
+            }
+
+            Invalidate(true);
+        }
+
+        private string InstalledVersionText(bool ar)
+        {
+            return string.IsNullOrWhiteSpace(installedVersion)
+                ? string.Empty
+                : ar ? $" - الإصدار {installedVersion}" : $" - version {installedVersion}";
         }
 
         private async Task RunAsync()
@@ -333,16 +382,17 @@ internal static class Program
             {
                 if (uninstallMode)
                 {
-                    await Task.Run(Uninstall);
-                    MessageBox.Show(this, language == "ar" ? "تمت إزالة Loaderly." : "Loaderly was uninstalled.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    await Task.Run(() => Uninstall(removeShortcutsRow.Checked));
+                    MessageBox.Show(this, language == "ar" ? "تم إلغاء تثبيت Loaderly." : "Loaderly was uninstalled.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
                     Close();
                     return;
                 }
 
                 var installDir = SelectedInstallDirectory();
-                await Task.Run(() => Install(installDir));
+                var createDesktopShortcut = desktopShortcutRow.Checked;
+                await Task.Run(() => Install(installDir, createDesktopShortcut));
                 var launchPath = Path.Combine(installDir, "Loaderly.exe");
-                foreach (var step in SetupMode.InstallCompletionSteps(launchCheckBox.Checked))
+                foreach (var step in SetupMode.InstallCompletionSteps(launchRow.Checked))
                 {
                     switch (step)
                     {
@@ -387,12 +437,12 @@ internal static class Program
         {
             if (uninstallMode)
             {
-                Uninstall();
+                Uninstall(removeShortcuts: true);
                 return;
             }
 
             var installDir = NormalizeInstallDirectory(installPathTextBox.Text);
-            Install(installDir);
+            Install(installDir, createDesktopShortcut: false);
             if (launchAfterInstall)
             {
                 LaunchInstalledApp(Path.Combine(installDir, "Loaderly.exe"));
@@ -401,12 +451,10 @@ internal static class Program
 
         private static void LaunchInstalledApp(string launchPath)
         {
-            if (!File.Exists(launchPath))
+            if (File.Exists(launchPath))
             {
-                return;
+                Process.Start(new ProcessStartInfo(launchPath) { UseShellExecute = true });
             }
-
-            Process.Start(new ProcessStartInfo(launchPath) { UseShellExecute = true });
         }
 
         private string SelectedInstallDirectory()
@@ -455,7 +503,7 @@ internal static class Program
             throw new InvalidOperationException("Choose an empty folder or an existing Loaderly install folder.");
         }
 
-        private void Install(string installDir)
+        private void Install(string installDir, bool createDesktopShortcut)
         {
             CloseRunningApp();
             ValidateInstallDirectory(installDir);
@@ -471,14 +519,18 @@ internal static class Program
             archive.ExtractToDirectory(installDir, overwriteFiles: true);
             File.Copy(Application.ExecutablePath, Path.Combine(installDir, "Loaderly-Uninstall.exe"), overwrite: true);
             WriteLanguagePreference();
-            CreateShortcuts(installDir);
+            CreateShortcuts(installDir, createDesktopShortcut);
             WriteUninstallEntry(installDir);
         }
 
-        private void Uninstall()
+        private void Uninstall(bool removeShortcuts)
         {
             CloseRunningApp();
-            DeleteShortcuts();
+            if (removeShortcuts)
+            {
+                DeleteShortcuts();
+            }
+
             Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, throwOnMissingSubKey: false);
             var installDir = InstallDirectory();
             var current = Path.GetFullPath(Application.ExecutablePath);
@@ -514,12 +566,16 @@ internal static class Program
             key?.SetValue("NoRepair", 1, RegistryValueKind.DWord);
         }
 
-        private static void CreateShortcuts(string installDir)
+        private static void CreateShortcuts(string installDir, bool createDesktopShortcut)
         {
             var group = StartMenuFolder();
             Directory.CreateDirectory(group);
             CreateShortcut(Path.Combine(group, "Loaderly.lnk"), Path.Combine(installDir, "Loaderly.exe"));
             CreateShortcut(Path.Combine(group, "Uninstall Loaderly.lnk"), Path.Combine(installDir, "Loaderly-Uninstall.exe"), "--uninstall");
+            if (createDesktopShortcut)
+            {
+                CreateShortcut(Path.Combine(DesktopFolder(), "Loaderly.lnk"), Path.Combine(installDir, "Loaderly.exe"));
+            }
         }
 
         private static void DeleteShortcuts()
@@ -528,6 +584,12 @@ internal static class Program
             if (Directory.Exists(group))
             {
                 Directory.Delete(group, recursive: true);
+            }
+
+            var desktopShortcut = Path.Combine(DesktopFolder(), "Loaderly.lnk");
+            if (File.Exists(desktopShortcut))
+            {
+                File.Delete(desktopShortcut);
             }
         }
 
@@ -631,6 +693,11 @@ internal static class Program
                 Program.ProductName);
         }
 
+        private static string DesktopFolder()
+        {
+            return Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        }
+
         private static Icon? LoadIcon()
         {
             var iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "loaderly.ico");
@@ -679,32 +746,40 @@ internal static class SetupTheme
         return appsUseLightTheme
             ? new SetupPalette(
                 IsDark: false,
-                Window: Color.FromArgb(246, 247, 251),
-                Control: Color.FromArgb(239, 243, 249),
-                Selected: Color.FromArgb(225, 234, 250),
-                Border: Color.FromArgb(211, 218, 232),
-                Text: Color.FromArgb(21, 26, 37),
-                MutedText: Color.FromArgb(72, 84, 105),
-                SecondaryButton: Color.FromArgb(235, 239, 247),
-                SecondaryHover: Color.FromArgb(224, 231, 243),
-                SecondaryPressed: Color.FromArgb(212, 222, 238),
-                Accent: Color.FromArgb(68, 139, 246),
-                AccentHover: Color.FromArgb(82, 151, 250),
-                AccentPressed: Color.FromArgb(53, 119, 218))
+                Window: Color.FromArgb(246, 248, 252),
+                Control: Color.FromArgb(255, 255, 255),
+                ControlAlt: Color.FromArgb(236, 241, 248),
+                Selected: Color.FromArgb(221, 234, 255),
+                Border: Color.FromArgb(207, 216, 230),
+                Text: Color.FromArgb(18, 24, 38),
+                MutedText: Color.FromArgb(75, 88, 109),
+                SecondaryButton: Color.FromArgb(235, 241, 249),
+                SecondaryHover: Color.FromArgb(224, 233, 246),
+                SecondaryPressed: Color.FromArgb(211, 224, 242),
+                Accent: Color.FromArgb(52, 118, 245),
+                AccentHover: Color.FromArgb(72, 134, 250),
+                AccentPressed: Color.FromArgb(38, 96, 214),
+                Danger: Color.FromArgb(218, 72, 72),
+                DangerHover: Color.FromArgb(229, 86, 86),
+                DangerPressed: Color.FromArgb(190, 54, 54))
             : new SetupPalette(
                 IsDark: true,
-                Window: Color.FromArgb(12, 14, 20),
-                Control: Color.FromArgb(31, 36, 49),
-                Selected: Color.FromArgb(28, 45, 78),
-                Border: Color.FromArgb(48, 55, 72),
-                Text: Color.FromArgb(239, 243, 250),
-                MutedText: Color.FromArgb(194, 207, 232),
+                Window: Color.FromArgb(9, 12, 18),
+                Control: Color.FromArgb(20, 25, 35),
+                ControlAlt: Color.FromArgb(30, 37, 51),
+                Selected: Color.FromArgb(35, 62, 108),
+                Border: Color.FromArgb(51, 61, 80),
+                Text: Color.FromArgb(244, 247, 252),
+                MutedText: Color.FromArgb(178, 190, 210),
                 SecondaryButton: Color.FromArgb(31, 39, 55),
-                SecondaryHover: Color.FromArgb(39, 46, 64),
-                SecondaryPressed: Color.FromArgb(50, 58, 80),
-                Accent: Color.FromArgb(75, 145, 245),
-                AccentHover: Color.FromArgb(93, 158, 255),
-                AccentPressed: Color.FromArgb(51, 122, 224));
+                SecondaryHover: Color.FromArgb(39, 48, 67),
+                SecondaryPressed: Color.FromArgb(50, 60, 82),
+                Accent: Color.FromArgb(82, 147, 247),
+                AccentHover: Color.FromArgb(101, 163, 255),
+                AccentPressed: Color.FromArgb(56, 121, 222),
+                Danger: Color.FromArgb(226, 83, 83),
+                DangerHover: Color.FromArgb(238, 97, 97),
+                DangerPressed: Color.FromArgb(198, 61, 61));
     }
 
     [DllImport("dwmapi.dll")]
@@ -715,6 +790,7 @@ internal sealed record SetupPalette(
     bool IsDark,
     Color Window,
     Color Control,
+    Color ControlAlt,
     Color Selected,
     Color Border,
     Color Text,
@@ -724,7 +800,350 @@ internal sealed record SetupPalette(
     Color SecondaryPressed,
     Color Accent,
     Color AccentHover,
-    Color AccentPressed);
+    Color AccentPressed,
+    Color Danger,
+    Color DangerHover,
+    Color DangerPressed);
+
+internal enum ButtonRole
+{
+    Primary,
+    Secondary,
+    Danger
+}
+
+internal sealed class ModernButton : Button
+{
+    private bool hovering;
+    private bool pressing;
+    private SetupPalette palette = SetupTheme.CurrentPalette();
+    private ButtonRole role;
+
+    public ModernButton(ButtonRole role)
+    {
+        this.role = role;
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 0;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        Cursor = Cursors.Hand;
+        Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+    }
+
+    public SetupPalette Palette
+    {
+        get => palette;
+        set
+        {
+            palette = value;
+            Invalidate();
+        }
+    }
+
+    public ButtonRole Role
+    {
+        get => role;
+        set
+        {
+            role = value;
+            Invalidate();
+        }
+    }
+
+    protected override void OnMouseEnter(EventArgs e)
+    {
+        hovering = true;
+        Invalidate();
+        base.OnMouseEnter(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        hovering = false;
+        pressing = false;
+        Invalidate();
+        base.OnMouseLeave(e);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs mevent)
+    {
+        pressing = true;
+        Invalidate();
+        base.OnMouseDown(mevent);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs mevent)
+    {
+        pressing = false;
+        Invalidate();
+        base.OnMouseUp(mevent);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var (back, fore, border) = Colors();
+        using var path = RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 8);
+        using var brush = new SolidBrush(back);
+        using var pen = new Pen(border);
+        e.Graphics.FillPath(brush, path);
+        e.Graphics.DrawPath(pen, path);
+        TextRenderer.DrawText(
+            e.Graphics,
+            Text,
+            Font,
+            ClientRectangle,
+            Enabled ? fore : Color.FromArgb(120, palette.MutedText),
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+    }
+
+    private (Color Back, Color Fore, Color Border) Colors()
+    {
+        if (role == ButtonRole.Secondary)
+        {
+            return (pressing ? palette.SecondaryPressed : hovering ? palette.SecondaryHover : palette.SecondaryButton, palette.Text, palette.Border);
+        }
+
+        if (role == ButtonRole.Danger)
+        {
+            return (pressing ? palette.DangerPressed : hovering ? palette.DangerHover : palette.Danger, Color.White, Color.Transparent);
+        }
+
+        return (pressing ? palette.AccentPressed : hovering ? palette.AccentHover : palette.Accent, Color.White, Color.Transparent);
+    }
+}
+
+internal sealed class SegmentedToggle : Control
+{
+    private readonly string[] items;
+    private SetupPalette palette = SetupTheme.CurrentPalette();
+    private int selectedIndex;
+
+    public SegmentedToggle(string[] items)
+    {
+        this.items = items;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        Cursor = Cursors.Hand;
+        Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+    }
+
+    public event EventHandler? SelectedIndexChanged;
+
+    public SetupPalette Palette
+    {
+        get => palette;
+        set
+        {
+            palette = value;
+            Invalidate();
+        }
+    }
+
+    public int SelectedIndex
+    {
+        get => selectedIndex;
+        set
+        {
+            var next = Math.Clamp(value, 0, items.Length - 1);
+            if (selectedIndex == next)
+            {
+                return;
+            }
+
+            selectedIndex = next;
+            Invalidate();
+            SelectedIndexChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        var segmentWidth = Width / items.Length;
+        SelectedIndex = Math.Min(items.Length - 1, Math.Max(0, e.X / Math.Max(1, segmentWidth)));
+        base.OnMouseDown(e);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var outer = RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 10);
+        using var back = new SolidBrush(palette.ControlAlt);
+        using var border = new Pen(palette.Border);
+        e.Graphics.FillPath(back, outer);
+        e.Graphics.DrawPath(border, outer);
+
+        var segmentWidth = Width / items.Length;
+        var selectedBounds = new Rectangle(selectedIndex * segmentWidth + 4, 4, segmentWidth - 8, Height - 8);
+        using var selected = RoundedRect(selectedBounds, 8);
+        using var selectedBrush = new SolidBrush(palette.Selected);
+        e.Graphics.FillPath(selectedBrush, selected);
+
+        for (var i = 0; i < items.Length; i++)
+        {
+            var bounds = new Rectangle(i * segmentWidth, 0, segmentWidth, Height);
+            TextRenderer.DrawText(
+                e.Graphics,
+                items[i],
+                Font,
+                bounds,
+                i == selectedIndex ? palette.Text : palette.MutedText,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
+    }
+}
+
+internal sealed class ToggleRow : Control
+{
+    private bool isChecked;
+    private SetupPalette palette = SetupTheme.CurrentPalette();
+
+    public ToggleRow()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        Cursor = Cursors.Hand;
+        Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+    }
+
+    public SetupPalette Palette
+    {
+        get => palette;
+        set
+        {
+            palette = value;
+            Invalidate();
+        }
+    }
+
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool RightToLeftLayout { get; set; }
+    public bool CanToggle { get; set; } = true;
+
+    public bool Checked
+    {
+        get => isChecked;
+        set
+        {
+            if (isChecked == value)
+            {
+                return;
+            }
+
+            isChecked = value;
+            Invalidate();
+        }
+    }
+
+    protected override void OnClick(EventArgs e)
+    {
+        if (CanToggle)
+        {
+            Checked = !Checked;
+        }
+
+        base.OnClick(e);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var outer = RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 10);
+        using var back = new SolidBrush(palette.Control);
+        using var border = new Pen(palette.Border);
+        e.Graphics.FillPath(back, outer);
+        e.Graphics.DrawPath(border, outer);
+
+        var toggleBounds = RightToLeftLayout
+            ? new Rectangle(16, 14, 50, 28)
+            : new Rectangle(Width - 66, 14, 50, 28);
+        DrawSwitch(e.Graphics, toggleBounds);
+
+        var textLeft = RightToLeftLayout ? 80 : 18;
+        var textWidth = Width - 98;
+        var titleBounds = new Rectangle(textLeft, 9, textWidth, 22);
+        var descBounds = new Rectangle(textLeft, 31, textWidth, 18);
+        var flags = TextFormatFlags.EndEllipsis | (RightToLeftLayout ? TextFormatFlags.RightToLeft | TextFormatFlags.Right : TextFormatFlags.Left);
+        TextRenderer.DrawText(e.Graphics, Title, Font, titleBounds, palette.Text, flags);
+        TextRenderer.DrawText(e.Graphics, Description, new Font("Segoe UI", 8.8F), descBounds, palette.MutedText, flags);
+    }
+
+    private void DrawSwitch(Graphics graphics, Rectangle bounds)
+    {
+        using var track = RoundedRect(bounds, bounds.Height / 2);
+        using var trackBrush = new SolidBrush(Checked ? palette.Accent : palette.ControlAlt);
+        using var trackPen = new Pen(Checked ? palette.Accent : palette.Border);
+        graphics.FillPath(trackBrush, track);
+        graphics.DrawPath(trackPen, track);
+
+        var knobSize = bounds.Height - 8;
+        var knobX = Checked ? bounds.Right - knobSize - 4 : bounds.Left + 4;
+        var knobBounds = new Rectangle(knobX, bounds.Top + 4, knobSize, knobSize);
+        using var knob = new SolidBrush(Color.White);
+        graphics.FillEllipse(knob, knobBounds);
+    }
+}
+
+internal sealed class ModernPill : Control
+{
+    private SetupPalette palette = SetupTheme.CurrentPalette();
+
+    public ModernPill()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+    }
+
+    public SetupPalette Palette
+    {
+        get => palette;
+        set
+        {
+            palette = value;
+            Invalidate();
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var path = RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), Height / 2);
+        using var back = new SolidBrush(palette.ControlAlt);
+        using var border = new Pen(palette.Border);
+        e.Graphics.FillPath(back, path);
+        e.Graphics.DrawPath(border, path);
+        TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, palette.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+    }
+}
+
+internal sealed class RoundedPanel : Panel
+{
+    private SetupPalette palette = SetupTheme.CurrentPalette();
+
+    public RoundedPanel()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+    }
+
+    public SetupPalette Palette
+    {
+        get => palette;
+        set
+        {
+            palette = value;
+            BackColor = palette.Control;
+            Invalidate();
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var path = RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 8);
+        using var back = new SolidBrush(palette.Control);
+        using var border = new Pen(palette.Border);
+        e.Graphics.FillPath(back, path);
+        e.Graphics.DrawPath(border, path);
+    }
+}
 
 internal enum SetupCompletionStep
 {
@@ -737,14 +1156,54 @@ internal static class SetupMode
 {
     public static bool ShouldUseUninstallMode(bool requestedUninstall, string? installedVersion, string installerVersion)
     {
-        _ = installedVersion;
+        return ShouldUseUninstallMode(requestedUninstall, forceInstall: false, installedVersion, installerVersion);
+    }
+
+    public static bool ShouldUseUninstallMode(bool requestedUninstall, bool forceInstall, string? installedVersion, string installerVersion)
+    {
         _ = installerVersion;
-        return requestedUninstall;
+        if (requestedUninstall)
+        {
+            return true;
+        }
+
+        if (forceInstall)
+        {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(installedVersion);
     }
 
     internal static bool ShouldUseUninstallModeForTest(bool requestedUninstall, string? installedVersion, string installerVersion)
     {
         return ShouldUseUninstallMode(requestedUninstall, installedVersion, installerVersion);
+    }
+
+    internal static bool ShouldUseUninstallModeForTest(bool requestedUninstall, bool forceInstall, string? installedVersion, string installerVersion)
+    {
+        return ShouldUseUninstallMode(requestedUninstall, forceInstall, installedVersion, installerVersion);
+    }
+
+    public static bool IsUninstallRequest(IEnumerable<string> args)
+    {
+        return args.Any(arg => arg.Equals("--uninstall", StringComparison.OrdinalIgnoreCase) ||
+                               arg.Equals("/uninstall", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool ShouldForceInstall(IEnumerable<string> args)
+    {
+        return args.Any(arg => arg.Equals("--install", StringComparison.OrdinalIgnoreCase) ||
+                               arg.Equals("--repair", StringComparison.OrdinalIgnoreCase) ||
+                               arg.Equals("--update", StringComparison.OrdinalIgnoreCase) ||
+                               arg.Equals("/install", StringComparison.OrdinalIgnoreCase) ||
+                               arg.Equals("/repair", StringComparison.OrdinalIgnoreCase) ||
+                               arg.Equals("/update", StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal static bool ShouldForceInstallForTest(IEnumerable<string> args)
+    {
+        return ShouldForceInstall(args);
     }
 
     public static bool IsQuiet(IEnumerable<string> args)
@@ -812,5 +1271,25 @@ internal static class SetupMode
     {
         return InstallCompletionSteps(launchAfterInstall);
     }
+}
 
+internal static class DrawingHelpers
+{
+    public static GraphicsPath RoundedRect(Rectangle bounds, int radius)
+    {
+        var diameter = radius * 2;
+        var path = new GraphicsPath();
+        if (diameter <= 0)
+        {
+            path.AddRectangle(bounds);
+            return path;
+        }
+
+        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
 }
