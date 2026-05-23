@@ -47,50 +47,9 @@ Loaderly gives you one desktop workspace for media links. Paste a URL, download 
 - Update from GitHub Releases directly inside the app; Loaderly downloads the installer, closes the running app, installs the update, and reopens when complete.
 - Use the app in English or Arabic with light, dark, or system theme modes.
 
-## Version 1.1.0
+## Latest Release
 
-Loaderly 1.1.0 is a feature release focused on making everyday editing clearer and faster.
-
-What's new:
-
-- Larger multi-line URL box for pasting several links, one link per line.
-- Add local videos from your PC with a dedicated button or by dropping a video file onto Loaderly.
-- Download cards now show clearer progress, including percent, size, speed, and ETA when available.
-- Better saved video titles, including Arabic and other non-English titles.
-- Cleaner media library cards with better title wrapping and less clipped text.
-- Trim supports internal cut-out sections, not only trimming from the beginning or end.
-- Cut sections can be selected from the timeline or right-clicked for quick actions.
-- Cuts now use direct hard cuts for faster preview and simpler editing.
-- Clicking anywhere on the trim timeline moves the white playhead there, while dragging inside the selection still moves the selected range.
-- New cuts, blur regions, and zoom regions are added at the white playhead and avoid nearby existing timeline items when possible.
-- Use `Ctrl+mouse wheel` to zoom the trim timeline, then `Shift+mouse wheel`, `Shift+drag`, or middle-drag to pan across the zoomed timeline.
-- Blur part of the video for a chosen time range, see blur regions directly on the larger timeline, drag their timeline markers to change timing, move and resize the blur box from the preview, press Done to fix it, and press Edit later to adjust it or add movement points.
-- Box blur, soft blur, and pixelate now show a real effect in the preview instead of only a tinted guide box.
-- Track can follow the selected blur box across the video to help keep a face, body, or object hidden.
-- Zoom into a selected part of the video for a chosen time range, choose the zoom strength, preview the result immediately, and use Follow or Fix when the area should move with the subject.
-- Save a still image from the current preview frame with Snapshot.
-- Choose a clip file name before saving an export.
-- After saving, copying, or taking a snapshot, Loaderly shows quick actions to open the file, open its folder, or copy its path.
-- The library marks videos that already have saved trim, blur, or zoom work.
-- Loaderly warns before closing while downloads or exports are still running.
-- Trim work is saved locally, so reopening the same video restores your cuts and selection.
-- Smoother timeline dragging and keyboard seeking in trim and subtitle editing.
-- Subtitle editing now shows timeline thumbnails and better manual cue timing.
-- Manual subtitles can be created from the current playhead, then adjusted with Set start, Set end, and Play cue.
-- Settings include direct OpenRouter links for getting an API key and browsing models.
-- Settings and Tools windows are more compact and no longer need fullscreen.
-- The custom installer now shows install progress and file-copy activity.
-- In-app update checks can download the latest GitHub Release installer and run the update flow directly.
-
-Useful shortcuts:
-
-- Main URL box: `Ctrl+Enter` adds pasted links to the queue. `Enter` and `Shift+Enter` add new lines.
-- Trim: `Space` play/pause, arrow keys step 0.25 seconds, `Shift+Arrow` steps 1 second, `Ctrl+Arrow` sets start or end, `Ctrl+Shift+Arrow` steps frame by frame.
-- Trim: `Ctrl+Z` undoes, `Ctrl+Shift+Z` or `Ctrl+Y` redoes, `Delete` removes the selected cut, `M` toggles mute, `Ctrl+S` saves, `Ctrl+R` resets, `Esc` closes.
-- Trim blur: use `Add` to create a blur region, drag the green blur marker on the timeline to change when it appears, resize the box from the corners or mouse wheel, `Done` to fix it, `Edit` to adjust it again, `Delete` to remove the selected blur, and `Track` to try tracking the selected face or object.
-- Trim zoom: use `Add` to create a zoom region, drag the zoom marker on its own timeline lane, choose the zoom strength, `Done` to fix it, `Edit` to adjust it again, `Delete` to remove it, and `Follow` or `Fix` for moving subjects.
-- Subtitle editor: `Ctrl+Enter` adds the next cue, `[` sets cue start, `]` sets cue end, `Delete` removes the selected cue.
-- Subtitle editor: `Space` play/pause, arrows step, `Shift+Arrow` steps 5 seconds, `Ctrl+Shift+Arrow` steps frame by frame, `Ctrl+S` saves.
+Loaderly 1.1.0 is available now. See [CHANGELOG.md](CHANGELOG.md) for the full list of release changes and useful shortcuts.
 
 ## Download
 
