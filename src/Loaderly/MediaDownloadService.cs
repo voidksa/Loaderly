@@ -309,6 +309,11 @@ internal sealed class MediaDownloadService
         return NewestMediaFile(folder, after);
     }
 
+    internal static string FriendlyErrorForTest(string raw)
+    {
+        return FriendlyError(raw);
+    }
+
     private static IEnumerable<string> DownloadArguments(
         string sourceUrl,
         string destinationFolder,
@@ -584,6 +589,13 @@ internal sealed class MediaDownloadService
 
     private static string FriendlyError(string raw)
     {
+        if (raw.Contains("Unsupported URL", StringComparison.OrdinalIgnoreCase) &&
+            raw.Contains("tiktok.com", StringComparison.OrdinalIgnoreCase) &&
+            raw.Contains("/photo/", StringComparison.OrdinalIgnoreCase))
+        {
+            return LoaderlyLanguage.Text("TikTok photo posts are image carousels. Loaderly can download TikTok videos, but image sets are not available yet.");
+        }
+
         if (raw.Contains("Unsupported URL", StringComparison.OrdinalIgnoreCase))
         {
             return "This site or link is not supported by the downloader.";

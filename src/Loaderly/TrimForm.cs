@@ -3904,8 +3904,13 @@ internal sealed class TrimForm : WinForms.Form
 
         if (isEditingZoomRegion && selectedZoomIndex >= 0 && selectedZoomIndex < zoomRegions.Count)
         {
-            zoomRegions[selectedZoomIndex].ReplaceWithFixedKeyframe(keyframe);
+            UpsertZoomOverlayKeyframe(zoomRegions[selectedZoomIndex], keyframe);
         }
+    }
+
+    private static void UpsertZoomOverlayKeyframe(EditableZoomRegion region, TrimBlurKeyframe keyframe)
+    {
+        region.UpsertKeyframe(keyframe);
     }
 
     private void UpdateBlurOverlayCursor(Wpf.Point pointer)
@@ -6130,6 +6135,29 @@ internal sealed class TrimForm : WinForms.Form
                 new EditableBlurKeyframe(SecondsToUnits(6, int.MaxValue), 0.65, 0.70, 0.10, 0.10)
             ]);
         region.ReplaceWithFixedKeyframe(new TrimBlurKeyframe(TimeSpan.FromSeconds(4.5), 0.37, 0.38, 0.26, 0.21));
+        var normalized = region.ToRegion();
+        return string.Join(
+            "|",
+            new[] { 3.0, 4.5, 6.0 }.Select(seconds =>
+            {
+                var frame = normalized.FrameAt(TimeSpan.FromSeconds(seconds));
+                return string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{frame.X:0.00},{frame.Y:0.00},{frame.Width:0.00},{frame.Height:0.00}");
+            }));
+    }
+
+    internal static string ZoomManualMoveFramesForTest()
+    {
+        var region = new EditableZoomRegion(
+            SecondsToUnits(3, int.MaxValue),
+            SecondsToUnits(6, int.MaxValue),
+            1.5,
+            [
+                new EditableBlurKeyframe(SecondsToUnits(3, int.MaxValue), 0.10, 0.20, 0.20, 0.20),
+                new EditableBlurKeyframe(SecondsToUnits(6, int.MaxValue), 0.65, 0.70, 0.10, 0.10)
+            ]);
+        UpsertZoomOverlayKeyframe(region, new TrimBlurKeyframe(TimeSpan.FromSeconds(4.5), 0.37, 0.38, 0.26, 0.21));
         var normalized = region.ToRegion();
         return string.Join(
             "|",

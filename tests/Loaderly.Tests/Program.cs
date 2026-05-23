@@ -595,6 +595,24 @@ try
         "download fallback ignores temporary mp4 files when choosing the saved media",
         Path.GetFileName(MediaDownloadService.NewestMediaFileForTest(newestMediaFolder, DateTimeOffset.UtcNow.AddMinutes(-10))),
         "long video.mp4");
+    var previousLanguage = LoaderlyLanguage.Current;
+    try
+    {
+        LoaderlyLanguage.Set(LoaderlyLanguage.English);
+        Expect(
+            "tiktok photo posts use a clear English downloader message",
+            MediaDownloadService.FriendlyErrorForTest("ERROR: Unsupported URL: https://www.tiktok.com/@ters_app/photo/7642957980102610183"),
+            "TikTok photo posts are image carousels. Loaderly can download TikTok videos, but image sets are not available yet.");
+        LoaderlyLanguage.Set(LoaderlyLanguage.Arabic);
+        Expect(
+            "tiktok photo posts use a clear Arabic downloader message",
+            MediaDownloadService.FriendlyErrorForTest("ERROR: Unsupported URL: https://www.tiktok.com/@ters_app/photo/7642957980102610183"),
+            "منشورات صور TikTok عبارة عن مجموعة صور. Loaderly ينزل فيديوهات TikTok، لكن مجموعات الصور غير متاحة حاليا.");
+    }
+    finally
+    {
+        LoaderlyLanguage.Set(previousLanguage);
+    }
 }
 finally
 {
@@ -1748,6 +1766,10 @@ Expect(
     "manual zoom edit keeps the selected area fixed across the zoom duration",
     TrimForm.ZoomManualEditFramesForTest(),
     "0.37,0.38,0.26,0.21|0.37,0.38,0.26,0.21|0.37,0.38,0.26,0.21");
+Expect(
+    "manual zoom movement keeps multiple keyframes like blur",
+    TrimForm.ZoomManualMoveFramesForTest(),
+    "0.10,0.20,0.20,0.20|0.37,0.38,0.26,0.21|0.65,0.70,0.10,0.10");
 Expect(
     "manual blur fix keeps the selected area fixed across the blur duration",
     TrimForm.BlurManualEditFramesForTest(),

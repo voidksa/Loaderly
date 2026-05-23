@@ -394,6 +394,7 @@ internal static class LoaderlyLanguage
         ["Downloader tool is missing. Open Tools and update yt-dlp."] = "أداة التنزيل مفقودة. افتح الأدوات وحدّث yt-dlp.",
         ["Download folder is not responding. Choose another folder or reconnect the drive."] = "مجلد التنزيل لا يستجيب. اختر مجلداً آخر أو أعد توصيل القرص.",
         ["Connection problem. Retry when the site responds."] = "مشكلة في الاتصال. أعد المحاولة عندما يستجيب الموقع.",
+        ["TikTok photo posts are image carousels. Loaderly can download TikTok videos, but image sets are not available yet."] = "منشورات صور TikTok عبارة عن مجموعة صور. Loaderly ينزل فيديوهات TikTok، لكن مجموعات الصور غير متاحة حاليا.",
         ["Add cue"] = "إضافة سطر",
         ["Delete"] = "حذف"
     };
