@@ -157,7 +157,7 @@ internal sealed class FirstRunForm : Form
         StyleButton(cancelButton, primary: false);
         actions.Controls.Add(cancelButton, 1, 0);
 
-        startButton.Text = "Start";
+        startButton.Text = "Begin";
         StyleButton(startButton, primary: true);
         actions.Controls.Add(startButton, 2, 0);
     }

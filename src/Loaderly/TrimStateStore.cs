@@ -29,7 +29,29 @@ internal sealed class TrimStateStore
             : null;
     }
 
-    public void Save(string filePath, TimeSpan start, TimeSpan end, TimeSpan position)
+    public bool HasSavedState(string filePath)
+    {
+        var state = Load(filePath);
+        return state is not null && (
+            state.Cuts.Count > 0 ||
+            state.BlurRegions.Count > 0 ||
+            state.ZoomRegions.Count > 0 ||
+            state.StartSeconds > 0.05 ||
+            state.SourceDurationSeconds > 0 && state.EndSeconds < state.SourceDurationSeconds - 0.05);
+    }
+
+    public void Save(
+        string filePath,
+        TimeSpan start,
+        TimeSpan end,
+        TimeSpan position,
+        IEnumerable<TrimCutRange>? cuts = null,
+        int selectedCutIndex = -1,
+        IEnumerable<TrimBlurRegion>? blurRegions = null,
+        int selectedBlurIndex = -1,
+        TimeSpan? sourceDuration = null,
+        IEnumerable<TrimZoomRegion>? zoomRegions = null,
+        int selectedZoomIndex = -1)
     {
         if (end <= start)
         {
@@ -44,7 +66,57 @@ internal sealed class TrimStateStore
             SourcePath = Path.GetFullPath(filePath),
             StartSeconds = Math.Max(0, start.TotalSeconds),
             EndSeconds = Math.Max(0, end.TotalSeconds),
+            SourceDurationSeconds = Math.Max(0, sourceDuration?.TotalSeconds ?? 0),
             PositionSeconds = Math.Max(0, position.TotalSeconds),
+            Cuts = (cuts ?? [])
+                .Where(cut => cut.End > cut.Start)
+                .Select(cut => new TrimCutState
+                {
+                    StartSeconds = Math.Max(0, cut.Start.TotalSeconds),
+                    EndSeconds = Math.Max(0, cut.End.TotalSeconds),
+                    TransitionAfter = TrimTransitionKind.None.ToString()
+                })
+                .ToList(),
+            SelectedCutIndex = selectedCutIndex,
+            BlurRegions = TrimBlurRegion.NormalizeMany(blurRegions)
+                .Select(region => new TrimBlurState
+                {
+                    StartSeconds = Math.Max(0, region.Start.TotalSeconds),
+                    EndSeconds = Math.Max(0, region.End.TotalSeconds),
+                    Shape = region.Shape.ToString(),
+                    Strength = region.Strength,
+                    Keyframes = region.Keyframes
+                        .Select(keyframe => new TrimBlurKeyframeState
+                        {
+                            TimeSeconds = Math.Max(0, keyframe.Time.TotalSeconds),
+                            X = keyframe.X,
+                            Y = keyframe.Y,
+                            Width = keyframe.Width,
+                            Height = keyframe.Height
+                        })
+                        .ToList()
+                })
+                .ToList(),
+            SelectedBlurIndex = selectedBlurIndex,
+            ZoomRegions = TrimZoomRegion.NormalizeMany(zoomRegions)
+                .Select(region => new TrimZoomState
+                {
+                    StartSeconds = Math.Max(0, region.Start.TotalSeconds),
+                    EndSeconds = Math.Max(0, region.End.TotalSeconds),
+                    Scale = region.Scale,
+                    Keyframes = region.Keyframes
+                        .Select(keyframe => new TrimBlurKeyframeState
+                        {
+                            TimeSeconds = Math.Max(0, keyframe.Time.TotalSeconds),
+                            X = keyframe.X,
+                            Y = keyframe.Y,
+                            Width = keyframe.Width,
+                            Height = keyframe.Height
+                        })
+                        .ToList()
+                })
+                .ToList(),
+            SelectedZoomIndex = selectedZoomIndex,
             UpdatedAt = DateTimeOffset.Now
         };
 
@@ -91,7 +163,67 @@ internal sealed class TrimState
 
     public double EndSeconds { get; set; }
 
+    public double SourceDurationSeconds { get; set; }
+
     public double PositionSeconds { get; set; }
 
+    public List<TrimCutState> Cuts { get; set; } = [];
+
+    public int SelectedCutIndex { get; set; } = -1;
+
+    public List<TrimBlurState> BlurRegions { get; set; } = [];
+
+    public int SelectedBlurIndex { get; set; } = -1;
+
+    public List<TrimZoomState> ZoomRegions { get; set; } = [];
+
+    public int SelectedZoomIndex { get; set; } = -1;
+
     public DateTimeOffset UpdatedAt { get; set; }
+}
+
+internal sealed class TrimBlurState
+{
+    public double StartSeconds { get; set; }
+
+    public double EndSeconds { get; set; }
+
+    public string Shape { get; set; } = nameof(TrimBlurShape.Box);
+
+    public int Strength { get; set; } = 22;
+
+    public List<TrimBlurKeyframeState> Keyframes { get; set; } = [];
+}
+
+internal sealed class TrimBlurKeyframeState
+{
+    public double TimeSeconds { get; set; }
+
+    public double X { get; set; }
+
+    public double Y { get; set; }
+
+    public double Width { get; set; }
+
+    public double Height { get; set; }
+}
+
+internal sealed class TrimZoomState
+{
+    public double StartSeconds { get; set; }
+
+    public double EndSeconds { get; set; }
+
+    public double Scale { get; set; } = 2.0;
+
+    public List<TrimBlurKeyframeState> Keyframes { get; set; } = [];
+}
+
+internal sealed class TrimCutState
+{
+    public double StartSeconds { get; set; }
+
+    public double EndSeconds { get; set; }
+
+    public string TransitionAfter { get; set; } = nameof(TrimTransitionKind.None);
 }

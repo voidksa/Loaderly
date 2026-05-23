@@ -5,10 +5,10 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>Loaderly</AssemblyName>
     <RootNamespace>Loaderly</RootNamespace>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
-    <InformationalVersion>1.0.0</InformationalVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>1.1.0</InformationalVersion>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
@@ -27,6 +27,10 @@
     </Content>
     <Content Include="..\..\assets\loaderly-128.png">
       <Link>assets\loaderly-128.png</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\assets\buy-me-a-coffee.png">
+      <Link>assets\buy-me-a-coffee.png</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

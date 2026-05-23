@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Text;
@@ -298,6 +299,16 @@ internal sealed class MediaDownloadService
         return DownloadArguments(sourceUrl, destinationFolder, ffmpegPath, denoPath, options).ToList();
     }
 
+    internal static DownloadProgress ParseProgressForTest(string line)
+    {
+        return ParseProgress(line);
+    }
+
+    internal static string NewestMediaFileForTest(string folder, DateTimeOffset after)
+    {
+        return NewestMediaFile(folder, after);
+    }
+
     private static IEnumerable<string> DownloadArguments(
         string sourceUrl,
         string destinationFolder,
@@ -312,8 +323,8 @@ internal sealed class MediaDownloadService
         }
 
         yield return "--newline";
+        yield return "--progress";
         yield return "--continue";
-        yield return "--restrict-filenames";
         if (!string.IsNullOrWhiteSpace(denoPath))
         {
             yield return "--js-runtimes";
@@ -332,7 +343,7 @@ internal sealed class MediaDownloadService
         {
             yield return "--merge-output-format";
             yield return "mp4";
-            yield return "--recode-video";
+            yield return "--remux-video";
             yield return "mp4";
             yield return "-f";
             yield return FormatSelector(options.Quality);
@@ -369,9 +380,9 @@ internal sealed class MediaDownloadService
     {
         return quality switch
         {
-            DownloadQuality.Video1080p => "bv*[height<=1080]+ba/b[height<=1080]/best[height<=1080]",
-            DownloadQuality.Video720p => "bv*[height<=720]+ba/b[height<=720]/best[height<=720]",
-            _ => "bv*+ba/best"
+            DownloadQuality.Video1080p => "bv*[height<=1080][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[height<=1080][ext=mp4][vcodec^=avc1]/best[height<=1080][ext=mp4]/best[height<=1080]",
+            DownloadQuality.Video720p => "bv*[height<=720][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[height<=720][ext=mp4][vcodec^=avc1]/best[height<=720][ext=mp4]/best[height<=720]",
+            _ => "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4][vcodec^=avc1]/best[ext=mp4]/best"
         };
     }
 
@@ -384,10 +395,11 @@ internal sealed class MediaDownloadService
             var etaMatch = Regex.Match(line, @"\bETA\s+(?<eta>\S+)", RegexOptions.IgnoreCase);
             var speed = speedMatch.Success ? speedMatch.Groups["speed"].Value : null;
             var eta = etaMatch.Success ? etaMatch.Groups["eta"].Value : null;
-            var detail = speed is null && eta is null
-                ? "Downloading"
-                : $"Downloading{(speed is null ? string.Empty : $" - {speed}")}{(eta is null ? string.Empty : $" - ETA {eta}")}";
-            return new DownloadProgress(percent, detail, line, speed, eta);
+            var totalBytes = TotalBytesFromProgressLine(line);
+            var downloadedBytes = totalBytes is null
+                ? null
+                : (long?)Math.Clamp((long)Math.Round(totalBytes.Value * (percent / 100D)), 0, totalBytes.Value);
+            return new DownloadProgress(percent, "Downloading", line, speed, eta, downloadedBytes, totalBytes);
         }
 
         if (line.Contains("Deleting original file", StringComparison.OrdinalIgnoreCase) ||
@@ -398,6 +410,34 @@ internal sealed class MediaDownloadService
         }
 
         return new DownloadProgress(null, "Working", line);
+    }
+
+    private static long? TotalBytesFromProgressLine(string line)
+    {
+        var match = Regex.Match(
+            line,
+            @"\bof\s+~?\s*(?<value>\d+(?:\.\d+)?)\s*(?<unit>[KMGTPE]?i?B|[KMGTPE]?B)\b",
+            RegexOptions.IgnoreCase);
+        if (!match.Success ||
+            !double.TryParse(match.Groups["value"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            return null;
+        }
+
+        var multiplier = match.Groups["unit"].Value.ToUpperInvariant() switch
+        {
+            "B" => 1D,
+            "KB" => 1_000D,
+            "MB" => 1_000_000D,
+            "GB" => 1_000_000_000D,
+            "TB" => 1_000_000_000_000D,
+            "KIB" => 1024D,
+            "MIB" => 1024D * 1024D,
+            "GIB" => 1024D * 1024D * 1024D,
+            "TIB" => 1024D * 1024D * 1024D * 1024D,
+            _ => 0D
+        };
+        return multiplier <= 0D ? null : (long)Math.Round(value * multiplier);
     }
 
     internal static bool IsSubtitleDownloadFailure(string message)
@@ -448,7 +488,7 @@ internal sealed class MediaDownloadService
         {
             if (pendingPath is not null)
             {
-                AddResult(pendingPath, Path.GetFileNameWithoutExtension(pendingPath));
+                AddResult(pendingPath, CleanTitleFromFilePath(pendingPath));
                 pendingPath = null;
             }
         }
@@ -468,7 +508,7 @@ internal sealed class MediaDownloadService
             .LastOrDefault(line => IsLikelyTitle(line, filePath))
             ?.Trim();
         return string.IsNullOrWhiteSpace(title)
-            ? Path.GetFileNameWithoutExtension(filePath)
+            ? CleanTitleFromFilePath(filePath)
             : title;
     }
 
@@ -476,15 +516,50 @@ internal sealed class MediaDownloadService
     {
         var value = line.Trim();
         return value.Length > 0 &&
-               !value.StartsWith("[", StringComparison.Ordinal) &&
+               !IsDownloaderLogLine(value) &&
+               !IsDownloaderDiagnosticLine(value) &&
                !Path.IsPathFullyQualified(value) &&
                !string.Equals(value, filePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDownloaderLogLine(string value)
+    {
+        var end = value.IndexOf(']');
+        if (!value.StartsWith("[", StringComparison.Ordinal) || end <= 1)
+        {
+            return false;
+        }
+
+        var tag = value[1..end].Trim();
+        return tag.Equals("download", StringComparison.OrdinalIgnoreCase) ||
+               tag.Equals("Merger", StringComparison.OrdinalIgnoreCase) ||
+               tag.Equals("ExtractAudio", StringComparison.OrdinalIgnoreCase) ||
+               tag.Equals("MoveFiles", StringComparison.OrdinalIgnoreCase) ||
+               tag.Equals("Metadata", StringComparison.OrdinalIgnoreCase) ||
+               tag.Equals("info", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDownloaderDiagnosticLine(string value)
+    {
+        return value.StartsWith("WARNING:", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("Deleting original file", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("Merging formats", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("Destination:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string CleanTitleFromFilePath(string filePath)
+    {
+        var title = Path.GetFileNameWithoutExtension(filePath);
+        title = Regex.Replace(title, @"\s+\[[^\[\]]{4,64}\]$", string.Empty);
+        return string.IsNullOrWhiteSpace(title) ? Path.GetFileName(filePath) : title.Trim();
     }
 
     private static string NewestMediaFile(string folder, DateTimeOffset after)
     {
         var candidate = Directory
             .EnumerateFiles(folder)
+            .Where(path => !IsTemporaryMediaPath(path))
             .Where(path => MediaExtensions.Contains(Path.GetExtension(path)))
             .Select(path => new FileInfo(path))
             .Where(file => file.LastWriteTimeUtc >= after.UtcDateTime)
@@ -497,6 +572,14 @@ internal sealed class MediaDownloadService
         }
 
         return candidate.FullName;
+    }
+
+    private static bool IsTemporaryMediaPath(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return fileName.Contains(".temp.", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".part", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".ytdl", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FriendlyError(string raw)

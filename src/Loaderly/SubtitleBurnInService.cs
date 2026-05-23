@@ -32,6 +32,24 @@ internal static class SubtitleBurnInService
         return path;
     }
 
+    public static string? CreateAssFile(
+        IEnumerable<SubtitleCue> cues,
+        TimeSpan duration,
+        SubtitleStyle style)
+    {
+        var clipped = ClipCues(cues, TimeSpan.Zero, duration).ToList();
+        if (clipped.Count == 0)
+        {
+            return null;
+        }
+
+        var directory = Path.Combine(Path.GetTempPath(), "LoaderlyTrimSubtitles");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{Guid.NewGuid():N}.ass");
+        File.WriteAllText(path, BuildAss(clipped, TimeSpan.Zero, duration, style), Encoding.UTF8);
+        return path;
+    }
+
     public static string BuildAss(
         IEnumerable<SubtitleCue> cues,
         TimeSpan trimStart,
@@ -78,7 +96,7 @@ internal static class SubtitleBurnInService
             builder.Append(',');
             builder.Append(FormatAssTime(cue.End));
             builder.Append(",Loaderly,,0,0,48,,");
-            builder.AppendLine(EscapeAssText(cue.Text));
+            builder.AppendLine(EscapeAssText(SubtitleTextDirection.WithAssRtlEmbedding(cue.Text)));
         }
 
         return builder.ToString();

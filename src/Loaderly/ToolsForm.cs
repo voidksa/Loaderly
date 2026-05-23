@@ -9,7 +9,12 @@ namespace Loaderly;
 
 internal sealed class ToolsForm : Form
 {
-    private static readonly TimeSpan ToolCommandTimeout = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan ToolCommandTimeout = TimeSpan.FromMinutes(5);
+    private static readonly string[] ToolNames = ["yt-dlp", "ffmpeg", "ffprobe", "deno"];
+    private const int ToolRowHeight = 78;
+    private const int ToolStatusRowHeight = 36;
+    private const int ToolActionsRowHeight = 54;
+    private const string HelpText = "Installed tools are locked. Use Check versions for update checks, or Install / repair all tools to fix missing tools.";
     private readonly Label ytDlpStatus = new();
     private readonly Label ffmpegStatus = new();
     private readonly Label ffprobeStatus = new();
@@ -19,12 +24,33 @@ internal sealed class ToolsForm : Form
     private readonly ModernButton updateYtDlpButton = new();
     private readonly ModernButton updateAllButton = new();
     private readonly ModernButton closeButton = new();
+    private readonly Dictionary<string, ModernButton> toolUpdateButtons = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<ToolStatusSnapshot> lastSnapshots = [];
     private static readonly HttpClient LatestVersionHttpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(8)
     };
     internal static int ToolCommandTimeoutMillisecondsForTest => (int)ToolCommandTimeout.TotalMilliseconds;
+    internal static int ContentFixedHeightForTest => ToolRowHeight * 4 + ToolStatusRowHeight + ToolActionsRowHeight;
+    internal static bool WindowAllowsMaximizeForTest => false;
+    internal static bool WindowAllowsMinimizeForTest => false;
+    internal static bool StartsVersionCheckOnOpenForTest => true;
+    internal static bool StartsLatestVersionCheckOnOpenForTest => false;
+    internal static bool DisablesCloseWhileBusyForTest => false;
+    internal static IReadOnlyList<string> IndividualToolUpdateNamesForTest()
+    {
+        return ToolNames;
+    }
+
+    internal static IReadOnlyList<string> GlobalActionLabelsForTest()
+    {
+        return ["Check versions", "Update available tools", "Install / repair all tools"];
+    }
+
+    internal static IReadOnlyList<string> InstallRepairAllToolNamesForTest()
+    {
+        return ToolNames;
+    }
 
     public ToolsForm()
     {
@@ -39,6 +65,9 @@ internal sealed class ToolsForm : Form
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(760, 640);
         Size = new Size(820, 680);
+        MaximizeBox = false;
+        MinimizeBox = false;
+        FormBorderStyle = FormBorderStyle.FixedSingle;
         BackColor = LoaderlyTheme.Window;
         Font = LoaderlyTheme.BodyFont(10F);
 
@@ -52,7 +81,10 @@ internal sealed class ToolsForm : Form
         base.OnShown(e);
         WindowsTheme.ApplyTitleBarTheme(this);
         await Task.Yield();
-        await RefreshLocalStatusAsync();
+        if (!IsDisposed)
+        {
+            await RefreshLocalStatusAsync();
+        }
     }
 
     private void BuildUi()
@@ -96,19 +128,19 @@ internal sealed class ToolsForm : Form
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ToolRowHeight));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ToolRowHeight));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ToolRowHeight));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ToolRowHeight));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ToolStatusRowHeight));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ToolActionsRowHeight));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.Controls.Add(layout);
 
-        layout.Controls.Add(ToolRow("yt-dlp", ytDlpStatus), 0, 0);
-        layout.Controls.Add(ToolRow("ffmpeg", ffmpegStatus), 0, 1);
-        layout.Controls.Add(ToolRow("ffprobe", ffprobeStatus), 0, 2);
-        layout.Controls.Add(ToolRow("deno", denoStatus), 0, 3);
+        layout.Controls.Add(ToolRow("yt-dlp", ytDlpStatus, CreateToolUpdateButton("yt-dlp")), 0, 0);
+        layout.Controls.Add(ToolRow("ffmpeg", ffmpegStatus, CreateToolUpdateButton("ffmpeg")), 0, 1);
+        layout.Controls.Add(ToolRow("ffprobe", ffprobeStatus, CreateToolUpdateButton("ffprobe")), 0, 2);
+        layout.Controls.Add(ToolRow("deno", denoStatus, CreateToolUpdateButton("deno")), 0, 3);
 
         operationStatus.Dock = DockStyle.Fill;
         operationStatus.Text = "Ready.";
@@ -130,14 +162,14 @@ internal sealed class ToolsForm : Form
         layout.Controls.Add(actions, 0, 5);
 
         ConfigureButton(refreshButton, "Check versions", primary: false);
-        ConfigureButton(updateYtDlpButton, "Update yt-dlp only", primary: false);
+        ConfigureButton(updateYtDlpButton, "Update available tools", primary: false);
         ConfigureButton(updateAllButton, "Install / repair all tools", primary: true);
         refreshButton.Dock = DockStyle.Fill;
         updateYtDlpButton.Dock = DockStyle.Fill;
         updateAllButton.Dock = DockStyle.Fill;
-        refreshButton.Margin = new Padding(0, 12, 8, 12);
-        updateYtDlpButton.Margin = new Padding(8, 12, 8, 12);
-        updateAllButton.Margin = new Padding(8, 12, 0, 12);
+        refreshButton.Margin = new Padding(0, 8, 8, 8);
+        updateYtDlpButton.Margin = new Padding(8, 8, 8, 8);
+        updateAllButton.Margin = new Padding(8, 8, 0, 8);
         actions.Controls.Add(refreshButton, 0, 0);
         actions.Controls.Add(updateYtDlpButton, 1, 0);
         actions.Controls.Add(updateAllButton, 2, 0);
@@ -145,7 +177,7 @@ internal sealed class ToolsForm : Form
         layout.Controls.Add(new Label
         {
             Dock = DockStyle.Fill,
-            Text = "The installer includes these tools when the release is built with tools\\windows. Use Install / repair all tools if one is missing, and update yt-dlp only when a site stops working.",
+            Text = HelpText,
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.3F),
             TextAlign = ContentAlignment.TopLeft
@@ -172,11 +204,25 @@ internal sealed class ToolsForm : Form
     {
         closeButton.Click += (_, _) => Close();
         refreshButton.Click += async (_, _) => await RefreshStatusAsync();
-        updateYtDlpButton.Click += async (_, _) => await RunYtDlpUpdateAsync();
+        updateYtDlpButton.Click += async (_, _) => await RunAvailableToolUpdatesAsync();
         updateAllButton.Click += async (_, _) => await RunToolInstallScriptAsync();
     }
 
-    private static Control ToolRow(string name, Label statusLabel)
+    private ModernButton CreateToolUpdateButton(string tool)
+    {
+        var button = new ModernButton
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8, 12, 0, 12),
+            Enabled = false
+        };
+        ConfigureButton(button, "Update", primary: false);
+        button.Click += async (_, _) => await RunSingleToolUpdateAsync(tool);
+        toolUpdateButtons[tool] = button;
+        return button;
+    }
+
+    private static Control ToolRow(string name, Label statusLabel, Control updateButton)
     {
         var rowHost = new RoundedPanel
         {
@@ -191,12 +237,13 @@ internal sealed class ToolsForm : Form
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 3,
             RowCount = 1,
             BackColor = LoaderlyTheme.SurfaceMuted
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
         row.Controls.Add(new Label
         {
             Text = name,
@@ -207,12 +254,13 @@ internal sealed class ToolsForm : Form
         }, 0, 0);
 
         statusLabel.Dock = DockStyle.Fill;
-        statusLabel.Text = "Checking...";
+        statusLabel.Text = LoaderlyLanguage.Text("Not checked yet");
         statusLabel.ForeColor = LoaderlyTheme.MutedText;
         statusLabel.Font = LoaderlyTheme.BodyFont(9.2F);
         statusLabel.TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft;
         statusLabel.AutoEllipsis = true;
         row.Controls.Add(statusLabel, 1, 0);
+        row.Controls.Add(updateButton, 2, 0);
         rowHost.Controls.Add(row);
         return rowHost;
     }
@@ -221,18 +269,30 @@ internal sealed class ToolsForm : Form
     {
         SetBusy(true, "Checking tools...");
         var statuses = await GetToolSnapshotsAsync(includeLatestVersions: true);
+        if (IsDisposed)
+        {
+            return;
+        }
+
         lastSnapshots = statuses;
         ApplyToolStatuses(statuses);
         SetBusy(false, "Ready.");
+        UpdateToolButtons();
     }
 
     private async Task RefreshLocalStatusAsync()
     {
-        SetBusy(true, "Checking tools...");
+        SetBusy(true, "Checking required tools...");
         var statuses = await GetToolSnapshotsAsync(includeLatestVersions: false);
+        if (IsDisposed)
+        {
+            return;
+        }
+
         lastSnapshots = statuses;
         ApplyToolStatuses(statuses);
-        SetBusy(false, "Ready.");
+        SetBusy(false, "Installed tools checked.");
+        UpdateToolButtons();
     }
 
     private void ApplyToolStatuses(IReadOnlyList<ToolStatusSnapshot> statuses)
@@ -271,19 +331,70 @@ internal sealed class ToolsForm : Form
         }
     }
 
-    private async Task RunYtDlpUpdateAsync()
+    private async Task RunAvailableToolUpdatesAsync()
     {
         try
         {
-            SetBusy(true, "Updating yt-dlp...");
-            var path = await ToolLookup.ResolveAsync("yt-dlp", CancellationToken.None);
-            var output = await RunProcessAsync(path, "-U");
-            operationStatus.Text = LoaderlyLanguage.Text(string.IsNullOrWhiteSpace(output) ? "yt-dlp update finished." : "yt-dlp update finished.");
+            SetBusy(true, "Updating required tools...");
+            var snapshots = lastSnapshots.Count == 0 || NeedsLatestVersionCheckBeforeAvailableUpdate(lastSnapshots)
+                ? await GetToolSnapshotsAsync(includeLatestVersions: true)
+                : lastSnapshots;
+            lastSnapshots = snapshots;
+            if (!IsDisposed)
+            {
+                ApplyToolStatuses(snapshots);
+                UpdateToolButtons();
+            }
+
+            var plan = RepairPlan(snapshots);
+            if (plan.ToolsToRepair.Count == 0)
+            {
+                SetBusy(false, "All tools are already up to date.");
+                return;
+            }
+
+            await RunToolInstallScriptForToolsAsync(plan.ToolsToRepair);
+            if (IsDisposed)
+            {
+                return;
+            }
+
             await RefreshStatusAsync();
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            operationStatus.Text = RepairSummary(plan);
         }
         catch (Exception ex)
         {
-            SetBusy(false, $"Could not update yt-dlp: {ex.Message}");
+            SetBusy(false, $"Could not update tools: {ex.Message}");
+        }
+    }
+
+    private async Task RunSingleToolUpdateAsync(string tool)
+    {
+        try
+        {
+            SetBusy(true, $"Updating {tool}...");
+            await RunToolInstallScriptForToolsAsync([tool]);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            await RefreshStatusAsync();
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            operationStatus.Text = $"{LoaderlyLanguage.Text("Updated")}: {tool}.";
+        }
+        catch (Exception ex)
+        {
+            SetBusy(false, $"Could not update {tool}: {ex.Message}");
         }
     }
 
@@ -298,26 +409,41 @@ internal sealed class ToolsForm : Form
 
         try
         {
-            SetBusy(true, "Checking required tools...");
-            var snapshots = lastSnapshots.Count == 0 ? await GetToolSnapshotsAsync(includeLatestVersions: false) : lastSnapshots;
-            var plan = RepairPlan(snapshots);
-            if (plan.ToolsToRepair.Count == 0)
+            SetBusy(true, "Updating required tools...");
+            await RunToolInstallScriptForToolsAsync(ToolNames);
+            if (IsDisposed)
             {
-                SetBusy(false, "All tools are already up to date.");
                 return;
             }
 
-            SetBusy(true, "Updating required tools...");
-            var toolArguments = string.Join(" ", plan.ToolsToRepair);
-            var output = await RunProcessAsync("powershell.exe", $"-ExecutionPolicy Bypass -File \"{scriptPath}\" -Tools {toolArguments}");
-            CopyUpdatedToolsToAppFolder(scriptPath);
             await RefreshStatusAsync();
-            operationStatus.Text = RepairSummary(plan);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            operationStatus.Text = LoaderlyLanguage.Text("Tools update finished.");
         }
         catch (Exception ex)
         {
             SetBusy(false, $"Could not update tools: {ex.Message}");
         }
+    }
+
+    private static async Task RunToolInstallScriptForToolsAsync(IReadOnlyList<string> tools)
+    {
+        var scriptPath = FindInstallScript();
+        if (scriptPath is null)
+        {
+            throw new InvalidOperationException(LoaderlyLanguage.Text("Tool installer script was not found in this build."));
+        }
+
+        var toolArguments = string.Join(" ", tools.Select(QuotePowerShellArgument));
+        var installDirectory = ToolInstallDirectory();
+        await RunProcessAsync(
+            "powershell.exe",
+            $"-NoProfile -ExecutionPolicy Bypass -File {QuotePowerShellArgument(scriptPath)} -InstallPath {QuotePowerShellArgument(installDirectory)} -Tools {toolArguments}");
+        ToolResolver.ClearCache();
     }
 
     private static string? FindInstallScript()
@@ -337,32 +463,21 @@ internal sealed class ToolsForm : Form
         return null;
     }
 
-    private static void CopyUpdatedToolsToAppFolder(string scriptPath)
+    private static string ToolInstallDirectory()
     {
-        var root = Directory.GetParent(Path.GetDirectoryName(scriptPath)!)?.FullName;
-        if (root is null)
-        {
-            return;
-        }
-
-        var sourceTools = Path.Combine(root, "tools", "windows");
-        if (!Directory.Exists(sourceTools))
-        {
-            return;
-        }
-
-        var appTools = Path.Combine(AppContext.BaseDirectory, "tools", "windows");
-        Directory.CreateDirectory(appTools);
-        foreach (var file in Directory.GetFiles(sourceTools, "*.exe"))
-        {
-            File.Copy(file, Path.Combine(appTools, Path.GetFileName(file)), overwrite: true);
-        }
+        return ToolResolver.UserToolDirectory;
     }
 
-    private static async Task<string> RunProcessAsync(string fileName, string arguments)
+    private static string QuotePowerShellArgument(string value)
     {
-        using var timeout = new CancellationTokenSource(ToolCommandTimeout);
+        return $"\"{value.Replace("\"", "`\"")}\"";
+    }
+
+    private static async Task<string> RunProcessAsync(string fileName, string arguments, TimeSpan? commandTimeout = null)
+    {
+        using var timeout = new CancellationTokenSource(commandTimeout ?? ToolCommandTimeout);
         var output = new List<string>();
+        var error = new List<string>();
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -404,9 +519,9 @@ internal sealed class ToolsForm : Form
 
             if (!string.IsNullOrWhiteSpace(e.Data))
             {
-                lock (output)
+                lock (error)
                 {
-                    output.Add(e.Data);
+                    error.Add(e.Data);
                 }
             }
         };
@@ -432,12 +547,29 @@ internal sealed class ToolsForm : Form
         {
             text = string.Join(Environment.NewLine, output);
         }
+
+        string errorText;
+        lock (error)
+        {
+            errorText = string.Join(Environment.NewLine, error);
+        }
+
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(text) ? "Tool command failed." : text);
+            throw new InvalidOperationException(CommandFailureMessage(text, errorText));
         }
 
         return text;
+    }
+
+    private static string CommandFailureMessage(string standardOutput, string standardError)
+    {
+        var message = string.Join(
+            Environment.NewLine,
+            new[] { standardError, standardOutput }
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part.Trim()));
+        return string.IsNullOrWhiteSpace(message) ? "Tool command failed." : message;
     }
 
     private void SetBusy(bool busy, string message)
@@ -445,8 +577,28 @@ internal sealed class ToolsForm : Form
         refreshButton.Enabled = !busy;
         updateYtDlpButton.Enabled = !busy;
         updateAllButton.Enabled = !busy;
-        closeButton.Enabled = !busy;
+        closeButton.Enabled = true;
+        foreach (var button in toolUpdateButtons.Values)
+        {
+            button.Enabled = !busy && button.Tag is ToolStatusSnapshot snapshot && CanRunSingleToolUpdate(snapshot);
+        }
+
         operationStatus.Text = LoaderlyLanguage.Text(message);
+    }
+
+    private void UpdateToolButtons()
+    {
+        foreach (var snapshot in lastSnapshots)
+        {
+            if (!toolUpdateButtons.TryGetValue(snapshot.Name, out var button))
+            {
+                continue;
+            }
+
+            button.Tag = snapshot;
+            button.Text = LoaderlyLanguage.Text(ToolActionLabel(snapshot));
+            button.Enabled = CanRunSingleToolUpdate(snapshot);
+        }
     }
 
     internal static string VersionArgumentForTest(string tool)
@@ -467,6 +619,46 @@ internal sealed class ToolsForm : Form
     internal static ToolRepairPlan RepairPlanForTest(IReadOnlyList<ToolStatusSnapshot> snapshots)
     {
         return RepairPlan(snapshots);
+    }
+
+    internal static string ToolVersionStateForTest(string installedVersion, string latestVersion)
+    {
+        return ToolVersionState(installedVersion, latestVersion);
+    }
+
+    internal static bool CanRunSingleToolUpdateForTest(ToolStatusSnapshot snapshot)
+    {
+        return CanRunSingleToolUpdate(snapshot);
+    }
+
+    internal static string ToolActionLabelForTest(ToolStatusSnapshot snapshot)
+    {
+        return ToolActionLabel(snapshot);
+    }
+
+    internal static string ToolInstallDirectoryForTest()
+    {
+        return ToolInstallDirectory();
+    }
+
+    internal static string HelpTextForTest()
+    {
+        return HelpText;
+    }
+
+    internal static bool NeedsLatestVersionCheckBeforeAvailableUpdateForTest(IReadOnlyList<ToolStatusSnapshot> snapshots)
+    {
+        return NeedsLatestVersionCheckBeforeAvailableUpdate(snapshots);
+    }
+
+    internal static string ParseWingetVersionForTest(string output)
+    {
+        return ParseWingetVersion(output);
+    }
+
+    internal static string CommandFailureMessageForTest(string standardOutput, string standardError)
+    {
+        return CommandFailureMessage(standardOutput, standardError);
     }
 
     private static string VersionArgument(string tool)
@@ -502,11 +694,22 @@ internal sealed class ToolsForm : Form
     {
         try
         {
+            if (tool.Equals("ffmpeg", StringComparison.OrdinalIgnoreCase) ||
+                tool.Equals("ffprobe", StringComparison.OrdinalIgnoreCase))
+            {
+                return await LatestWingetVersionAsync("Gyan.FFmpeg").ConfigureAwait(false);
+            }
+
             var repository = tool.Equals("yt-dlp", StringComparison.OrdinalIgnoreCase)
                 ? "yt-dlp/yt-dlp"
                 : tool.Equals("deno", StringComparison.OrdinalIgnoreCase)
                     ? "denoland/deno"
-                    : "GyanD/codexffmpeg";
+                    : string.Empty;
+            if (string.IsNullOrWhiteSpace(repository))
+            {
+                return string.Empty;
+            }
+
             using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{repository}/releases/latest");
             request.Headers.UserAgent.ParseAdd($"{ProductInfo.Name}/{ProductInfo.Version}");
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
@@ -525,11 +728,43 @@ internal sealed class ToolsForm : Form
         }
     }
 
+    private static async Task<string> LatestWingetVersionAsync(string packageId)
+    {
+        try
+        {
+            var output = await RunProcessAsync("winget", $"show --id {packageId} -e --accept-source-agreements", TimeSpan.FromSeconds(20)).ConfigureAwait(false);
+            return ParseWingetVersion(output);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string ParseWingetVersion(string output)
+    {
+        foreach (var line in output.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            const string prefix = "Version:";
+            if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return NormalizeVersionToken(line[prefix.Length..]);
+            }
+        }
+
+        return string.Empty;
+    }
+
     private static string FormatStatus(string tool, bool installed, string installedVersion, string latestVersion, string pathOrMessage)
     {
         if (!installed)
         {
             return $"{LoaderlyLanguage.Text("Not installed")} | {LoaderlyLanguage.Text("Action")}: {LoaderlyLanguage.Text("Install / repair all tools")}\r\n{pathOrMessage}";
+        }
+
+        if (string.IsNullOrWhiteSpace(latestVersion))
+        {
+            return $"{LoaderlyLanguage.Text("Installed")}: {installedVersion} | {LoaderlyLanguage.Text("Status")}: {LoaderlyLanguage.Text("Installed")}\r\n{pathOrMessage}";
         }
 
         var latestText = string.IsNullOrWhiteSpace(latestVersion)
@@ -594,6 +829,48 @@ internal sealed class ToolsForm : Form
         }
 
         return ToolVersionState(snapshot.InstalledVersion, snapshot.LatestVersion).Equals("Update available", StringComparison.Ordinal);
+    }
+
+    private static bool CanRunSingleToolUpdate(ToolStatusSnapshot snapshot)
+    {
+        if (string.IsNullOrWhiteSpace(snapshot.Name))
+        {
+            return false;
+        }
+
+        if (!snapshot.Installed)
+        {
+            return true;
+        }
+
+        return ToolVersionState(snapshot.InstalledVersion, snapshot.LatestVersion)
+            .Equals("Update available", StringComparison.Ordinal);
+    }
+
+    private static string ToolActionLabel(ToolStatusSnapshot snapshot)
+    {
+        if (!snapshot.Installed)
+        {
+            return "Install";
+        }
+
+        if (string.IsNullOrWhiteSpace(snapshot.LatestVersion))
+        {
+            return "Installed";
+        }
+
+        return ToolVersionState(snapshot.InstalledVersion, snapshot.LatestVersion) switch
+        {
+            "Update available" => "Update",
+            "Up to date" => "Up to date",
+            "Check manually" => "Check manually",
+            _ => "Installed"
+        };
+    }
+
+    private static bool NeedsLatestVersionCheckBeforeAvailableUpdate(IReadOnlyList<ToolStatusSnapshot> snapshots)
+    {
+        return snapshots.Any(snapshot => snapshot.Installed && string.IsNullOrWhiteSpace(snapshot.LatestVersion));
     }
 
     private static string RepairSummary(ToolRepairPlan plan)

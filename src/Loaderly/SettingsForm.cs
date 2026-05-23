@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
 
@@ -8,8 +9,16 @@ namespace Loaderly;
 internal sealed class SettingsForm : Form
 {
     private const int LanguageSuggestionLimit = 8;
-    private const int SaveFolderListRowHeight = 118;
+    private const int SaveFolderListRowHeight = 104;
     private const int SaveFolderItemHeight = 34;
+    private const int SettingsContentMaxWidth = 1180;
+    private const int TitleRowHeight = 82;
+    private const int TitleTopPadding = 12;
+    private const int TitleHorizontalPadding = 14;
+    private const int TextInputLabelWidth = 76;
+    private const int OpenRouterLinkColumnWidth = 88;
+    private const string OpenRouterApiKeyUrl = "https://openrouter.ai/settings/keys";
+    private const string OpenRouterModelsUrl = "https://openrouter.ai/models";
 
     private readonly AppSettings settings;
     private readonly TextBox folderTextBox = new();
@@ -31,6 +40,10 @@ internal sealed class SettingsForm : Form
     private readonly Label aiLanguageDropButton = new();
     private readonly RoundedPanel aiLanguageSuggestionPanel = new();
     private readonly ListBox aiLanguageListBox = new();
+    private readonly Panel titleHost = new();
+    private readonly Label titleLabel = new();
+    private readonly Panel settingsPanelHost = new();
+    private readonly Panel actionsHost = new();
     private readonly CheckBox subtitlesCheckBox = new ModernCheckBox();
     private readonly CheckBox notificationsCheckBox = new ModernCheckBox();
     private readonly CheckBox modernToastCheckBox = new ModernCheckBox();
@@ -49,6 +62,57 @@ internal sealed class SettingsForm : Form
 
     internal static int SaveFolderItemHeightForTest => SaveFolderItemHeight;
 
+    internal static int SettingsContentWidthForTest(int hostWidth)
+    {
+        return SettingsContentWidth(hostWidth);
+    }
+
+    internal static int SettingsContentLeftForTest(int hostWidth)
+    {
+        return SettingsContentLeft(hostWidth);
+    }
+
+    internal static int OpenRouterInputWidthForTest(int rowWidth)
+    {
+        return Math.Max(1, rowWidth - TextInputLabelWidth - OpenRouterLinkColumnWidth);
+    }
+
+    internal static string OpenRouterApiKeyUrlForTest => OpenRouterApiKeyUrl;
+
+    internal static string OpenRouterModelsUrlForTest => OpenRouterModelsUrl;
+
+    internal static int GeneralColumnFixedHeightForTest => GeneralColumnFixedHeight();
+
+    internal static bool WindowAllowsMaximizeForTest => false;
+
+    internal static bool WindowAllowsMinimizeForTest => false;
+
+    internal static int TitleRowHeightForTest => TitleRowHeight;
+
+    internal static int TitleTopPaddingForTest => TitleTopPadding;
+
+    internal static int TitleHorizontalPaddingForTest => TitleHorizontalPadding;
+
+    internal static Rectangle LanguageSuggestionBoundsForTest(Rectangle hostBounds, Size clientSize, int itemCount, int itemHeight, bool rtl)
+    {
+        return LanguageSuggestionBounds(hostBounds, clientSize, itemCount, itemHeight, rtl);
+    }
+
+    internal static bool RightToLeftLayoutForLanguageForTest(string? language)
+    {
+        return ShouldUseRightToLeftLayout(language);
+    }
+
+    internal static IReadOnlyList<string> SettingsColumnsForLanguageForTest(string? language)
+    {
+        return SettingsColumnsForLanguage(language);
+    }
+
+    internal static IReadOnlyList<string> TextInputColumnsForLanguageForTest(string? language, bool hasLink)
+    {
+        return TextInputColumnsForLanguage(language, hasLink);
+    }
+
     public SettingsForm(AppSettings settings)
     {
         this.settings = settings;
@@ -63,10 +127,14 @@ internal sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(860, 720);
         Size = new Size(940, 800);
+        MaximizeBox = false;
+        MinimizeBox = false;
+        FormBorderStyle = FormBorderStyle.FixedSingle;
         BackColor = LoaderlyTheme.Window;
         Font = LoaderlyTheme.BodyFont(10F);
         BuildUi();
         LoaderlyLanguage.ApplyTo(this);
+        RightToLeftLayout = ShouldUseRightToLeftLayout(settings.AppLanguage);
         ConfigureLanguageSuggestionPanel();
         BindEvents();
     }
@@ -76,6 +144,7 @@ internal sealed class SettingsForm : Form
         base.OnShown(e);
         folderTextBox.SelectionStart = 0;
         folderTextBox.SelectionLength = 0;
+        LayoutTitleLabel();
         WindowsTheme.ApplyTitleBarTheme(this);
     }
 
@@ -87,38 +156,48 @@ internal sealed class SettingsForm : Form
             RowCount = 3,
             ColumnCount = 1,
             Padding = new Padding(24),
-            BackColor = LoaderlyTheme.Window
+            BackColor = LoaderlyTheme.Window,
+            RightToLeft = RightToLeft.No
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, TitleRowHeight));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         Controls.Add(root);
 
-        root.Controls.Add(new Label
-        {
-            Text = "Settings",
-            Dock = DockStyle.Fill,
-            ForeColor = LoaderlyTheme.Text,
-            Font = LoaderlyTheme.TitleFont(20F),
-            TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 0);
+        titleHost.Dock = DockStyle.Fill;
+        titleHost.BackColor = LoaderlyTheme.Window;
+        root.Controls.Add(titleHost, 0, 0);
+
+        titleLabel.Text = "Settings";
+        titleLabel.ForeColor = LoaderlyTheme.Text;
+        titleLabel.Font = LoaderlyTheme.TitleFont(20F);
+        titleLabel.TextAlign = ContentAlignment.MiddleLeft;
+        titleLabel.AutoEllipsis = false;
+        titleLabel.Padding = new Padding(TitleHorizontalPadding, 0, TitleHorizontalPadding, 0);
+        titleLabel.UseCompatibleTextRendering = false;
+        titleHost.Controls.Add(titleLabel);
+        titleHost.Resize += (_, _) => LayoutTitleLabel();
 
         var panel = new RoundedPanel
         {
-            Dock = DockStyle.Fill,
             Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(18)
         };
-        root.Controls.Add(panel, 0, 1);
+        settingsPanelHost.Dock = DockStyle.Fill;
+        settingsPanelHost.BackColor = LoaderlyTheme.Window;
+        settingsPanelHost.Controls.Add(panel);
+        settingsPanelHost.Resize += (_, _) => LayoutCenteredContent(settingsPanelHost, panel, fillHeight: true);
+        root.Controls.Add(settingsPanelHost, 0, 1);
 
         var content = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = RightToLeft.No
         };
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
@@ -131,23 +210,22 @@ internal sealed class SettingsForm : Form
             RowCount = 14,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface,
-            Margin = new Padding(0, 0, 12, 0)
+            Margin = LoaderlyLanguage.IsArabic ? new Padding(12, 0, 0, 0) : new Padding(0, 0, 12, 0)
         };
         general.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         general.RowStyles.Add(new RowStyle(SizeType.Absolute, SaveFolderListRowHeight));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         general.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
         general.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
         general.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        general.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         general.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        content.Controls.Add(general, 0, 0);
 
         var shortcuts = new TableLayoutPanel
         {
@@ -155,7 +233,7 @@ internal sealed class SettingsForm : Form
             RowCount = 12,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface,
-            Margin = new Padding(12, 0, 0, 0)
+            Margin = LoaderlyLanguage.IsArabic ? new Padding(0, 0, 12, 0) : new Padding(12, 0, 0, 0)
         };
         shortcuts.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         shortcuts.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
@@ -169,7 +247,16 @@ internal sealed class SettingsForm : Form
         shortcuts.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         shortcuts.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
         shortcuts.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        content.Controls.Add(shortcuts, 1, 0);
+        if (LoaderlyLanguage.IsArabic)
+        {
+            content.Controls.Add(shortcuts, 0, 0);
+            content.Controls.Add(general, 1, 0);
+        }
+        else
+        {
+            content.Controls.Add(general, 0, 0);
+            content.Controls.Add(shortcuts, 1, 0);
+        }
 
         general.Controls.Add(Label("Save folders"), 0, 0);
         var folderListHost = new RoundedPanel
@@ -197,7 +284,8 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = RightToLeft.No
         };
         folderActions.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         folderActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
@@ -208,10 +296,18 @@ internal sealed class SettingsForm : Form
         ConfigureButton(removeFolderButton, "Remove", primary: false);
         addFolderButton.Dock = DockStyle.Fill;
         removeFolderButton.Dock = DockStyle.Fill;
-        addFolderButton.Margin = new Padding(0, 4, 6, 8);
-        removeFolderButton.Margin = new Padding(6, 4, 0, 8);
-        folderActions.Controls.Add(addFolderButton, 0, 0);
-        folderActions.Controls.Add(removeFolderButton, 1, 0);
+        addFolderButton.Margin = LoaderlyLanguage.IsArabic ? new Padding(6, 4, 0, 8) : new Padding(0, 4, 6, 8);
+        removeFolderButton.Margin = LoaderlyLanguage.IsArabic ? new Padding(0, 4, 6, 8) : new Padding(6, 4, 0, 8);
+        if (LoaderlyLanguage.IsArabic)
+        {
+            folderActions.Controls.Add(removeFolderButton, 0, 0);
+            folderActions.Controls.Add(addFolderButton, 1, 0);
+        }
+        else
+        {
+            folderActions.Controls.Add(addFolderButton, 0, 0);
+            folderActions.Controls.Add(removeFolderButton, 1, 0);
+        }
 
         general.Controls.Add(Label("Active folder"), 0, 3);
         var folderRow = new TableLayoutPanel
@@ -219,11 +315,20 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = RightToLeft.No
         };
         folderRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        if (LoaderlyLanguage.IsArabic)
+        {
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
+        else
+        {
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        }
         general.Controls.Add(folderRow, 0, 4);
 
         var folderHost = new RoundedPanel
@@ -232,9 +337,8 @@ internal sealed class SettingsForm : Form
             Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
-            Margin = new Padding(0, 5, 12, 7)
+            Margin = LoaderlyLanguage.IsArabic ? new Padding(12, 5, 0, 7) : new Padding(0, 5, 12, 7)
         };
-        folderRow.Controls.Add(folderHost, 0, 0);
 
         ConfigureTextBox(folderTextBox, settings.DownloadFolder, string.Empty);
         folderTextBox.ReadOnly = true;
@@ -255,7 +359,16 @@ internal sealed class SettingsForm : Form
         ConfigureBrowseLabel(browseButton);
         browseHost.Controls.Add(browseButton);
         browseHost.Click += (_, _) => ChooseFolder();
-        folderRow.Controls.Add(browseHost, 1, 0);
+        if (LoaderlyLanguage.IsArabic)
+        {
+            folderRow.Controls.Add(browseHost, 0, 0);
+            folderRow.Controls.Add(folderHost, 1, 0);
+        }
+        else
+        {
+            folderRow.Controls.Add(folderHost, 0, 0);
+            folderRow.Controls.Add(browseHost, 1, 0);
+        }
 
         general.Controls.Add(Label("Theme / Language"), 0, 5);
         var themeLanguageRow = new TableLayoutPanel
@@ -263,7 +376,8 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = RightToLeft.No
         };
         themeLanguageRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         themeLanguageRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
@@ -274,8 +388,7 @@ internal sealed class SettingsForm : Form
         themeComboBox.FillColor = LoaderlyTheme.SurfaceMuted;
         themeComboBox.BorderColor = LoaderlyTheme.Border;
         themeComboBox.ForeColor = LoaderlyTheme.Text;
-        themeComboBox.Margin = new Padding(0, 5, 6, 7);
-        themeLanguageRow.Controls.Add(themeComboBox, 0, 0);
+        themeComboBox.Margin = LoaderlyLanguage.IsArabic ? new Padding(6, 5, 0, 7) : new Padding(0, 5, 6, 7);
 
         languageComboBox.Dock = DockStyle.Fill;
         languageComboBox.SetItems("English", "Arabic");
@@ -283,8 +396,17 @@ internal sealed class SettingsForm : Form
         languageComboBox.FillColor = LoaderlyTheme.SurfaceMuted;
         languageComboBox.BorderColor = LoaderlyTheme.Border;
         languageComboBox.ForeColor = LoaderlyTheme.Text;
-        languageComboBox.Margin = new Padding(6, 5, 0, 7);
-        themeLanguageRow.Controls.Add(languageComboBox, 1, 0);
+        languageComboBox.Margin = LoaderlyLanguage.IsArabic ? new Padding(0, 5, 6, 7) : new Padding(6, 5, 0, 7);
+        if (LoaderlyLanguage.IsArabic)
+        {
+            themeLanguageRow.Controls.Add(languageComboBox, 0, 0);
+            themeLanguageRow.Controls.Add(themeComboBox, 1, 0);
+        }
+        else
+        {
+            themeLanguageRow.Controls.Add(themeComboBox, 0, 0);
+            themeLanguageRow.Controls.Add(languageComboBox, 1, 0);
+        }
         general.Controls.Add(themeLanguageRow, 0, 6);
 
         general.Controls.Add(Label("Download subtitles in"), 0, 7);
@@ -293,24 +415,33 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = RightToLeft.No
         };
         subtitleRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
-        subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
-        subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        if (LoaderlyLanguage.IsArabic)
+        {
+            subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
+            subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
+        }
+        else
+        {
+            subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
+            subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
+            subtitleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
         subtitleLanguageComboBox.Dock = DockStyle.Fill;
         subtitleLanguageComboBox.SetItems(SubtitleLanguagePreference.OptionLabels);
         SelectModernValue(subtitleLanguageComboBox, SubtitleLanguagePreference.SelectionForValue(settings.SubtitleLanguages));
         subtitleLanguageComboBox.FillColor = LoaderlyTheme.SurfaceMuted;
         subtitleLanguageComboBox.BorderColor = LoaderlyTheme.Border;
         subtitleLanguageComboBox.ForeColor = LoaderlyTheme.Text;
-        subtitleLanguageComboBox.Margin = new Padding(0, 5, 8, 7);
-        subtitleRow.Controls.Add(subtitleLanguageComboBox, 0, 0);
+        subtitleLanguageComboBox.Margin = LoaderlyLanguage.IsArabic ? new Padding(8, 5, 0, 7) : new Padding(0, 5, 8, 7);
 
         customSubtitleCodeLabel.Text = "Code e.g. ar";
         customSubtitleCodeLabel.Dock = DockStyle.Fill;
-        customSubtitleCodeLabel.TextAlign = ContentAlignment.MiddleLeft;
+        customSubtitleCodeLabel.TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft;
         customSubtitleCodeLabel.ForeColor = LoaderlyTheme.MutedText;
         customSubtitleCodeLabel.Font = LoaderlyTheme.BodyFont(9F);
         subtitleRow.Controls.Add(customSubtitleCodeLabel, 1, 0);
@@ -323,7 +454,18 @@ internal sealed class SettingsForm : Form
         ConfigureTextBox(subtitleLanguageTextBox, SubtitleLanguagePreference.CustomTextForValue(settings.SubtitleLanguages), "Codes like ar, en, ja");
         customSubtitleHost.Controls.Add(subtitleLanguageTextBox);
         ModernTextBoxPlacement.Attach(customSubtitleHost, subtitleLanguageTextBox);
-        subtitleRow.Controls.Add(customSubtitleHost, 2, 0);
+        if (LoaderlyLanguage.IsArabic)
+        {
+            subtitleRow.Controls.Add(customSubtitleHost, 0, 0);
+            subtitleRow.Controls.Add(customSubtitleCodeLabel, 1, 0);
+            subtitleRow.Controls.Add(subtitleLanguageComboBox, 2, 0);
+        }
+        else
+        {
+            subtitleRow.Controls.Add(subtitleLanguageComboBox, 0, 0);
+            subtitleRow.Controls.Add(customSubtitleCodeLabel, 1, 0);
+            subtitleRow.Controls.Add(customSubtitleHost, 2, 0);
+        }
         general.Controls.Add(subtitleRow, 0, 8);
         UpdateSubtitleCustomState();
 
@@ -342,7 +484,7 @@ internal sealed class SettingsForm : Form
             Text = "Trim shortcuts",
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.5F),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.BottomRight : ContentAlignment.BottomLeft
         }, 0, 0);
 
         shortcuts.Controls.Add(ShortcutRow("Undo", undoShortcutComboBox, settings.TrimUndoShortcut, new[] { "Ctrl+Z", "Ctrl+Backspace" }), 0, 1);
@@ -356,20 +498,33 @@ internal sealed class SettingsForm : Form
             Text = "Fixed trim shortcuts: Space play/pause, arrows step, Shift+arrows 5s, Ctrl+Shift+arrows frame step, M mute, Esc close.",
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(8.8F),
-            TextAlign = ContentAlignment.TopLeft
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.TopRight : ContentAlignment.TopLeft
         }, 0, 5);
 
         shortcuts.Controls.Add(new Label
         {
             Dock = DockStyle.Fill,
-            Text = "AI subtitle translation",
+            Text = "AI subtitle translation (OpenRouter)",
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.5F),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.BottomRight : ContentAlignment.BottomLeft
         }, 0, 6);
 
-        shortcuts.Controls.Add(TextInputRow("API key", openRouterApiKeyTextBox, settings.OpenRouterApiKey, "OpenRouter API key", password: true), 0, 7);
-        shortcuts.Controls.Add(TextInputRow("Model", openRouterModelTextBox, settings.OpenRouterModel, "OpenRouter model"), 0, 8);
+        shortcuts.Controls.Add(TextInputRow(
+            "API key",
+            openRouterApiKeyTextBox,
+            settings.OpenRouterApiKey,
+            "OpenRouter API key",
+            password: true,
+            linkText: "Get key",
+            linkUrl: OpenRouterApiKeyUrl), 0, 7);
+        shortcuts.Controls.Add(TextInputRow(
+            "Model",
+            openRouterModelTextBox,
+            settings.OpenRouterModel,
+            "OpenRouter model",
+            linkText: "Models",
+            linkUrl: OpenRouterModelsUrl), 0, 8);
 
         shortcuts.Controls.Add(new Label
         {
@@ -377,13 +532,12 @@ internal sealed class SettingsForm : Form
             Text = "Translate subtitles to",
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.2F),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.BottomRight : ContentAlignment.BottomLeft
         }, 0, 9);
         shortcuts.Controls.Add(LanguagePickerRow(), 0, 10);
 
         var actions = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 1,
             BackColor = LoaderlyTheme.Window
@@ -392,7 +546,11 @@ internal sealed class SettingsForm : Form
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
-        root.Controls.Add(actions, 0, 2);
+        actionsHost.Dock = DockStyle.Fill;
+        actionsHost.BackColor = LoaderlyTheme.Window;
+        actionsHost.Controls.Add(actions);
+        actionsHost.Resize += (_, _) => LayoutCenteredContent(actionsHost, actions, fillHeight: true);
+        root.Controls.Add(actionsHost, 0, 2);
 
         ConfigureButton(cancelButton, "Cancel", primary: false);
         ConfigureButton(saveButton, "Save", primary: true);
@@ -427,7 +585,7 @@ internal sealed class SettingsForm : Form
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Choose where downloads are saved",
+            Description = LoaderlyLanguage.Text("Choose where downloads are saved"),
             SelectedPath = Directory.Exists(folderTextBox.Text)
                 ? folderTextBox.Text
                 : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -618,24 +776,35 @@ internal sealed class SettingsForm : Form
 
     private static Control ShortcutRow(string label, ModernSelect comboBox, string value, IEnumerable<string> options)
     {
+        var isArabic = LoaderlyLanguage.IsArabic;
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = RightToLeft.No
         };
         row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.Controls.Add(new Label
+        if (isArabic)
+        {
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
+        }
+        else
+        {
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
+
+        var labelControl = new Label
         {
             Text = label,
             Dock = DockStyle.Fill,
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.2F),
-            TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 0);
+            TextAlign = isArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft
+        };
 
         comboBox.Dock = DockStyle.Fill;
         comboBox.SetItems(options.ToArray());
@@ -644,30 +813,58 @@ internal sealed class SettingsForm : Form
         comboBox.BorderColor = LoaderlyTheme.Border;
         comboBox.ForeColor = LoaderlyTheme.Text;
         comboBox.Margin = new Padding(0, 5, 0, 5);
-        row.Controls.Add(comboBox, 1, 0);
+        if (isArabic)
+        {
+            row.Controls.Add(comboBox, 0, 0);
+            row.Controls.Add(labelControl, 1, 0);
+        }
+        else
+        {
+            row.Controls.Add(labelControl, 0, 0);
+            row.Controls.Add(comboBox, 1, 0);
+        }
+
         return row;
     }
 
-    private static Control TextInputRow(string label, TextBox textBox, string value, string placeholder, bool password = false)
+    private static Control TextInputRow(
+        string label,
+        TextBox textBox,
+        string value,
+        string placeholder,
+        bool password = false,
+        string? linkText = null,
+        string? linkUrl = null)
     {
+        var hasLink = !string.IsNullOrWhiteSpace(linkText) && !string.IsNullOrWhiteSpace(linkUrl);
+        var isArabic = LoaderlyLanguage.IsArabic;
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = hasLink ? 3 : 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = RightToLeft.No
         };
         row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.Controls.Add(new Label
+        foreach (var column in TextInputColumnsForLanguage(LoaderlyLanguage.Current, hasLink))
+        {
+            row.ColumnStyles.Add(column switch
+            {
+                "Label" => new ColumnStyle(SizeType.Absolute, TextInputLabelWidth),
+                "Link" => new ColumnStyle(SizeType.Absolute, OpenRouterLinkColumnWidth),
+                _ => new ColumnStyle(SizeType.Percent, 100)
+            });
+        }
+
+        var labelControl = new Label
         {
             Text = label,
             Dock = DockStyle.Fill,
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.2F),
-            TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 0);
+            TextAlign = isArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft
+        };
 
         var host = new RoundedPanel
         {
@@ -675,14 +872,119 @@ internal sealed class SettingsForm : Form
             Radius = LoaderlyTheme.ControlRadius,
             BackColor = LoaderlyTheme.SurfaceMuted,
             BorderColor = LoaderlyTheme.Border,
-            Margin = new Padding(0, 5, 0, 5)
+            Margin = hasLink && !isArabic
+                ? new Padding(0, 5, 8, 5)
+                : hasLink && isArabic
+                    ? new Padding(8, 5, 0, 5)
+                    : new Padding(0, 5, 0, 5)
         };
         ConfigureTextBox(textBox, value, placeholder);
         textBox.UseSystemPasswordChar = password;
         host.Controls.Add(textBox);
         ModernTextBoxPlacement.Attach(host, textBox);
-        row.Controls.Add(host, 1, 0);
+
+        var columns = TextInputColumnsForLanguage(LoaderlyLanguage.Current, hasLink);
+        for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+        {
+            switch (columns[columnIndex])
+            {
+                case "Label":
+                    row.Controls.Add(labelControl, columnIndex, 0);
+                    break;
+                case "Input":
+                    row.Controls.Add(host, columnIndex, 0);
+                    break;
+                case "Link" when hasLink:
+                    row.Controls.Add(ExternalLinkLabel(linkText!, linkUrl!), columnIndex, 0);
+                    break;
+            }
+        }
+
         return row;
+    }
+
+    private static Control ExternalLinkLabel(string text, string url)
+    {
+        var label = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = text,
+            ForeColor = LoaderlyTheme.Accent,
+            Font = LoaderlyTheme.BodyFont(8.7F),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Cursor = Cursors.Hand,
+            AutoEllipsis = true,
+            Margin = new Padding(0, 5, 0, 5)
+        };
+        label.Click += (_, _) => OpenExternalUrl(url);
+        return label;
+    }
+
+    private void LayoutTitleLabel()
+    {
+        var contentWidth = SettingsContentWidth(titleHost.ClientSize.Width);
+        var contentLeft = SettingsContentLeft(titleHost.ClientSize.Width);
+        var left = Math.Max(0, contentLeft - TitleHorizontalPadding);
+        var right = Math.Min(titleHost.ClientSize.Width, contentLeft + contentWidth + TitleHorizontalPadding);
+        titleLabel.TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft;
+        titleLabel.SetBounds(
+            left,
+            Math.Max(0, TitleTopPadding),
+            Math.Max(1, right - left),
+            Math.Max(1, titleHost.ClientSize.Height - Math.Max(0, TitleTopPadding)));
+    }
+
+    private static void LayoutCenteredContent(Control host, Control content, bool fillHeight, int topPadding = 0)
+    {
+        var width = SettingsContentWidth(host.ClientSize.Width);
+        content.SetBounds(
+            SettingsContentLeft(host.ClientSize.Width),
+            Math.Max(0, topPadding),
+            width,
+            fillHeight ? Math.Max(1, host.ClientSize.Height - Math.Max(0, topPadding)) : content.Height);
+    }
+
+    private static int SettingsContentWidth(int hostWidth)
+    {
+        return Math.Min(Math.Max(1, hostWidth), SettingsContentMaxWidth);
+    }
+
+    private static int SettingsContentLeft(int hostWidth)
+    {
+        return Math.Max(0, (hostWidth - SettingsContentWidth(hostWidth)) / 2);
+    }
+
+    private static int GeneralColumnFixedHeight()
+    {
+        return
+            28 +
+            SaveFolderListRowHeight +
+            34 +
+            24 +
+            54 +
+            24 +
+            54 +
+            24 +
+            54 +
+            34 +
+            34 +
+            34 +
+            34;
+    }
+
+    private static void OpenExternalUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+        }
     }
 
     private Control LanguagePickerRow()
@@ -711,6 +1013,7 @@ internal sealed class SettingsForm : Form
         aiLanguageSuggestionPanel.Radius = LoaderlyTheme.ControlRadius;
         aiLanguageSuggestionPanel.BackColor = LoaderlyTheme.SurfaceMuted;
         aiLanguageSuggestionPanel.BorderColor = LoaderlyTheme.Border;
+        aiLanguageSuggestionPanel.ClipToRoundedRegion = true;
         aiLanguageSuggestionPanel.Visible = false;
         aiLanguageSuggestionPanel.Padding = new Padding(1);
         aiLanguageListBox.BorderStyle = BorderStyle.None;
@@ -737,14 +1040,26 @@ internal sealed class SettingsForm : Form
 
         void LayoutPicker()
         {
-            var buttonX = Math.Max(horizontalPadding, host.ClientSize.Width - horizontalPadding - buttonWidth);
-            var textWidth = Math.Max(1, buttonX - horizontalPadding - 4);
+            var rtl = host.RightToLeft == RightToLeft.Yes;
+            var buttonX = rtl
+                ? horizontalPadding
+                : Math.Max(horizontalPadding, host.ClientSize.Width - horizontalPadding - buttonWidth);
+            var textLeft = rtl ? buttonX + buttonWidth + 4 : horizontalPadding;
+            var textRight = rtl
+                ? Math.Max(textLeft + 1, host.ClientSize.Width - horizontalPadding)
+                : Math.Max(textLeft + 1, buttonX - 4);
+            var textWidth = Math.Max(1, textRight - textLeft);
             var textTop = Math.Max(0, (host.ClientSize.Height - textBox.Height) / 2);
-            textBox.SetBounds(horizontalPadding, textTop, textWidth, textBox.Height);
+            textBox.TextAlign = rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            textBox.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
+            dropButton.TextAlign = ContentAlignment.MiddleCenter;
+            textBox.SetBounds(textLeft, textTop, textWidth, textBox.Height);
             dropButton.SetBounds(buttonX, 0, buttonWidth, host.ClientSize.Height);
         }
 
         host.Resize += (_, _) => LayoutPicker();
+        host.RightToLeftChanged += (_, _) => LayoutPicker();
+        textBox.RightToLeftChanged += (_, _) => LayoutPicker();
         textBox.HandleCreated += (_, _) => LayoutPicker();
         LayoutPicker();
     }
@@ -816,14 +1131,17 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        var width = Math.Max(220, aiLanguageHost.Width);
-        var height = aiLanguageListBox.Items.Count * aiLanguageListBox.ItemHeight + 2;
-        var below = PointToClient(aiLanguageHost.PointToScreen(new Point(0, aiLanguageHost.Height + 3)));
-        var above = PointToClient(aiLanguageHost.PointToScreen(new Point(0, -height - 3)));
-        var y = below.Y + height <= ClientSize.Height - 8
-            ? below.Y
-            : Math.Max(8, above.Y);
-        aiLanguageSuggestionPanel.SetBounds(below.X, y, width, height);
+        var hostLocation = PointToClient(aiLanguageHost.PointToScreen(Point.Empty));
+        var hostBounds = new Rectangle(hostLocation, aiLanguageHost.Size);
+        var rtl = RightToLeft == RightToLeft.Yes || aiLanguageHost.RightToLeft == RightToLeft.Yes;
+        aiLanguageListBox.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
+        var bounds = LanguageSuggestionBounds(
+            hostBounds,
+            ClientSize,
+            aiLanguageListBox.Items.Count,
+            aiLanguageListBox.ItemHeight,
+            rtl);
+        aiLanguageSuggestionPanel.Bounds = bounds;
         aiLanguageSuggestionPanel.Visible = true;
         aiLanguageSuggestionPanel.BringToFront();
 
@@ -831,6 +1149,29 @@ internal sealed class SettingsForm : Form
         {
             aiLanguageTextBox.Focus();
         }
+    }
+
+    private static Rectangle LanguageSuggestionBounds(Rectangle hostBounds, Size clientSize, int itemCount, int itemHeight, bool rtl)
+    {
+        const int screenPadding = 8;
+        const int gap = 3;
+        var itemCountSafe = Math.Max(1, itemCount);
+        var availableWidth = Math.Max(1, clientSize.Width - (screenPadding * 2));
+        var width = Math.Min(Math.Max(220, hostBounds.Width), availableWidth);
+        var rawX = rtl ? hostBounds.Right - width : hostBounds.Left;
+        var maxX = Math.Max(screenPadding, clientSize.Width - width - screenPadding);
+        var x = Math.Clamp(rawX, screenPadding, maxX);
+
+        var wantedHeight = itemCountSafe * Math.Max(1, itemHeight) + 2;
+        var availableHeight = Math.Max(Math.Max(1, itemHeight) + 2, clientSize.Height - (screenPadding * 2));
+        var height = Math.Min(wantedHeight, availableHeight);
+        var belowY = hostBounds.Bottom + gap;
+        var aboveY = hostBounds.Top - height - gap;
+        var y = belowY + height <= clientSize.Height - screenPadding
+            ? belowY
+            : Math.Max(screenPadding, aboveY);
+
+        return new Rectangle(x, y, width, height);
     }
 
     private void HideAiLanguageSuggestionsIfFocusLeft()
@@ -905,7 +1246,10 @@ internal sealed class SettingsForm : Form
             listBox.Font,
             new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(1, e.Bounds.Width - 16), e.Bounds.Height),
             LoaderlyTheme.Text,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            (listBox.RightToLeft == RightToLeft.Yes ? TextFormatFlags.Right | TextFormatFlags.RightToLeft : TextFormatFlags.Left) |
+            TextFormatFlags.VerticalCenter |
+            TextFormatFlags.EndEllipsis |
+            TextFormatFlags.NoPrefix);
     }
 
     private sealed class FolderListItem : Control
@@ -992,8 +1336,33 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.5F),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.BottomRight : ContentAlignment.BottomLeft
         };
+    }
+
+    private static bool IsArabicLanguage(string? language)
+    {
+        return LoaderlyLanguage.Normalize(language) == LoaderlyLanguage.Arabic;
+    }
+
+    private static bool ShouldUseRightToLeftLayout(string? language)
+    {
+        return false;
+    }
+
+    private static IReadOnlyList<string> SettingsColumnsForLanguage(string? language)
+    {
+        return IsArabicLanguage(language) ? ["Shortcuts", "General"] : ["General", "Shortcuts"];
+    }
+
+    private static IReadOnlyList<string> TextInputColumnsForLanguage(string? language, bool hasLink)
+    {
+        if (IsArabicLanguage(language))
+        {
+            return hasLink ? ["Link", "Input", "Label"] : ["Input", "Label"];
+        }
+
+        return hasLink ? ["Label", "Input", "Link"] : ["Label", "Input"];
     }
 
     private static void ConfigureCheckBox(CheckBox checkBox, string text, bool isChecked)

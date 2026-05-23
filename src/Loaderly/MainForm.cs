@@ -16,20 +16,193 @@ internal sealed class MainForm : Form
     private const int HistoryRenderThrottleMs = 1000;
     private const int ProgressLogThrottleMs = 1200;
     private const int DownloadProgressUiThrottleMs = 250;
+    private const int SidebarWidth = 296;
+    private const int SidebarHorizontalPadding = 28;
+    private const int SidebarBrandLogoColumnWidth = 60;
+    private const int SidebarContentWidth = SidebarWidth - (SidebarHorizontalPadding * 2);
+    private const int SidebarSavedItemsBadgeWidth = SidebarContentWidth;
+    private const int SidebarActionButtonWidth = SidebarContentWidth;
+    private const int CommandPanelRowHeight = 232;
+    private const int UrlInputRowHeight = 76;
+    private const int CommandOptionsRowHeight = 68;
+    private const int CommandQualityLabelColumnWidth = 86;
+    private const int CommandQualityColumnWidth = 156;
+    private const int CommandPlaylistColumnWidth = 154;
+    private const int CommandSubtitlesColumnWidth = 118;
+    private const int CommandLocalVideoColumnWidth = 136;
+    private const int CommandAddQueueColumnWidth = 136;
+    private const string UrlInputPlaceholder = "Paste URLs, one per line";
+    private const string LocalVideoDialogFilter = "Video files (*.mp4;*.m4v;*.mov;*.mkv;*.webm;*.avi)|*.mp4;*.m4v;*.mov;*.mkv;*.webm;*.avi|All files (*.*)|*.*";
     private const int HistoryCardHeight = 98;
-    private const int HistoryCardTitleRowHeight = 30;
-    private const int HistoryCardMetaRowHeight = 22;
-    private const int HistoryCardDetailRowHeight = 24;
+    private const int HistoryCardTextTopSpacer = 3;
+    private const int HistoryCardTitleRowHeight = 44;
+    private const int HistoryCardMetaRowHeight = 20;
+    private const int HistoryCardThumbnailColumnWidth = 102;
+    private const bool HistoryCardUsesSideAccent = false;
+    private const bool HistoryCardShowsFileNameRow = false;
+    private const int DetailsThumbnailRowHeight = 168;
+    private const int DetailsTitleRowHeight = 68;
+    private const int DetailsMetaRowHeight = 28;
+    private const int DetailsPathRowHeight = 24;
     private const int QueueCardVisualThrottleMs = 500;
+    private const string PrimaryWorkspaceTitle = "Media Library";
+    private const string PrimaryWorkspaceSubtitle = "Download, trim, subtitle, and export from YouTube, TikTok, Instagram, X/Twitter, Facebook, Vimeo, Reddit, SoundCloud, and more.";
     private const string QueueTitleLabelName = "queue-title";
     private const string QueueStateLabelName = "queue-state";
     private const string QueueDetailLabelName = "queue-detail";
     private const string QueueProgressBarName = "queue-progress";
+    private static readonly HashSet<string> LocalVideoExtensions = new(
+        [".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi"],
+        StringComparer.OrdinalIgnoreCase);
 
     public static int HistoryRenderThrottleMillisecondsForTest => HistoryRenderThrottleMs;
     public static int DownloadProgressUiThrottleMillisecondsForTest => DownloadProgressUiThrottleMs;
+    internal static int CommandPanelRowHeightForTest => CommandPanelRowHeight;
+    internal static int UrlInputRowHeightForTest => UrlInputRowHeight;
+    internal static string UrlInputPlaceholderForTest => UrlInputPlaceholder;
+    internal static bool UrlInputAcceptsMultipleLinesForTest => true;
     internal static int HistoryCardHeightForTest => HistoryCardHeight;
+    internal static int HistoryCardTopSpacerForTest => HistoryCardTextTopSpacer;
     internal static bool AutoCopiesFinishedDownloadsForTest => false;
+    internal static IReadOnlyList<string> UpdateInstallerArgumentsForTest()
+    {
+        return UpdateInstallerArguments();
+    }
+
+    internal static double? NextVisibleDownloadPercentForTest(double? currentPercent, double? incomingPercent)
+    {
+        return NextVisibleDownloadPercent(currentPercent, incomingPercent);
+    }
+
+    internal static long? NextVisibleDownloadBytesForTest(long? currentBytes, long? incomingBytes)
+    {
+        return NextVisibleDownloadBytes(currentBytes, incomingBytes);
+    }
+
+    internal static string QueueStateTextForTest(DownloadQueueItem task)
+    {
+        return QueueStateText(task);
+    }
+
+    internal static int QueueProgressBarValueForTest(DownloadQueueItem task)
+    {
+        return QueueProgressBarValue(task);
+    }
+
+    internal static bool ShouldSubmitUrlInputShortcutForTest(Keys keyData)
+    {
+        return ShouldSubmitUrlInputShortcut(keyData);
+    }
+
+    internal static int SidebarBrandTextWidthForTest => SidebarContentWidth - SidebarBrandLogoColumnWidth;
+
+    internal static int SidebarSavedItemsBadgeWidthForTest => SidebarSavedItemsBadgeWidth;
+
+    internal static int SidebarActionButtonWidthForTest => SidebarActionButtonWidth;
+
+    internal static int SubtitleLanguageColumnWidthForTest(int commandWidth)
+    {
+        return Math.Max(
+            0,
+            commandWidth -
+            CommandQualityLabelColumnWidth -
+            CommandQualityColumnWidth -
+            CommandPlaylistColumnWidth -
+            CommandSubtitlesColumnWidth);
+    }
+
+    internal static IReadOnlyList<string> CommandOptionsLayoutForTest()
+    {
+        return
+        [
+            "Quality:0,0",
+            "QualitySelect:1,0",
+            "Playlist:2,0",
+            "Subtitles:3,0",
+            "SubtitleLanguage:4,0,3",
+            "LocalVideo:5,1",
+            "AddToQueue:6,1"
+        ];
+    }
+
+    internal static bool RightToLeftLayoutForLanguageForTest(string? language)
+    {
+        return ShouldUseRightToLeftLayout(language);
+    }
+
+    internal static IReadOnlyList<string> ShellColumnsForLanguageForTest(string? language)
+    {
+        return ShellColumnsForLanguage(language);
+    }
+
+    internal static IReadOnlyList<string> HeaderColumnsForLanguageForTest(string? language)
+    {
+        return HeaderColumnsForLanguage(language);
+    }
+
+    internal static bool HeaderTitleStackMirrorsForLanguageForTest(string? language)
+    {
+        return HeaderTitleStackMirrorsForLanguage(language);
+    }
+
+    internal static IReadOnlyList<string> MainAreaColumnsForLanguageForTest(string? language)
+    {
+        return MainAreaColumnsForLanguage(language);
+    }
+
+    internal static string LocalVideoButtonLabelForTest => "Add local video";
+
+    internal static string LocalVideoDialogFilterForTest => LocalVideoDialogFilter;
+
+    internal static DownloadItem LocalVideoHistoryItemForTest(string filePath, DateTimeOffset createdAt)
+    {
+        return CreateLocalVideoHistoryItem(filePath, createdAt, thumbnailPath: null);
+    }
+
+    internal static bool SourceActionEnabledForTest(DownloadItem item)
+    {
+        return SourceActionEnabled(item);
+    }
+
+    internal static bool ShouldOfferDeleteFileForHistoryItemForTest(DownloadItem item)
+    {
+        return ShouldOfferDeleteFile(item);
+    }
+
+    internal static bool HistoryCardTextRowsFitForTest()
+    {
+        var verticalPadding = 16;
+        var textRowsHeight = HistoryCardTextTopSpacer + HistoryCardTitleRowHeight + HistoryCardMetaRowHeight;
+        return textRowsHeight <= HistoryCardHeight - verticalPadding;
+    }
+
+    internal static bool HistoryCardShowsFileNameRowForTest()
+    {
+        return HistoryCardShowsFileNameRow;
+    }
+
+    internal static bool HistoryCardUsesSideAccentForTest()
+    {
+        return HistoryCardUsesSideAccent;
+    }
+
+    internal static bool HistoryTitleFitsNormalCardForTest(string title)
+    {
+        var normalCardWidth = 500;
+        var availableTextWidth = normalCardWidth -
+            16 -
+            HistoryCardThumbnailColumnWidth -
+            14;
+        using var font = LoaderlyTheme.BodyFont(10.6F);
+        return TextRenderer.MeasureText(title, font).Width <= availableTextWidth * 2;
+    }
+
+    internal static string DetailsFileLabelForTest(string filePath)
+    {
+        return DetailsFileLabel(filePath);
+    }
+
+    internal static int DetailsPathRowHeightForTest => DetailsPathRowHeight;
 
     internal static FormWindowState ChildWindowStateForParentForTest(FormWindowState parentWindowState)
     {
@@ -40,6 +213,13 @@ internal sealed class MainForm : Form
     {
         return ["Updates", "Tools", "Settings", "About", "Logs"];
     }
+
+    internal static IReadOnlyList<string> DetailsActionLabelsForTest()
+    {
+        return DetailsActionLabels();
+    }
+
+    internal static string PrimaryWorkspaceTitleForTest => PrimaryWorkspaceTitle;
 
     internal static string AboutTextForTest()
     {
@@ -58,9 +238,11 @@ internal sealed class MainForm : Form
     private readonly DownloadHistoryStore historyStore;
     private readonly AppSettingsStore settingsStore;
     private readonly DownloadQueueStore queueStore = new();
+    private readonly TrimStateStore trimStateStore = new();
     private readonly AppSettings settings;
     private readonly List<DownloadItem> history = [];
 
+    private readonly RoundedPanel urlInputHost = new();
     private readonly TextBox urlTextBox = new();
     private readonly TextBox searchTextBox = new();
     private readonly ModernSelect qualityComboBox = new();
@@ -76,13 +258,20 @@ internal sealed class MainForm : Form
     private readonly Label detailsPath = new();
     private readonly CoverPictureBox detailsThumbnail = new();
     private readonly ModernButton downloadButton = new();
+    private readonly ModernButton localVideoButton = new();
+    private readonly ModernButton downloadsButton = new();
+    private readonly ModernButton libraryButton = new();
+    private readonly ModernButton trimNavButton = new();
+    private readonly ModernButton subtitleNavButton = new();
     private readonly ModernButton browseButton = new();
     private readonly ModernButton copyButton = new();
     private readonly ModernButton openFileButton = new();
+    private readonly ModernButton playFileButton = new();
     private readonly ModernButton revealButton = new();
     private readonly ModernButton watchTrimButton = new();
     private readonly ModernButton sourceButton = new();
     private readonly ModernButton removeButton = new();
+    private readonly ModernButton moreButton = new();
     private readonly ModernButton updateButton = new();
     private readonly ModernButton settingsButton = new();
     private readonly ModernButton toolsButton = new();
@@ -108,6 +297,7 @@ internal sealed class MainForm : Form
     private bool updatingFolderSelect;
     private bool historyRenderPending;
     private bool startupWorkStarted;
+    private bool urlTextBoxLayoutAttached;
 
     private enum TrayMenuIconKind
     {
@@ -154,7 +344,7 @@ internal sealed class MainForm : Form
 
         InitializeTray();
         BuildUi();
-        LoaderlyLanguage.ApplyTo(this);
+        ApplyLanguageChrome();
         BindEvents();
     }
 
@@ -232,6 +422,14 @@ internal sealed class MainForm : Form
             return;
         }
 
+        if (ShouldWarnBeforeClosing(settings.MinimizeToTray, exitingFromTray, HasActiveDownloads()) &&
+            !ConfirmCloseWithActiveDownloads())
+        {
+            exitingFromTray = false;
+            e.Cancel = true;
+            return;
+        }
+
         activeDownload?.Cancel();
         activeDownload?.Dispose();
         foreach (var item in downloadQueue)
@@ -252,6 +450,22 @@ internal sealed class MainForm : Form
         trayIcon.Dispose();
         trayMenu.Dispose();
         base.OnFormClosing(e);
+    }
+
+    private bool HasActiveDownloads()
+    {
+        return downloadQueue.Any(item => item.State is DownloadTaskState.Queued or DownloadTaskState.Running);
+    }
+
+    private bool ConfirmCloseWithActiveDownloads()
+    {
+        var decision = MessageBox.Show(
+            this,
+            LoaderlyLanguage.Text("Downloads are still running. Exit Loaderly anyway?"),
+            LoaderlyLanguage.Text("Active downloads"),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+        return decision == DialogResult.Yes;
     }
 
     protected override void WndProc(ref Message m)
@@ -279,9 +493,23 @@ internal sealed class MainForm : Form
         BuildUi();
         RenderHistory();
         RebuildTrayMenu();
-        LoaderlyLanguage.ApplyTo(this);
+        ApplyLanguageChrome();
         ResumeLayout(true);
         WindowsTheme.ApplyTitleBarTheme(this);
+    }
+
+    private void ApplyLanguageChrome()
+    {
+        LoaderlyLanguage.ApplyTo(this);
+        RightToLeftLayout = ShouldUseRightToLeftLayout(settings.AppLanguage);
+    }
+
+    private void SetThemeMode(string themeMode)
+    {
+        settings.ThemeMode = themeMode;
+        settingsStore.Save(settings);
+        LoaderlyTheme.SetMode(themeMode);
+        RebuildForTheme();
     }
 
     private void BuildUi()
@@ -291,14 +519,31 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Window
+            BackColor = LoaderlyTheme.Window,
+            RightToLeft = RightToLeft.No
         };
-        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 236));
-        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        if (LoaderlyLanguage.IsArabic)
+        {
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SidebarWidth));
+        }
+        else
+        {
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SidebarWidth));
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
         Controls.Add(shell);
 
-        shell.Controls.Add(BuildSidebar(), 0, 0);
-        shell.Controls.Add(BuildContent(), 1, 0);
+        if (LoaderlyLanguage.IsArabic)
+        {
+            shell.Controls.Add(BuildContent(), 0, 0);
+            shell.Controls.Add(BuildSidebar(), 1, 0);
+        }
+        else
+        {
+            shell.Controls.Add(BuildSidebar(), 0, 0);
+            shell.Controls.Add(BuildContent(), 1, 0);
+        }
     }
 
     private Control BuildSidebar()
@@ -307,7 +552,8 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             BackColor = LoaderlyTheme.Sidebar,
-            Padding = new Padding(22, 24, 22, 18)
+            Padding = new Padding(SidebarHorizontalPadding, 58, SidebarHorizontalPadding, 18),
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
         };
 
         var layout = new TableLayoutPanel
@@ -317,15 +563,15 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Sidebar
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 94));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         sidebar.Controls.Add(layout);
 
         var brand = new TableLayoutPanel
@@ -335,7 +581,7 @@ internal sealed class MainForm : Form
             RowCount = 1,
             BackColor = LoaderlyTheme.Sidebar
         };
-        brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
+        brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SidebarBrandLogoColumnWidth));
         brand.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var logo = new PictureBox
@@ -343,7 +589,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Image = LoaderlyAssets.Logo128,
             SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 0, 12, 22)
+            Margin = new Padding(0, 0, 12, 18)
         };
         brand.Controls.Add(logo, 0, 0);
 
@@ -353,7 +599,7 @@ internal sealed class MainForm : Form
             RowCount = 2,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Sidebar,
-            Margin = new Padding(0, 2, 0, 22)
+            Margin = new Padding(0, 2, 0, 18)
         };
         brandText.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
         brandText.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
@@ -365,7 +611,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ForeColor = LoaderlyTheme.SidebarText,
             Font = LoaderlyTheme.TitleFont(21),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = NearBottomAlignment()
         }, 0, 0);
         brandText.Controls.Add(new Label
         {
@@ -373,13 +619,13 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ForeColor = LoaderlyTheme.SidebarMuted,
             Font = LoaderlyTheme.BodyFont(9.5F),
-            TextAlign = ContentAlignment.TopLeft
+            TextAlign = NearTopAlignment()
         }, 0, 1);
         layout.Controls.Add(brand, 0, 0);
 
         savedItemsBadge.Dock = DockStyle.None;
-        savedItemsBadge.Anchor = AnchorStyles.Left | AnchorStyles.Top;
-        savedItemsBadge.Size = new Size(186, 60);
+        savedItemsBadge.Anchor = NearAnchor();
+        savedItemsBadge.Size = new Size(SidebarSavedItemsBadgeWidth, 58);
         savedItemsBadge.Radius = LoaderlyTheme.PanelRadius;
         savedItemsBadge.FillColor = LoaderlyTheme.SidebarCard;
         savedItemsBadge.BorderColor = LoaderlyTheme.SidebarCardBorder;
@@ -404,22 +650,89 @@ internal sealed class MainForm : Form
 
         aboutButton.Text = "About";
         StyleSidebarButton(aboutButton);
-        layout.Controls.Add(aboutButton, 0, 5);
+        layout.Controls.Add(aboutButton, 0, 6);
 
         logsButton.Text = "Logs";
         StyleSidebarButton(logsButton);
-        layout.Controls.Add(logsButton, 0, 6);
+        layout.Controls.Add(logsButton, 0, 7);
 
-        var footer = new Label
+        layout.Controls.Add(new Label
         {
             Dock = DockStyle.Fill,
             Text = ProductInfo.DisplayVersion,
-            ForeColor = LoaderlyTheme.SidebarMuted,
-            Font = LoaderlyTheme.BodyFont(9),
-            TextAlign = ContentAlignment.BottomLeft
-        };
-        layout.Controls.Add(footer, 0, 8);
+            ForeColor = LoaderlyTheme.Accent,
+            Font = LoaderlyTheme.BodyFont(8.6F),
+            TextAlign = NearBottomAlignment(),
+            Margin = new Padding(0)
+        }, 0, 8);
         return sidebar;
+    }
+
+    private Control BuildUpdateStatusCard()
+    {
+        var card = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.PanelRadius,
+            BackColor = LoaderlyTheme.SidebarCard,
+            BorderColor = LoaderlyTheme.SidebarCardBorder,
+            Padding = new Padding(16, 12, 16, 12),
+            Margin = new Padding(0, 8, 0, 0),
+            Cursor = Cursors.Hand
+        };
+        card.Click += async (_, _) => await CheckForUpdatesAsync();
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 2,
+            ColumnCount = 2,
+            BackColor = card.BackColor
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
+        card.Controls.Add(layout);
+
+        var versionLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = ProductInfo.DisplayVersion,
+            ForeColor = LoaderlyTheme.SidebarText,
+            Font = LoaderlyTheme.BodyFont(10.6F),
+            TextAlign = NearBottomAlignment()
+        };
+        versionLabel.Click += async (_, _) => await CheckForUpdatesAsync();
+        layout.Controls.Add(versionLabel, 0, 0);
+
+        var stateLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "You're up to date",
+            ForeColor = LoaderlyTheme.SidebarMuted,
+            Font = LoaderlyTheme.BodyFont(8.8F),
+            TextAlign = NearTopAlignment()
+        };
+        stateLabel.Click += async (_, _) => await CheckForUpdatesAsync();
+        layout.Controls.Add(stateLabel, 0, 1);
+
+        var statusDot = new ModernInfoBadge
+        {
+            Dock = DockStyle.None,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Size = new Size(24, 24),
+            Radius = 12,
+            FillColor = Color.FromArgb(37, 210, 108),
+            BorderColor = Color.FromArgb(44, 250, 130),
+            ForeColor = Color.White,
+            Font = LoaderlyTheme.BodyFont(10F),
+            Text = "",
+            TextPadding = new Padding(0)
+        };
+        layout.SetRowSpan(statusDot, 2);
+        layout.Controls.Add(statusDot, 1, 0);
+        return card;
     }
 
     private Control BuildContent()
@@ -429,11 +742,12 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             RowCount = 3,
             ColumnCount = 1,
-            Padding = new Padding(24),
-            BackColor = LoaderlyTheme.Window
+            Padding = new Padding(28, 26, 28, 22),
+            BackColor = LoaderlyTheme.Window,
+            RightToLeft = RightToLeft.No
         };
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 154));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute, CommandPanelRowHeight));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         content.Controls.Add(BuildHeader(), 0, 0);
@@ -449,45 +763,57 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Window
+            BackColor = LoaderlyTheme.Window,
+            RightToLeft = RightToLeft.No
         };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+        if (LoaderlyLanguage.IsArabic)
+        {
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
+        else
+        {
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+        }
 
         var titleStack = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             RowCount = 2,
             ColumnCount = 1,
-            BackColor = LoaderlyTheme.Window
+            BackColor = LoaderlyTheme.Window,
+            RightToLeft = RightToLeft.No
         };
         titleStack.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
         titleStack.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
-        header.Controls.Add(titleStack, 0, 0);
+        header.Controls.Add(titleStack, LoaderlyLanguage.IsArabic ? 1 : 0, 0);
 
         titleStack.Controls.Add(new Label
         {
-            Text = "Media Library",
+            Text = PrimaryWorkspaceTitle,
             Dock = DockStyle.Fill,
             ForeColor = LoaderlyTheme.Text,
-            Font = LoaderlyTheme.TitleFont(25),
-            TextAlign = ContentAlignment.BottomLeft
+            Font = LoaderlyTheme.TitleFont(24),
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No,
+            TextAlign = NearBottomAlignment()
         }, 0, 0);
         titleStack.Controls.Add(new Label
         {
-            Text = "Download, trim, subtitle, and export from YouTube, TikTok, Instagram, X/Twitter, Facebook, Vimeo, Reddit, SoundCloud, and more.",
+            Text = PrimaryWorkspaceSubtitle,
             Dock = DockStyle.Fill,
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(10),
-            TextAlign = ContentAlignment.TopLeft
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No,
+            TextAlign = NearTopAlignment()
         }, 0, 1);
 
         statusLabel.Dock = DockStyle.Fill;
         statusLabel.Text = "Ready";
-        statusLabel.TextAlign = ContentAlignment.MiddleRight;
+        statusLabel.TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleLeft : ContentAlignment.MiddleRight;
         statusLabel.ForeColor = LoaderlyTheme.MutedText;
         statusLabel.Font = LoaderlyTheme.BodyFont(9.5F);
-        header.Controls.Add(statusLabel, 1, 0);
+        header.Controls.Add(statusLabel, LoaderlyLanguage.IsArabic ? 0 : 1, 0);
         return header;
     }
 
@@ -510,54 +836,62 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UrlInputRowHeight));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, CommandOptionsRowHeight));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 8));
         panel.Controls.Add(layout);
 
-        var inputRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
-        };
-        inputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.Controls.Add(inputRow, 0, 0);
+        urlInputHost.Dock = DockStyle.Fill;
+        urlInputHost.Radius = LoaderlyTheme.ControlRadius;
+        urlInputHost.BackColor = LoaderlyTheme.SurfaceMuted;
+        urlInputHost.BorderColor = LoaderlyTheme.Border;
+        urlInputHost.Margin = new Padding(0, 0, 0, 8);
+        urlInputHost.Cursor = Cursors.IBeam;
+        layout.Controls.Add(urlInputHost, 0, 0);
 
-        urlTextBox.Dock = DockStyle.Fill;
+        urlTextBox.Dock = DockStyle.None;
         urlTextBox.AutoSize = false;
-        urlTextBox.PlaceholderText = "Paste one or more media URLs";
+        urlTextBox.Multiline = true;
+        urlTextBox.AcceptsReturn = true;
+        urlTextBox.AcceptsTab = false;
+        urlTextBox.WordWrap = false;
+        urlTextBox.ScrollBars = ScrollBars.None;
+        urlTextBox.PlaceholderText = LoaderlyLanguage.Text(UrlInputPlaceholder);
         urlTextBox.BorderStyle = BorderStyle.None;
-        urlTextBox.Font = LoaderlyTheme.BodyFont(11.5F);
+        urlTextBox.Font = LoaderlyTheme.BodyFont(10.5F);
         urlTextBox.BackColor = LoaderlyTheme.SurfaceMuted;
         urlTextBox.ForeColor = LoaderlyTheme.Text;
         urlTextBox.ShortcutsEnabled = true;
         urlTextBox.Cursor = Cursors.IBeam;
-        urlTextBox.Margin = new Padding(0, 0, 0, 6);
-        inputRow.Controls.Add(urlTextBox, 0, 0);
+        urlTextBox.Margin = new Padding(0);
+        urlInputHost.Controls.Add(urlTextBox);
+        AttachUrlTextBoxLayout();
 
         var optionsRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 6,
-            RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            ColumnCount = 7,
+            RowCount = 2,
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
         };
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 156));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 164));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
+        optionsRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        optionsRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandQualityLabelColumnWidth));
+        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandQualityColumnWidth));
+        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandPlaylistColumnWidth));
+        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandSubtitlesColumnWidth));
         optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 146));
+        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandLocalVideoColumnWidth));
+        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandAddQueueColumnWidth));
         layout.Controls.Add(optionsRow, 0, 1);
 
         optionsRow.Controls.Add(new Label
         {
             Text = "Quality",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
+            TextAlign = NearMiddleAlignment(),
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.5F)
         }, 0, 0);
@@ -589,9 +923,17 @@ internal sealed class MainForm : Form
         subtitleLanguageSelect.BorderColor = LoaderlyTheme.Border;
         subtitleLanguageSelect.ForeColor = LoaderlyTheme.Text;
         subtitleLanguageSelect.Font = LoaderlyTheme.BodyFont(9.2F);
-        subtitleLanguageSelect.Margin = new Padding(0, 2, 12, 6);
+        subtitleLanguageSelect.Margin = new Padding(0, 2, 0, 6);
         subtitleLanguageSelect.Enabled = subtitlesCheckBox.Checked;
         optionsRow.Controls.Add(subtitleLanguageSelect, 4, 0);
+        optionsRow.SetColumnSpan(subtitleLanguageSelect, 3);
+
+        localVideoButton.Text = "Add local video";
+        localVideoButton.DisplayText = LoaderlyLanguage.Text("Add local video");
+        StyleSecondaryButton(localVideoButton);
+        localVideoButton.Dock = DockStyle.Fill;
+        localVideoButton.Margin = new Padding(0, 2, 10, 6);
+        optionsRow.Controls.Add(localVideoButton, 5, 1);
 
         downloadButton.Text = "Add to queue";
         downloadButton.DisplayText = LoaderlyLanguage.Text("Add to queue");
@@ -603,14 +945,15 @@ internal sealed class MainForm : Form
         downloadButton.ForeColor = Color.White;
         downloadButton.Font = LoaderlyTheme.BodyFont(10.2F);
         downloadButton.Margin = new Padding(0, 2, 0, 6);
-        optionsRow.Controls.Add(downloadButton, 5, 0);
+        optionsRow.Controls.Add(downloadButton, 6, 1);
 
         var folderRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Surface
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
         };
         folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
         folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -621,7 +964,7 @@ internal sealed class MainForm : Form
         {
             Text = "Save to",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
+            TextAlign = NearMiddleAlignment(),
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.5F)
         }, 0, 0);
@@ -643,6 +986,7 @@ internal sealed class MainForm : Form
 
         progressBar.Dock = DockStyle.Fill;
         progressBar.Margin = new Padding(0, 8, 0, 0);
+        progressBar.RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No;
         progressBar.Visible = false;
         layout.Controls.Add(progressBar, 0, 3);
         return panel;
@@ -655,10 +999,19 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = LoaderlyTheme.Window
+            BackColor = LoaderlyTheme.Window,
+            RightToLeft = RightToLeft.No
         };
-        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        split.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 332));
+        if (LoaderlyLanguage.IsArabic)
+        {
+            split.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 342));
+            split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
+        else
+        {
+            split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            split.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 342));
+        }
 
         var historyPanel = new RoundedPanel
         {
@@ -667,7 +1020,7 @@ internal sealed class MainForm : Form
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
             Padding = new Padding(16),
-            Margin = new Padding(0, 0, 18, 18)
+            Margin = LoaderlyLanguage.IsArabic ? new Padding(18, 0, 0, 18) : new Padding(0, 0, 18, 18)
         };
         var historyLayout = new TableLayoutPanel
         {
@@ -676,7 +1029,7 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
-        historyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        historyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         historyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         historyPanel.Controls.Add(historyLayout);
 
@@ -699,6 +1052,7 @@ internal sealed class MainForm : Form
         searchTextBox.Margin = new Padding(0);
         searchHost.Controls.Add(searchTextBox);
         ModernTextBoxPlacement.Attach(searchHost, searchTextBox);
+
         historyLayout.Controls.Add(searchHost, 0, 0);
 
         historyFlow.Dock = DockStyle.Fill;
@@ -709,9 +1063,16 @@ internal sealed class MainForm : Form
         historyFlow.Padding = new Padding(0, 0, 12, 12);
         historyFlow.TabStop = false;
         historyLayout.Controls.Add(historyFlow, 0, 1);
-        split.Controls.Add(historyPanel, 0, 0);
-
-        split.Controls.Add(BuildDetailsPanel(), 1, 0);
+        if (LoaderlyLanguage.IsArabic)
+        {
+            split.Controls.Add(BuildDetailsPanel(), 0, 0);
+            split.Controls.Add(historyPanel, 1, 0);
+        }
+        else
+        {
+            split.Controls.Add(historyPanel, 0, 0);
+            split.Controls.Add(BuildDetailsPanel(), 1, 0);
+        }
         return split;
     }
 
@@ -730,72 +1091,89 @@ internal sealed class MainForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 7,
+            RowCount = 8,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 138));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsThumbnailRowHeight));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsTitleRowHeight + 10));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsMetaRowHeight + 2));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsPathRowHeight + 20));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         panel.Controls.Add(layout);
 
+        var detailsThumbnailFrame = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.CardRadius,
+            BackColor = LoaderlyTheme.ThumbnailBack,
+            BorderColor = LoaderlyTheme.Border,
+            ClipToRoundedRegion = true,
+            Margin = new Padding(0, 0, 0, 12)
+        };
         detailsThumbnail.Dock = DockStyle.Fill;
-        detailsThumbnail.BackColor = LoaderlyTheme.Surface;
-        detailsThumbnail.Margin = new Padding(0, 0, 0, 12);
-        layout.Controls.Add(detailsThumbnail, 0, 0);
+        detailsThumbnail.BackColor = LoaderlyTheme.ThumbnailBack;
+        detailsThumbnail.Margin = new Padding(0);
+        detailsThumbnailFrame.Controls.Add(detailsThumbnail);
+        layout.Controls.Add(detailsThumbnailFrame, 0, 0);
 
         detailsTitle.Dock = DockStyle.Fill;
         detailsTitle.AutoEllipsis = true;
-        detailsTitle.Font = LoaderlyTheme.BodyFont(12.5F);
+        detailsTitle.Font = LoaderlyTheme.BodyFont(11.2F);
         detailsTitle.ForeColor = LoaderlyTheme.Text;
-        detailsTitle.TextAlign = ContentAlignment.BottomLeft;
+        detailsTitle.TextAlign = NearMiddleAlignment();
         layout.Controls.Add(detailsTitle, 0, 1);
 
         detailsMeta.Dock = DockStyle.Fill;
         detailsMeta.AutoEllipsis = true;
         detailsMeta.Font = LoaderlyTheme.BodyFont(9.2F);
         detailsMeta.ForeColor = LoaderlyTheme.MutedText;
-        detailsMeta.TextAlign = ContentAlignment.MiddleLeft;
+        detailsMeta.TextAlign = NearMiddleAlignment();
         layout.Controls.Add(detailsMeta, 0, 2);
 
         detailsPath.Dock = DockStyle.Fill;
         detailsPath.AutoEllipsis = true;
         detailsPath.Font = LoaderlyTheme.BodyFont(8.8F);
         detailsPath.ForeColor = LoaderlyTheme.MutedText;
-        detailsPath.TextAlign = ContentAlignment.TopLeft;
+        detailsPath.TextAlign = NearMiddleAlignment();
         layout.Controls.Add(detailsPath, 0, 3);
 
-        var row1 = ButtonRow(copyButton, openFileButton);
-        copyButton.Text = "Copy";
-        openFileButton.Text = "Open";
+        var detailsActions = DetailsActionLabels();
+        copyButton.Text = detailsActions[0];
         StyleSecondaryButton(copyButton);
+        openFileButton.Text = detailsActions[1];
         StyleSecondaryButton(openFileButton);
-        layout.Controls.Add(row1, 0, 4);
+        var row1 = ButtonRow(copyButton, openFileButton);
+        layout.Controls.Add(row1, 0, 5);
 
-        var row2 = ButtonRow(revealButton, watchTrimButton);
-        revealButton.Text = "Show";
+        revealButton.Text = detailsActions[2];
         StyleSecondaryButton(revealButton);
-        watchTrimButton.Text = "Watch / Trim";
+        watchTrimButton.Text = detailsActions[3];
         watchTrimButton.Radius = LoaderlyTheme.ControlRadius;
         watchTrimButton.FillColor = LoaderlyTheme.TrimSurface;
         watchTrimButton.HoverColor = LoaderlyTheme.TrimHover;
         watchTrimButton.ForeColor = LoaderlyTheme.TrimText;
-        layout.Controls.Add(row2, 0, 5);
+        var row2 = ButtonRow(revealButton, watchTrimButton);
+        layout.Controls.Add(row2, 0, 6);
 
-        var row3 = ButtonRow(sourceButton, removeButton);
-        sourceButton.Text = "Source";
+        sourceButton.Text = detailsActions[4];
         StyleSecondaryButton(sourceButton);
-        removeButton.Text = "Remove";
+        removeButton.Text = detailsActions[5];
         removeButton.Radius = LoaderlyTheme.ControlRadius;
         removeButton.FillColor = LoaderlyTheme.DangerSurface;
         removeButton.HoverColor = LoaderlyTheme.DangerHover;
         removeButton.ForeColor = LoaderlyTheme.Danger;
-        layout.Controls.Add(row3, 0, 6);
+        var row3 = ButtonRow(sourceButton, removeButton);
+        layout.Controls.Add(row3, 0, 7);
         return panel;
+    }
+
+    private static IReadOnlyList<string> DetailsActionLabels()
+    {
+        return ["Copy path", "Open file", "Open folder", "Watch / Trim", "Source link", "Remove"];
     }
 
     private static Control ButtonRow(Control left, Control right)
@@ -818,16 +1196,125 @@ internal sealed class MainForm : Form
         return row;
     }
 
-    private static void StyleSidebarButton(ModernButton button)
+    private void AttachUrlTextBoxLayout()
+    {
+        if (urlTextBoxLayoutAttached)
+        {
+            LayoutUrlTextBox();
+            return;
+        }
+
+        urlTextBoxLayoutAttached = true;
+        urlInputHost.Resize += (_, _) => LayoutUrlTextBox();
+        urlTextBox.HandleCreated += (_, _) => LayoutUrlTextBox();
+        urlInputHost.MouseDown += (_, _) => FocusUrlTextBox();
+        urlInputHost.MouseUp += (_, _) => FocusUrlTextBox();
+        urlInputHost.Click += (_, _) => FocusUrlTextBox();
+        LayoutUrlTextBox();
+    }
+
+    private void LayoutUrlTextBox()
+    {
+        const int horizontalPadding = 12;
+        const int verticalPadding = 10;
+        var width = Math.Max(1, urlInputHost.ClientSize.Width - horizontalPadding * 2);
+        var height = Math.Max(24, urlInputHost.ClientSize.Height - verticalPadding * 2);
+        urlTextBox.SetBounds(horizontalPadding, verticalPadding, width, height);
+    }
+
+    private void FocusUrlTextBox()
+    {
+        if (urlTextBox.IsDisposed)
+        {
+            return;
+        }
+
+        if (urlTextBox.CanFocus)
+        {
+            urlTextBox.Focus();
+        }
+    }
+
+    private void FocusSearchBox()
+    {
+        if (!searchTextBox.IsDisposed && searchTextBox.CanFocus)
+        {
+            searchTextBox.Focus();
+        }
+    }
+
+    private void FocusSubtitleOptions()
+    {
+        subtitlesCheckBox.Checked = true;
+        if (!subtitleLanguageSelect.IsDisposed)
+        {
+            subtitleLanguageSelect.Focus();
+        }
+    }
+
+    private static ContentAlignment NearMiddleAlignment()
+    {
+        return LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft;
+    }
+
+    private static ContentAlignment NearTopAlignment()
+    {
+        return LoaderlyLanguage.IsArabic ? ContentAlignment.TopRight : ContentAlignment.TopLeft;
+    }
+
+    private static ContentAlignment NearBottomAlignment()
+    {
+        return LoaderlyLanguage.IsArabic ? ContentAlignment.BottomRight : ContentAlignment.BottomLeft;
+    }
+
+    private static AnchorStyles NearAnchor()
+    {
+        return LoaderlyLanguage.IsArabic ? AnchorStyles.Right | AnchorStyles.Top : AnchorStyles.Left | AnchorStyles.Top;
+    }
+
+    private static bool IsArabicLanguage(string? language)
+    {
+        return LoaderlyLanguage.Normalize(language) == LoaderlyLanguage.Arabic;
+    }
+
+    private static bool ShouldUseRightToLeftLayout(string? language)
+    {
+        return false;
+    }
+
+    private static IReadOnlyList<string> ShellColumnsForLanguage(string? language)
+    {
+        return IsArabicLanguage(language) ? ["Content", "Sidebar"] : ["Sidebar", "Content"];
+    }
+
+    private static IReadOnlyList<string> HeaderColumnsForLanguage(string? language)
+    {
+        return IsArabicLanguage(language) ? ["Status", "Title"] : ["Title", "Status"];
+    }
+
+    private static bool HeaderTitleStackMirrorsForLanguage(string? language)
+    {
+        return false;
+    }
+
+    private static IReadOnlyList<string> MainAreaColumnsForLanguage(string? language)
+    {
+        return IsArabicLanguage(language) ? ["Details", "History"] : ["History", "Details"];
+    }
+
+    private static void StyleSidebarButton(ModernButton button, bool active = false)
     {
         button.Dock = DockStyle.None;
-        button.Anchor = AnchorStyles.Left | AnchorStyles.Top;
-        button.Size = new Size(186, 34);
+        button.Anchor = NearAnchor();
+        button.Size = new Size(SidebarActionButtonWidth, 34);
         button.Radius = LoaderlyTheme.ControlRadius;
-        button.FillColor = LoaderlyTheme.SidebarButton;
-        button.HoverColor = LoaderlyTheme.SidebarButtonHover;
-        button.PressedColor = LoaderlyTheme.SidebarButtonPressed;
+        button.FillColor = active ? LoaderlyTheme.TrimSurface : LoaderlyTheme.SidebarButton;
+        button.HoverColor = active ? LoaderlyTheme.TrimHover : LoaderlyTheme.SidebarButtonHover;
+        button.PressedColor = active ? LoaderlyTheme.AccentPressed : LoaderlyTheme.SidebarButtonPressed;
+        button.BorderColor = Color.Empty;
         button.ForeColor = LoaderlyTheme.SidebarText;
+        button.Font = LoaderlyTheme.BodyFont(active ? 9.9F : 9.5F);
+        button.TextAlign = NearMiddleAlignment();
         button.Margin = new Padding(0, 0, 0, 10);
     }
 
@@ -837,6 +1324,7 @@ internal sealed class MainForm : Form
         button.FillColor = LoaderlyTheme.SurfaceMuted;
         button.HoverColor = Color.Empty;
         button.PressedColor = Color.Empty;
+        button.BorderColor = LoaderlyTheme.Border;
         button.ForeColor = LoaderlyTheme.Text;
         button.Font = LoaderlyTheme.BodyFont(9.5F);
     }
@@ -854,6 +1342,7 @@ internal sealed class MainForm : Form
     private void BindEvents()
     {
         downloadButton.Click += (_, _) => EnqueueDownloads();
+        localVideoButton.Click += async (_, _) => await AddLocalVideoFromDialogAsync(openEditor: false);
         browseButton.Click += (_, _) => ChooseFolder();
         folderSelect.SelectedIndexChanged += (_, _) => UseSelectedSavedFolder();
         subtitleLanguageSelect.SelectedIndexChanged += (_, _) => UseSelectedSubtitleLanguage();
@@ -866,9 +1355,15 @@ internal sealed class MainForm : Form
         copyButton.Click += (_, _) => CopySelectedFile();
         revealButton.Click += (_, _) => RevealSelectedFile();
         openFileButton.Click += (_, _) => OpenSelectedFile();
+        playFileButton.Click += (_, _) => OpenSelectedFile();
         watchTrimButton.Click += (_, _) => OpenTrimForm();
         sourceButton.Click += (_, _) => OpenSelectedSource();
         removeButton.Click += (_, _) => RemoveSelectedHistoryItem();
+        moreButton.Click += (_, _) => ShowSelectedDetails();
+        downloadsButton.Click += (_, _) => FocusUrlTextBox();
+        libraryButton.Click += (_, _) => FocusSearchBox();
+        trimNavButton.Click += (_, _) => OpenTrimForm();
+        subtitleNavButton.Click += (_, _) => FocusSubtitleOptions();
         updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
         toolsButton.Click += (_, _) => OpenTools();
         settingsButton.Click += (_, _) => OpenSettings();
@@ -885,7 +1380,7 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            if (e.KeyCode == Keys.Enter)
+            if (ShouldSubmitUrlInputShortcut(e.KeyData))
             {
                 e.SuppressKeyPress = true;
                 EnqueueDownloads();
@@ -893,13 +1388,20 @@ internal sealed class MainForm : Form
         };
         DragEnter += (_, e) =>
         {
-            if (e.Data?.GetDataPresent(DataFormats.Text) == true)
+            if (DroppedVideoFiles(e.Data).Any() || e.Data?.GetDataPresent(DataFormats.Text) == true)
             {
                 e.Effect = DragDropEffects.Copy;
             }
         };
-        DragDrop += (_, e) =>
+        DragDrop += async (_, e) =>
         {
+            var videoFile = DroppedVideoFiles(e.Data).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(videoFile))
+            {
+                await AddLocalVideoToLibraryAsync(videoFile, openEditor: false);
+                return;
+            }
+
             if (e.Data?.GetData(DataFormats.Text) is string text)
             {
                 urlTextBox.Text = text.Trim();
@@ -976,13 +1478,28 @@ internal sealed class MainForm : Form
 
     private bool ShouldClearUrlFocusWhenClicked(Control control)
     {
-        return control != urlTextBox &&
+        return control != urlInputHost &&
+               control != urlTextBox &&
                control is not TextBox &&
                control is not ButtonBase &&
                control is not ModernSelect &&
                control is not ListBox &&
                control is not ComboBox &&
                control is not NumericUpDown;
+    }
+
+    private static bool ShouldSubmitUrlInputShortcut(Keys keyData)
+    {
+        var keyCode = keyData & Keys.KeyCode;
+        return keyCode == Keys.Enter &&
+               (keyData & Keys.Control) == Keys.Control &&
+               (keyData & Keys.Shift) == 0 &&
+               (keyData & Keys.Alt) == 0;
+    }
+
+    private static IReadOnlyList<string> UpdateInstallerArguments()
+    {
+        return ["--update", "--quiet", "--launch"];
     }
 
     private async Task CheckDependenciesAsync()
@@ -1059,11 +1576,18 @@ internal sealed class MainForm : Form
         var progress = new Progress<int>(percent => SetStatus($"{LoaderlyLanguage.Text("Downloading update...")} {percent}%"));
         var installerPath = await updateChecker.DownloadInstallerAsync(result, progress, CancellationToken.None);
         SetStatus(LoaderlyLanguage.Text("Update downloaded. Starting installer..."));
-        Process.Start(new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = installerPath,
-            UseShellExecute = true
-        });
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(installerPath) ?? AppDataFolder.Path
+        };
+        foreach (var argument in UpdateInstallerArguments())
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        Process.Start(startInfo);
         exitingFromTray = true;
         BeginInvoke(Application.Exit);
     }
@@ -1120,6 +1644,36 @@ internal sealed class MainForm : Form
                 yield return normalized;
             }
         }
+    }
+
+    private static IEnumerable<string> DroppedVideoFiles(IDataObject? data)
+    {
+        if (data?.GetDataPresent(DataFormats.FileDrop) != true ||
+            data.GetData(DataFormats.FileDrop) is not string[] files)
+        {
+            return [];
+        }
+
+        return files.Where(IsSupportedLocalVideo);
+    }
+
+    private static bool IsSupportedLocalVideo(string filePath)
+    {
+        return LocalVideoExtensions.Contains(Path.GetExtension(filePath));
+    }
+
+    private static DownloadItem CreateLocalVideoHistoryItem(string filePath, DateTimeOffset createdAt, string? thumbnailPath)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        return new DownloadItem
+        {
+            Title = Path.GetFileNameWithoutExtension(fullPath),
+            SourceUrl = new Uri(fullPath).AbsoluteUri,
+            FilePath = fullPath,
+            ThumbnailPath = thumbnailPath,
+            CreatedAt = createdAt,
+            IsLocalFile = true
+        };
     }
 
     private DownloadQuality SelectedQuality()
@@ -1315,12 +1869,12 @@ internal sealed class MainForm : Form
             return;
         }
 
-        task.Percent = update.Percent;
         task.Status = update.Status;
         task.Speed = update.Speed ?? task.Speed;
         task.Eta = update.Eta ?? task.Eta;
-        task.DownloadedBytes = update.DownloadedBytes ?? task.DownloadedBytes;
-        task.TotalBytes = update.TotalBytes ?? task.TotalBytes;
+        task.DownloadedBytes = NextVisibleDownloadBytes(task.DownloadedBytes, update.DownloadedBytes);
+        task.TotalBytes = NextVisibleDownloadBytes(task.TotalBytes, update.TotalBytes);
+        task.Percent = NextVisibleDownloadPercent(task.Percent, update.Percent, task.DownloadedBytes, task.TotalBytes);
         AppendProgressLog(update.Message);
         RefreshQueueTaskCard(task, throttle: false);
     }
@@ -1499,7 +2053,7 @@ internal sealed class MainForm : Form
             AutoEllipsis = true,
             ForeColor = LoaderlyTheme.Text,
             Font = LoaderlyTheme.BodyFont(11.2F),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.BottomRight : ContentAlignment.BottomLeft
         }, 0, 0);
 
         text.Controls.Add(new Label
@@ -1510,7 +2064,7 @@ internal sealed class MainForm : Form
             AutoEllipsis = true,
             ForeColor = task.State == DownloadTaskState.Failed ? LoaderlyTheme.Danger : LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9F),
-            TextAlign = ContentAlignment.MiddleLeft
+            TextAlign = NearMiddleAlignment()
         }, 0, 1);
 
         var progress = new ModernProgressBar
@@ -1518,7 +2072,8 @@ internal sealed class MainForm : Form
             Name = QueueProgressBarName,
             Dock = DockStyle.Fill,
             IsIndeterminate = task.Percent is null && task.State == DownloadTaskState.Running,
-            Value = task.Percent is null ? 0 : Math.Clamp((int)Math.Round(task.Percent.Value), 0, 100),
+            Value = QueueProgressBarValue(task),
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No,
             Margin = new Padding(0, 7, 12, 7)
         };
         text.Controls.Add(progress, 0, 2);
@@ -1531,7 +2086,7 @@ internal sealed class MainForm : Form
             AutoEllipsis = true,
             ForeColor = task.Error is null ? LoaderlyTheme.MutedText : LoaderlyTheme.Danger,
             Font = LoaderlyTheme.BodyFont(8.6F),
-            TextAlign = ContentAlignment.TopLeft
+            TextAlign = NearTopAlignment()
         }, 0, 3);
 
         var actions = new TableLayoutPanel
@@ -1627,7 +2182,8 @@ internal sealed class MainForm : Form
         if (card.Controls.Find(QueueProgressBarName, searchAllChildren: true).FirstOrDefault() is ModernProgressBar progress)
         {
             progress.IsIndeterminate = task.Percent is null && task.State == DownloadTaskState.Running;
-            progress.Value = task.Percent is null ? 0 : Math.Clamp((int)Math.Round(task.Percent.Value), 0, 100);
+            progress.Value = QueueProgressBarValue(task);
+            progress.RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No;
             progress.Invalidate();
         }
     }
@@ -1671,24 +2227,14 @@ internal sealed class MainForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 2,
             RowCount = 1,
             BackColor = card.BackColor,
             RightToLeft = RightToLeft.No
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 4));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, HistoryCardThumbnailColumnWidth));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         card.Controls.Add(layout);
-
-        var accent = new Panel
-        {
-            Name = HistoryAccentName(item.Id),
-            Dock = DockStyle.Fill,
-            BackColor = selected ? LoaderlyTheme.Accent : LoaderlyTheme.Border,
-            Margin = new Padding(0, 10, 8, 10)
-        };
-        layout.Controls.Add(accent, 0, 0);
 
         var thumbnailFrame = new RoundedPanel
         {
@@ -1709,49 +2255,39 @@ internal sealed class MainForm : Form
             Margin = new Padding(0)
         };
         thumbnailFrame.Controls.Add(thumbnail);
-        layout.Controls.Add(thumbnailFrame, 1, 0);
+        layout.Controls.Add(thumbnailFrame, 0, 0);
 
         var text = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 5,
+            RowCount = 4,
             ColumnCount = 1,
             BackColor = card.BackColor
         };
-        text.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardTextTopSpacer));
         text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardTitleRowHeight));
         text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardMetaRowHeight));
-        text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardDetailRowHeight));
-        text.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        layout.Controls.Add(text, 2, 0);
+        text.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.Controls.Add(text, 1, 0);
 
         text.Controls.Add(new Label
         {
             Text = DisplayHistoryTitle(item),
             Dock = DockStyle.Fill,
-            AutoEllipsis = true,
+            AutoEllipsis = false,
             ForeColor = LoaderlyTheme.Text,
-            Font = LoaderlyTheme.BodyFont(11.5F),
+            Font = LoaderlyTheme.BodyFont(10.6F),
             TextAlign = HistoryTextAlign()
         }, 0, 1);
         text.Controls.Add(new Label
         {
-            Text = HistoryMetaLabel(item),
+            Text = HistoryMetaLabel(item, HasSavedTrimState(item.FilePath)),
             Dock = DockStyle.Fill,
             AutoEllipsis = true,
             ForeColor = LoaderlyTheme.MutedText,
             Font = LoaderlyTheme.BodyFont(9.2F),
             TextAlign = HistoryTextAlign()
         }, 0, 2);
-        text.Controls.Add(new Label
-        {
-            Text = HistoryFileLabel(item),
-            Dock = DockStyle.Fill,
-            AutoEllipsis = true,
-            ForeColor = LoaderlyTheme.MutedText,
-            Font = LoaderlyTheme.BodyFont(9F),
-            TextAlign = HistoryTextAlign()
-        }, 0, 3);
 
         AttachSelectHandler(card, item.Id);
 
@@ -1840,12 +2376,22 @@ internal sealed class MainForm : Form
             return;
         }
 
-        if (control.Name == "history-thumbnail-frame" || control is CoverPictureBox)
+        if (control.Name == "history-thumbnail-frame")
         {
-            return;
-        }
+            control.BackColor = surface;
+            if (control is RoundedPanel rounded)
+            {
+                rounded.BorderColor = selected ? LoaderlyTheme.SelectedBorder : LoaderlyTheme.Border;
+            }
 
-        if (control is TableLayoutPanel || control is Label)
+            control.Invalidate();
+        }
+        else if (control is CoverPictureBox)
+        {
+            control.BackColor = surface;
+            control.Invalidate();
+        }
+        else if (control is TableLayoutPanel || control is Label)
         {
             control.BackColor = surface;
         }
@@ -1916,10 +2462,12 @@ internal sealed class MainForm : Form
         var hasItem = item is not null;
         copyButton.Enabled = true;
         openFileButton.Enabled = true;
+        playFileButton.Enabled = true;
         revealButton.Enabled = true;
         watchTrimButton.Enabled = true;
-        sourceButton.Enabled = true;
+        sourceButton.Enabled = SourceActionEnabled(item);
         removeButton.Enabled = true;
+        moreButton.Enabled = true;
         watchTrimButton.Text = WatchTrimButtonText(hasItem);
 
         if (item is null)
@@ -1932,7 +2480,7 @@ internal sealed class MainForm : Form
         }
 
         detailsTitle.Text = DisplayHistoryTitle(item);
-        detailsMeta.Text = FormatHistoryTimestamp(item.CreatedAt);
+        detailsMeta.Text = HistoryMetaLabel(item, HasSavedTrimState(item.FilePath));
         detailsPath.Text = DetailsFileLabel(item.FilePath);
         detailsThumbnail.Image = LoadItemImage(item) ?? LoaderlyAssets.Logo512;
     }
@@ -1954,12 +2502,29 @@ internal sealed class MainForm : Form
 
     internal static string HistoryMetaLabelForTest(DownloadItem item)
     {
-        return HistoryMetaLabel(item);
+        return HistoryMetaLabel(item, hasSavedTrim: false);
+    }
+
+    internal static string HistoryMetaLabelForTest(DownloadItem item, bool hasSavedTrim)
+    {
+        return HistoryMetaLabel(item, hasSavedTrim);
+    }
+
+    internal static bool ShouldWarnBeforeClosingForTest(bool minimizeToTray, bool exitingFromTray, bool hasActiveDownloads)
+    {
+        return ShouldWarnBeforeClosing(minimizeToTray, exitingFromTray, hasActiveDownloads);
     }
 
     private static string WatchTrimButtonText(bool hasItem)
     {
         return LoaderlyLanguage.Text(hasItem ? "Watch / Trim" : "Open video...");
+    }
+
+    private static bool SourceActionEnabled(DownloadItem? item)
+    {
+        return item is not null &&
+            !item.IsLocalFile &&
+            !string.IsNullOrWhiteSpace(item.SourceUrl);
     }
 
     private static string DisplayHistoryTitle(DownloadItem item)
@@ -1994,18 +2559,61 @@ internal sealed class MainForm : Form
         return string.IsNullOrWhiteSpace(fileName) ? item.FilePath : fileName;
     }
 
-    private static string HistoryMetaLabel(DownloadItem item)
+    private bool HasSavedTrimState(string filePath)
+    {
+        try
+        {
+            return trimStateStore.HasSavedState(filePath);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string HistoryMetaLabel(DownloadItem item, bool hasSavedTrim = false)
     {
         var extension = Path.GetExtension(item.FilePath).TrimStart('.').ToUpperInvariant();
         var createdAt = FormatHistoryTimestamp(item.CreatedAt);
-        return string.IsNullOrWhiteSpace(extension)
+        var label = string.IsNullOrWhiteSpace(extension)
             ? createdAt
             : $"{createdAt}  -  {extension}";
+        return hasSavedTrim ? $"{label}  -  {LoaderlyLanguage.Text("Edited")}" : label;
+    }
+
+    private static string HistoryCardMetaLabel(DownloadItem item, bool hasSavedTrim = false)
+    {
+        var parts = new List<string>();
+        var extension = Path.GetExtension(item.FilePath).TrimStart('.').ToUpperInvariant();
+        parts.Add(string.IsNullOrWhiteSpace(extension) ? LoaderlyLanguage.Text("Media") : extension);
+        parts.Add(hasSavedTrim
+            ? LoaderlyLanguage.Text("Edited")
+            : item.IsLocalFile
+                ? LoaderlyLanguage.Text("Local file")
+                : LoaderlyLanguage.Text("Saved media"));
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(item.FilePath) && File.Exists(item.FilePath))
+            {
+                parts.Add(FormatDownloadBytes(new FileInfo(item.FilePath).Length));
+            }
+        }
+        catch
+        {
+        }
+
+        return string.Join("  -  ", parts);
     }
 
     private static string FormatHistoryTimestamp(DateTimeOffset createdAt)
     {
         return createdAt.LocalDateTime.ToString("yyyy-MM-dd h:mm tt", CultureInfo.InvariantCulture);
+    }
+
+    private static bool ShouldWarnBeforeClosing(bool minimizeToTray, bool exitingFromTray, bool hasActiveDownloads)
+    {
+        return hasActiveDownloads && (!minimizeToTray || exitingFromTray);
     }
 
     private static string DetailsFileLabel(string filePath)
@@ -2016,13 +2624,7 @@ internal sealed class MainForm : Form
         }
 
         var fileName = Path.GetFileName(filePath);
-        var folder = Path.GetDirectoryName(filePath);
-        if (string.IsNullOrWhiteSpace(folder))
-        {
-            return fileName;
-        }
-
-        return $"{fileName}{Environment.NewLine}{folder}";
+        return string.IsNullOrWhiteSpace(fileName) ? filePath : fileName;
     }
 
     private DownloadItem? SelectedItem()
@@ -2228,11 +2830,35 @@ internal sealed class MainForm : Form
             return;
         }
 
+        if (!SourceActionEnabled(item))
+        {
+            SetStatus(LoaderlyLanguage.Text("This is a local video file."));
+            return;
+        }
+
         Process.Start(new ProcessStartInfo
         {
             FileName = item.SourceUrl,
             UseShellExecute = true
         });
+    }
+
+    private void ShowSelectedDetails()
+    {
+        var item = SelectedItem();
+        if (item is null)
+        {
+            SetStatus("Select a history item first.");
+            return;
+        }
+
+        var message = string.Join(
+            Environment.NewLine,
+            DisplayHistoryTitle(item),
+            HistoryMetaLabel(item, HasSavedTrimState(item.FilePath)),
+            DetailsFileLabel(item.FilePath),
+            item.IsLocalFile ? LoaderlyLanguage.Text("Local file") : item.SourceUrl);
+        MessageBox.Show(this, message, ProductInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private async void OpenTrimForm()
@@ -2255,10 +2881,15 @@ internal sealed class MainForm : Form
 
     private async Task OpenLocalVideoForTrimAsync()
     {
+        await AddLocalVideoFromDialogAsync(openEditor: true);
+    }
+
+    private async Task AddLocalVideoFromDialogAsync(bool openEditor)
+    {
         using var dialog = new OpenFileDialog
         {
-            Title = "Open video",
-            Filter = "Video files (*.mp4;*.m4v;*.mov;*.mkv;*.webm)|*.mp4;*.m4v;*.mov;*.mkv;*.webm|All files (*.*)|*.*",
+            Title = LoaderlyLanguage.Text("Open video"),
+            Filter = LoaderlyLanguage.Text(LocalVideoDialogFilter),
             CheckFileExists = true,
             Multiselect = false
         };
@@ -2268,8 +2899,72 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var title = Path.GetFileNameWithoutExtension(dialog.FileName);
-        await OpenTrimFormForFileAsync(dialog.FileName, title, new Uri(dialog.FileName).AbsoluteUri);
+        await AddLocalVideoToLibraryAsync(dialog.FileName, openEditor);
+    }
+
+    private async Task<DownloadItem?> AddLocalVideoToLibraryAsync(string filePath, bool openEditor)
+    {
+        try
+        {
+            if (!File.Exists(filePath))
+            {
+                SetStatus(LoaderlyLanguage.Text("That file no longer exists."));
+                return null;
+            }
+
+            if (!IsSupportedLocalVideo(filePath))
+            {
+                SetStatus(LoaderlyLanguage.Text("Choose a supported video file."));
+                return null;
+            }
+
+            var fullPath = Path.GetFullPath(filePath);
+            var existingItem = history.FirstOrDefault(item =>
+                item.IsLocalFile &&
+                !string.IsNullOrWhiteSpace(item.FilePath) &&
+                Path.GetFullPath(item.FilePath).Equals(fullPath, StringComparison.OrdinalIgnoreCase));
+            if (existingItem is not null)
+            {
+                selectedItemId = existingItem.Id;
+                RenderHistory();
+                SetStatus(LoaderlyLanguage.Text("Local video is already in the library."));
+                if (openEditor)
+                {
+                    await OpenTrimFormForFileAsync(existingItem.FilePath, existingItem.Title, existingItem.SourceUrl);
+                }
+
+                return existingItem;
+            }
+
+            var importedItem = CreateLocalVideoHistoryItem(fullPath, DateTimeOffset.Now, thumbnailPath: null);
+            history.Insert(0, importedItem);
+            SaveAndRenderHistory(importedItem.Id);
+            SetStatus(LoaderlyLanguage.Text("Local video added to library."));
+
+            try
+            {
+                importedItem.ThumbnailPath = await thumbnailService.GenerateAsync(fullPath, CancellationToken.None);
+                historyStore.Save(history);
+                UpdateHistoryThumbnail(importedItem);
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"Could not generate local video thumbnail: {ex.Message}");
+            }
+
+            if (openEditor)
+            {
+                await OpenTrimFormForFileAsync(importedItem.FilePath, importedItem.Title, importedItem.SourceUrl);
+            }
+
+            return importedItem;
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"{LoaderlyLanguage.Text("Could not add local video.")} {ex.Message}");
+            AppendLog($"Could not add local video: {ex.Message}");
+            return null;
+        }
     }
 
     private async Task OpenTrimFormForFileAsync(string filePath, string title, string sourceUrl)
@@ -2324,6 +3019,15 @@ internal sealed class MainForm : Form
             return;
         }
 
+        if (!ShouldOfferDeleteFile(item))
+        {
+            history.RemoveAll(existing => existing.Id == item.Id);
+            selectedItemId = history.FirstOrDefault()?.Id;
+            SaveAndRenderHistory(selectedItemId);
+            SetStatus(LoaderlyLanguage.Text("Removed from history."));
+            return;
+        }
+
         var decision = MessageBox.Show(
             this,
             LoaderlyLanguage.Text("Do you want to delete the file from your PC too?\n\nYes: delete file and remove from history\nNo: remove from history only\nCancel: keep it"),
@@ -2355,6 +3059,11 @@ internal sealed class MainForm : Form
         SetStatus(decision == DialogResult.Yes ? LoaderlyLanguage.Text("Deleted file and removed from history.") : LoaderlyLanguage.Text("Removed from history."));
     }
 
+    private static bool ShouldOfferDeleteFile(DownloadItem item)
+    {
+        return !item.IsLocalFile;
+    }
+
     private void SaveAndRenderHistory(Guid? selectedId)
     {
         selectedItemId = selectedId;
@@ -2371,6 +3080,7 @@ internal sealed class MainForm : Form
     private void SetDownloading(bool isDownloading)
     {
         downloadButton.Text = LoaderlyLanguage.Text("Add to queue");
+        downloadButton.DisplayText = downloadButton.Text;
         progressBar.Visible = isDownloading;
         progressBar.IsIndeterminate = isDownloading;
         progressBar.Value = 0;
@@ -2671,7 +3381,8 @@ internal sealed class MainForm : Form
             ProductInfo.Name,
             ProductInfo.DisplayVersion,
             ProductInfo.ReleasesUri,
-            AppLog.LogFilePath);
+            AppLog.LogFilePath,
+            AboutForm.BuyMeACoffeeSupportUrl);
     }
 
     private void NotifyDownloadFinished(int count)
@@ -2729,9 +3440,79 @@ internal sealed class MainForm : Form
 
     private static string QueueStateText(DownloadQueueItem task)
     {
-        var percent = task.Percent is null ? string.Empty : $" {task.Percent.Value:0}%";
+        var visiblePercent = QueueDisplayPercent(task);
+        var percent = visiblePercent is null ? string.Empty : $" {visiblePercent.Value:0}%";
         var state = task.State == DownloadTaskState.Canceled ? "Paused" : task.State.ToString();
         return $"{LoaderlyLanguage.Text(state)}{percent} - {LoaderlyLanguage.Text(task.Status)}";
+    }
+
+    private static int QueueProgressBarValue(DownloadQueueItem task)
+    {
+        var visiblePercent = QueueDisplayPercent(task);
+        return visiblePercent is null ? 0 : Math.Clamp((int)Math.Round(visiblePercent.Value), 0, 100);
+    }
+
+    private static double? QueueDisplayPercent(DownloadQueueItem task)
+    {
+        var bytesPercent = PercentFromBytes(task.DownloadedBytes, task.TotalBytes);
+        return bytesPercent ?? task.Percent;
+    }
+
+    private static double? NextVisibleDownloadPercent(double? currentPercent, double? incomingPercent)
+    {
+        return NextVisibleDownloadPercent(currentPercent, incomingPercent, downloadedBytes: null, totalBytes: null);
+    }
+
+    private static double? NextVisibleDownloadPercent(
+        double? currentPercent,
+        double? incomingPercent,
+        long? downloadedBytes,
+        long? totalBytes)
+    {
+        if (PercentFromBytes(downloadedBytes, totalBytes) is { } bytesPercent)
+        {
+            return bytesPercent;
+        }
+
+        if (incomingPercent is null)
+        {
+            return currentPercent;
+        }
+
+        var next = Math.Clamp(incomingPercent.Value, 0D, 99D);
+        if (currentPercent is null)
+        {
+            return next;
+        }
+
+        return Math.Max(currentPercent.Value, next);
+    }
+
+    private static double? PercentFromBytes(long? downloadedBytes, long? totalBytes)
+    {
+        if (downloadedBytes is not { } downloaded ||
+            totalBytes is not { } total ||
+            total <= 0)
+        {
+            return null;
+        }
+
+        return Math.Clamp(downloaded * 100D / total, 0D, 99D);
+    }
+
+    private static long? NextVisibleDownloadBytes(long? currentBytes, long? incomingBytes)
+    {
+        if (incomingBytes is null)
+        {
+            return currentBytes;
+        }
+
+        if (currentBytes is null)
+        {
+            return Math.Max(0, incomingBytes.Value);
+        }
+
+        return Math.Max(currentBytes.Value, incomingBytes.Value);
     }
 
     private static string FriendlyDownloadError(string message)
@@ -2794,9 +3575,59 @@ internal sealed class MainForm : Form
 
     private static string QueueDetailLabel(DownloadQueueItem task)
     {
-        var speed = string.IsNullOrWhiteSpace(task.Speed) ? string.Empty : $" - {task.Speed}";
-        var eta = string.IsNullOrWhiteSpace(task.Eta) ? string.Empty : $" - ETA {task.Eta}";
-        return $"{QualityLabel(task.Options)}{speed}{eta}";
+        var counter = QueueProgressCounterLabel(task);
+        return string.IsNullOrWhiteSpace(counter)
+            ? QualityLabel(task.Options)
+            : $"{counter} · {QualityLabel(task.Options)}";
+    }
+
+    internal static string QueueDetailLabelForTest(DownloadQueueItem task)
+    {
+        return QueueDetailLabel(task);
+    }
+
+    private static string QueueProgressCounterLabel(DownloadQueueItem task)
+    {
+        var parts = new List<string>();
+        if (task.DownloadedBytes is { } downloadedBytes && task.TotalBytes is { } totalBytes && totalBytes > 0)
+        {
+            parts.Add($"{FormatDownloadBytes(downloadedBytes)} / {FormatDownloadBytes(totalBytes)}");
+        }
+        else if (task.DownloadedBytes is { } downloadedOnly)
+        {
+            parts.Add(LoaderlyLanguage.IsArabic
+                ? $"{FormatDownloadBytes(downloadedOnly)} تم تنزيلها"
+                : $"{FormatDownloadBytes(downloadedOnly)} downloaded");
+        }
+
+        if (!string.IsNullOrWhiteSpace(task.Speed))
+        {
+            parts.Add(task.Speed);
+        }
+
+        if (!string.IsNullOrWhiteSpace(task.Eta))
+        {
+            parts.Add(LoaderlyLanguage.IsArabic ? $"باقي {task.Eta}" : $"ETA {task.Eta}");
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static string FormatDownloadBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var value = Math.Max(0, bytes);
+        var unitIndex = 0;
+        var displayValue = (double)value;
+        while (displayValue >= 1024D && unitIndex < units.Length - 1)
+        {
+            displayValue /= 1024D;
+            unitIndex++;
+        }
+
+        return unitIndex == 0
+            ? $"{value:0} {units[unitIndex]}"
+            : $"{displayValue:0.0} {units[unitIndex]}";
     }
 
     private void ShowLoaderly()

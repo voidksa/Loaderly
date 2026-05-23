@@ -1,17 +1,28 @@
 param(
-    [string[]]$Tools = @("yt-dlp", "ffmpeg", "ffprobe", "deno")
+    [string[]]$Tools = @("yt-dlp", "ffmpeg", "ffprobe", "deno"),
+    [string]$InstallPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$ToolsPath = Join-Path $Root "tools\windows"
+$ToolsPath = if ([string]::IsNullOrWhiteSpace($InstallPath)) {
+    Join-Path $Root "tools\windows"
+}
+else {
+    $InstallPath
+}
 $YtDlpPath = Join-Path $ToolsPath "yt-dlp.exe"
 $FfmpegPath = Join-Path $ToolsPath "ffmpeg.exe"
 $FfprobePath = Join-Path $ToolsPath "ffprobe.exe"
 $DenoPath = Join-Path $ToolsPath "deno.exe"
 
 New-Item -ItemType Directory -Force -Path $ToolsPath | Out-Null
+$ToolsPath = (Resolve-Path $ToolsPath).Path
+$YtDlpPath = Join-Path $ToolsPath "yt-dlp.exe"
+$FfmpegPath = Join-Path $ToolsPath "ffmpeg.exe"
+$FfprobePath = Join-Path $ToolsPath "ffprobe.exe"
+$DenoPath = Join-Path $ToolsPath "deno.exe"
 
 $Requested = New-Object "System.Collections.Generic.HashSet[string]" ([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($Tool in $Tools) {
@@ -130,7 +141,7 @@ if ($InstallFfmpeg) {
         if ($LASTEXITCODE -ne 0) {
             winget install --id Gyan.FFmpeg -e --silent --accept-package-agreements --accept-source-agreements
             if ($LASTEXITCODE -ne 0) {
-                exit $LASTEXITCODE
+                Write-Host "winget could not install or update FFmpeg. Checking available ffmpeg tools..."
             }
         }
     }

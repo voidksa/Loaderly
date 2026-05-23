@@ -22,7 +22,7 @@ $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Project = Join-Path $Root "src\Loaderly\Loaderly.csproj"
 $SetupProject = Join-Path $Root "src\Loaderly.Setup\Loaderly.Setup.csproj"
-$Version = "1.0.0"
+$Version = "1.1.0"
 
 function Resolve-SignTool {
     if (-not [string]::IsNullOrWhiteSpace($SignToolPath)) {

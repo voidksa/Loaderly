@@ -13,4 +13,6 @@ internal sealed class DownloadItem
     public string? ThumbnailPath { get; set; }
 
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
+
+    public bool IsLocalFile { get; init; }
 }

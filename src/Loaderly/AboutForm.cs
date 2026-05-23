@@ -7,10 +7,13 @@ namespace Loaderly;
 
 internal sealed class AboutForm : Form
 {
+    private const string BuyMeACoffeeUrl = "https://buymeacoffee.com/voidksa";
+
     private readonly ModernButton releasesButton = new();
     private readonly ModernButton logsButton = new();
     private readonly ModernButton copyButton = new();
     private readonly ModernButton closeButton = new();
+    private readonly SupportButton coffeeButton = new();
 
     public AboutForm()
     {
@@ -27,7 +30,7 @@ internal sealed class AboutForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(600, 430);
+        ClientSize = new Size(640, 560);
         BackColor = LoaderlyTheme.Window;
         Font = LoaderlyTheme.BodyFont(10F);
 
@@ -133,7 +136,7 @@ internal sealed class AboutForm : Form
         return header;
     }
 
-    private static Control BuildInfoPanel()
+    private Control BuildInfoPanel()
     {
         var panel = new RoundedPanel
         {
@@ -148,19 +151,88 @@ internal sealed class AboutForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 3,
+            RowCount = 4,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.Controls.Add(layout);
 
         layout.Controls.Add(InfoRow("Version", ProductInfo.DisplayVersion), 0, 0);
         layout.Controls.Add(InfoRow("Updates", ProductInfo.ReleasesUri.ToString()), 0, 1);
         layout.Controls.Add(InfoRow("Diagnostics", AppLog.LogFilePath), 0, 2);
+        layout.Controls.Add(BuildSupportPanel(), 0, 3);
         return panel;
+    }
+
+    private Control BuildSupportPanel()
+    {
+        var panel = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.ControlRadius,
+            BackColor = LoaderlyTheme.Window,
+            BorderColor = LoaderlyTheme.Border,
+            Padding = new Padding(14, 10, 14, 12),
+            Margin = new Padding(0, 8, 0, 0)
+        };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 3,
+            ColumnCount = 1,
+            BackColor = LoaderlyTheme.Window
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        panel.Controls.Add(layout);
+
+        layout.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Support Loaderly",
+            ForeColor = LoaderlyTheme.Text,
+            Font = new Font(LoaderlyTheme.BodyFont(10F), FontStyle.Bold),
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft
+        }, 0, 0);
+        layout.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Optional support helps keep Loaderly maintained. Members may get early builds before public releases.",
+            ForeColor = LoaderlyTheme.MutedText,
+            Font = LoaderlyTheme.BodyFont(8.8F),
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.TopRight : ContentAlignment.TopLeft
+        }, 0, 1);
+
+        var buttons = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 1,
+            BackColor = LoaderlyTheme.Window
+        };
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.Controls.Add(buttons, 0, 2);
+
+        ConfigureSupportButtons(buttons);
+
+        return panel;
+    }
+
+    private void ConfigureSupportButtons(TableLayoutPanel buttons)
+    {
+        ConfigureSupportButton(
+            coffeeButton,
+            "Support via Buy Me a Coffee",
+            LoaderlyAssets.BuyMeACoffeeIcon,
+            Color.FromArgb(255, 129, 92));
+        coffeeButton.Margin = new Padding(0, 4, 0, 0);
+        buttons.Controls.Add(coffeeButton, 0, 0);
     }
 
     private static Control InfoRow(string label, string value)
@@ -234,7 +306,10 @@ internal sealed class AboutForm : Form
         logsButton.Click += (_, _) => Open(Path.GetDirectoryName(AppLog.LogFilePath)!);
         copyButton.Click += (_, _) => Clipboard.SetText(AboutText());
         closeButton.Click += (_, _) => Close();
+        coffeeButton.Click += (_, _) => Open(BuyMeACoffeeSupportUrl);
     }
+
+    internal static string BuyMeACoffeeSupportUrl => BuyMeACoffeeUrl;
 
     private static void Open(string pathOrUrl)
     {
@@ -267,6 +342,14 @@ internal sealed class AboutForm : Form
         button.Font = LoaderlyTheme.BodyFont(9.5F);
     }
 
+    private static void ConfigureSupportButton(SupportButton button, string text, Image? icon, Color accent)
+    {
+        button.Text = LoaderlyLanguage.Text(text);
+        button.Icon = icon;
+        button.AccentColor = accent;
+        button.Dock = DockStyle.Fill;
+    }
+
     private static string AboutText()
     {
         return string.Join(
@@ -274,6 +357,119 @@ internal sealed class AboutForm : Form
             ProductInfo.Name,
             ProductInfo.DisplayVersion,
             ProductInfo.ReleasesUri,
-            AppLog.LogFilePath);
+            AppLog.LogFilePath,
+            BuyMeACoffeeSupportUrl);
+    }
+
+    private sealed class SupportButton : Control
+    {
+        private bool isHovered;
+        private bool isPressed;
+
+        public Image? Icon { get; set; }
+
+        public Color AccentColor { get; set; } = LoaderlyTheme.Accent;
+
+        public SupportButton()
+        {
+            SetStyle(
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.SupportsTransparentBackColor |
+                ControlStyles.ResizeRedraw |
+                ControlStyles.UserPaint,
+                true);
+            BackColor = Color.Transparent;
+            ForeColor = LoaderlyTheme.Text;
+            Font = new Font(LoaderlyTheme.BodyFont(8.8F), FontStyle.Bold);
+            Cursor = Cursors.Hand;
+            TabStop = false;
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            isHovered = true;
+            Invalidate();
+            base.OnMouseEnter(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            isHovered = false;
+            isPressed = false;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                isPressed = true;
+                Invalidate();
+            }
+
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            isPressed = false;
+            Invalidate();
+            base.OnMouseUp(e);
+        }
+
+        protected override void OnTextChanged(EventArgs e)
+        {
+            Invalidate();
+            base.OnTextChanged(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Default;
+            e.Graphics.Clear(Parent?.BackColor ?? LoaderlyTheme.Window);
+
+            var bounds = ClientRectangle;
+            bounds.Width -= 1;
+            bounds.Height -= 1;
+            var fill = isPressed
+                ? LoaderlyTheme.ControlPressed
+                : isHovered
+                    ? LoaderlyTheme.ControlHover
+                    : LoaderlyTheme.SurfaceMuted;
+            using (var path = LoaderlyTheme.RoundedRect(bounds, LoaderlyTheme.ControlRadius))
+            using (var brush = new SolidBrush(fill))
+            using (var border = new Pen(Color.FromArgb(90, AccentColor)))
+            {
+                e.Graphics.FillPath(brush, path);
+                e.Graphics.DrawPath(border, path);
+            }
+
+            var iconSize = Math.Min(22, Math.Max(16, Height - 16));
+            var isRtl = RightToLeft == RightToLeft.Yes;
+            var iconX = isRtl ? Width - iconSize - 14 : 14;
+            var iconY = (Height - iconSize) / 2;
+            if (Icon is not null)
+            {
+                e.Graphics.DrawImage(Icon, new Rectangle(iconX, iconY, iconSize, iconSize));
+            }
+
+            var textBounds = isRtl
+                ? new Rectangle(12, 0, Math.Max(1, Width - iconSize - 34), Height)
+                : new Rectangle(iconX + iconSize + 9, 0, Math.Max(1, Width - iconSize - 34), Height);
+            TextRenderer.DrawText(
+                e.Graphics,
+                Text,
+                Font,
+                textBounds,
+                ForeColor,
+                (isRtl ? TextFormatFlags.Right : TextFormatFlags.Left) |
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis |
+                TextFormatFlags.SingleLine |
+                TextFormatFlags.NoPrefix);
+        }
     }
 }

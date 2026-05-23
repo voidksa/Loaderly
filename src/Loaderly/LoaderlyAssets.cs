@@ -13,6 +13,8 @@ internal static class LoaderlyAssets
 
     public static string? Logo128Path => AssetPath("loaderly-128.png");
 
+    public static Image? BuyMeACoffeeIcon => LoadImage("buy-me-a-coffee.png");
+
     private static Icon? LoadIcon(string fileName)
     {
         var path = AssetPath(fileName);

@@ -7,6 +7,7 @@ namespace Loaderly;
 internal static class ToolResolver
 {
     private static readonly ConcurrentDictionary<string, string> ToolPathCache = new(StringComparer.OrdinalIgnoreCase);
+    internal static string UserToolDirectory => Path.Combine(AppDataFolder.Path, "tools", "windows");
 
     public static string ResolveToolPath(string toolName)
     {
@@ -30,9 +31,19 @@ internal static class ToolResolver
         return null;
     }
 
-    internal static void ClearCacheForTest()
+    internal static void ClearCache()
     {
         ToolPathCache.Clear();
+    }
+
+    internal static void ClearCacheForTest()
+    {
+        ClearCache();
+    }
+
+    internal static string FirstCandidateToolDirectoryForTest()
+    {
+        return PreferredToolDirectories(includeCurrentDirectory: true).First();
     }
 
     private static string ResolveToolPathUncached(string toolName)
@@ -95,6 +106,19 @@ internal static class ToolResolver
     private static IEnumerable<string> CandidateToolDirectories(bool includeCurrentDirectory = true)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in PreferredToolDirectories(includeCurrentDirectory))
+        {
+            if (seen.Add(candidate) && Directory.Exists(candidate))
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    private static IEnumerable<string> PreferredToolDirectories(bool includeCurrentDirectory)
+    {
+        yield return UserToolDirectory;
+
         var anchors = includeCurrentDirectory
             ? new[] { AppContext.BaseDirectory, Environment.CurrentDirectory }
             : [AppContext.BaseDirectory];
@@ -103,20 +127,10 @@ internal static class ToolResolver
             var directory = new DirectoryInfo(anchor);
             while (directory is not null)
             {
-                foreach (var candidate in new[]
-                         {
-                             directory.FullName,
-                             Path.Combine(directory.FullName, "tools"),
-                             Path.Combine(directory.FullName, "tools", "windows"),
-                             Path.Combine(directory.FullName, "tools", "windows", "ffmpeg", "bin")
-                         })
-                {
-                    if (seen.Add(candidate) && Directory.Exists(candidate))
-                    {
-                        yield return candidate;
-                    }
-                }
-
+                yield return directory.FullName;
+                yield return Path.Combine(directory.FullName, "tools");
+                yield return Path.Combine(directory.FullName, "tools", "windows");
+                yield return Path.Combine(directory.FullName, "tools", "windows", "ffmpeg", "bin");
                 directory = directory.Parent;
             }
         }

@@ -4,18 +4,17 @@ internal static class TrimPanelLayout
 {
     public static IReadOnlyList<int> RowHeights { get; } =
     [
-        48,
-        146,
-        38,
-        38,
-        38,
-        108,
-        118,
+        34,
+        104,
+        30,
+        30,
+        28,
+        270,
         96,
-        40,
-        40,
-        40,
-        40
+        34,
+        34,
+        34,
+        34
     ];
 
     public static int ContentHeight => RowHeights.Sum();

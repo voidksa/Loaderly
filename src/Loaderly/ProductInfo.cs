@@ -3,7 +3,7 @@ namespace Loaderly;
 internal static class ProductInfo
 {
     public const string Name = "Loaderly";
-    public const string Version = "1.0.0";
+    public const string Version = "1.1.0";
     public const string GitHubOwner = "voidksa";
     public const string GitHubRepository = "Loaderly";
     public const string InstallerAssetPrefix = "Loaderly-Setup-";

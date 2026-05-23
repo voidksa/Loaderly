@@ -11,11 +11,20 @@ namespace Loaderly;
 internal sealed class SubtitleEditorForm : WinForms.Form
 {
     private const int TimeScale = 100;
+    private const int KeyboardSeekDebounceMilliseconds = 90;
     private const int PreviewPrimeDelayMilliseconds = 300;
     private const int PreviewLoadTimeoutMilliseconds = 4500;
     private const int MaxPreviewLoadRetries = 1;
+    private const int CueListRowHeight = 42;
+    private const int CueListRowGap = 4;
+    private const int CueListOverscanRows = 4;
+    private const int CueListVirtualizationThreshold = 120;
+    private const double DefaultCueDurationSeconds = 3.0;
+    private const double MinimumCueDurationSeconds = 0.5;
+    private const double CueSeparationSeconds = 0.08;
     private static readonly string[] FontSizes = ["18", "22", "24", "28", "32", "36", "42", "48"];
     private static readonly string[] BackgroundOpacities = ["0%", "25%", "50%", "70%", "85%", "100%"];
+    internal static bool TimelineShowsThumbnailsForTest => false;
     private static readonly StylePreset[] StylePresets =
     [
         new("Default", "Segoe UI", 24F, true, "#FFFFFF", "#000000", 70),
@@ -42,6 +51,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
     private readonly ModernScrollPanel cueScrollPanel = new();
     private readonly ModernScrollPanel fontScrollPanel = new();
     private readonly ModernRangeTimeline cueTimeline = new();
+    private readonly TimelineThumbnailService timelineThumbnailService = new();
     private readonly System.Windows.Forms.Integration.ElementHost videoHost = new();
     private readonly WpfControls.Grid videoSurface = new();
     private readonly WpfControls.MediaElement player = new();
@@ -50,6 +60,9 @@ internal sealed class SubtitleEditorForm : WinForms.Form
     private readonly ModernButton playButton = new();
     private readonly ModernButton addCueButton = new();
     private readonly ModernButton deleteCueButton = new();
+    private readonly ModernButton setCueStartButton = new();
+    private readonly ModernButton setCueEndButton = new();
+    private readonly ModernButton playCueButton = new();
     private readonly ModernButton textColorButton = new();
     private readonly ModernButton backgroundColorButton = new();
     private readonly ModernButton saveButton = new();
@@ -61,14 +74,22 @@ internal sealed class SubtitleEditorForm : WinForms.Form
     private readonly WinForms.Timer previewTimer = new();
     private readonly WinForms.Timer previewPrimeTimer = new();
     private readonly WinForms.Timer previewLoadTimer = new();
+    private readonly WinForms.Timer keyboardSeekTimer = new();
 
+    private CancellationTokenSource? timelineThumbnailCancellation;
     private List<SubtitleCue> cues = [];
+    private IReadOnlyList<int> visibleCueIndexCache = [];
     private readonly HashSet<int> selectedCueIndices = [];
     private int selectedCueIndex = -1;
     private int selectionAnchorCueIndex = -1;
     private bool updatingControls;
+    private bool isTimelineInteracting;
+    private bool resumeAfterTimelineInteraction;
+    private bool resumeAfterKeyboardSeek;
     private bool mediaReady;
     private TimeSpan? pendingSeek;
+    private TimeSpan? pendingKeyboardSeek;
+    private TimeSpan? playbackStopAt;
     private int previewLoadRetries;
 
     public SubtitleEditorForm(string subtitleFilePath, string mediaFilePath, SubtitleStyle style)
@@ -118,11 +139,13 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         Size = new Size(1320, 780);
         Font = LoaderlyTheme.BodyFont(10F);
         BackColor = LoaderlyTheme.Window;
+        Icon = SubtitleEditorWindowIcon();
         KeyPreview = true;
 
         BuildUi();
         LoaderlyLanguage.ApplyTo(this);
         BindEvents();
+        AttachTextInputFocusClearers(this);
         LoadSubtitleFile();
         ApplyStyleControls();
         ApplySubtitleStyle();
@@ -133,10 +156,115 @@ internal sealed class SubtitleEditorForm : WinForms.Form
     public static int PreviewPrimeDelayMillisecondsForTest => PreviewPrimeDelayMilliseconds;
     public static int PreviewLoadTimeoutMillisecondsForTest => PreviewLoadTimeoutMilliseconds;
     public static int MaxPreviewLoadRetriesForTest => MaxPreviewLoadRetries;
+    public static int KeyboardSeekDebounceMillisecondsForTest => KeyboardSeekDebounceMilliseconds;
+
+    internal static bool WindowUsesAppIconForTest => SubtitleEditorWindowIcon() is not null;
 
     internal static bool StartsManualMediaLoadForTest => true;
 
     internal readonly record struct CueSelectionState(IReadOnlyList<int> SelectedIndices, int AnchorIndex, int PrimaryIndex);
+
+    internal readonly record struct ManualCueRange(TimeSpan Start, TimeSpan End);
+
+    internal static IReadOnlyList<string> ManualCueActionLabelsForTest()
+    {
+        return ["Add at playhead", "Set start", "Set end", "Play cue"];
+    }
+
+    internal static string CueTimingSummaryForTest(SubtitleCue cue, TimeSpan trimStart)
+    {
+        return CueTimingSummary(cue, trimStart);
+    }
+
+    internal static string CueListLabelForTest(SubtitleCue cue, TimeSpan trimStart)
+    {
+        return CueListLabel(cue, trimStart);
+    }
+
+    internal static bool ShouldVirtualizeCueListForTest(int visibleCueCount)
+    {
+        return ShouldVirtualizeCueList(visibleCueCount);
+    }
+
+    internal static (int First, int Last, int Count) CueListRenderWindowForTest(int visibleCueCount, int scrollY, int viewportHeight)
+    {
+        return CueListRenderWindow(visibleCueCount, scrollY, viewportHeight);
+    }
+
+    internal static int CueListVirtualHeightForTest(int visibleCueCount, int viewportHeight)
+    {
+        return CueListVirtualHeight(visibleCueCount, viewportHeight);
+    }
+
+    internal static ManualCueRange NewCueRangeAtPlayheadForTest(TimeSpan playhead, TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        return NewCueRangeAtPlayhead(playhead, trimStart, trimEnd);
+    }
+
+    internal static ManualCueRange NewCueRangeAtPlayheadForTest(
+        TimeSpan playhead,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        IReadOnlyList<SubtitleCue> existingCues)
+    {
+        return NewCueRangeAtPlayhead(playhead, trimStart, trimEnd, existingCues, selectedIndex: -1);
+    }
+
+    internal static string CueRangeClampedToNeighborsForTest(
+        TimeSpan proposedStart,
+        TimeSpan proposedEnd,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        IReadOnlyList<SubtitleCue> cues,
+        int selectedIndex)
+    {
+        var range = ClampCueRangeToOpenSlot(proposedStart, proposedEnd, trimStart, trimEnd, cues, selectedIndex);
+        return $"{range.Start.TotalSeconds:0.0}-{range.End.TotalSeconds:0.0}";
+    }
+
+    internal static IReadOnlyList<TimelineSegmentDisplay> CueTimelineSegmentsForTest(
+        IReadOnlyList<SubtitleCue> cues,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        int selectedIndex)
+    {
+        return CueTimelineSegments(cues, trimStart, trimEnd, selectedIndex);
+    }
+
+    internal static string SetCueStartAtPlayheadForTest(SubtitleCue cue, TimeSpan playhead, TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        var updated = SetCueStartAtPlayhead(cue, playhead, trimStart, trimEnd);
+        return $"{updated.Start.TotalSeconds:0.0}-{updated.End.TotalSeconds:0.0}";
+    }
+
+    internal static string SetCueEndAtPlayheadForTest(SubtitleCue cue, TimeSpan playhead, TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        var updated = SetCueEndAtPlayhead(cue, playhead, trimStart, trimEnd);
+        return $"{updated.Start.TotalSeconds:0.0}-{updated.End.TotalSeconds:0.0}";
+    }
+
+    internal static bool ShouldAddNextCueShortcutForTest(WinForms.Keys keyData)
+    {
+        return ShouldAddNextCueShortcut(keyData);
+    }
+
+    internal static bool ShouldSetCueStartShortcutForTest(WinForms.Keys keyData)
+    {
+        return ShouldSetCueStartShortcut(keyData);
+    }
+
+    internal static bool ShouldSetCueEndShortcutForTest(WinForms.Keys keyData)
+    {
+        return ShouldSetCueEndShortcut(keyData);
+    }
+
+    internal static bool ShouldClearTextInputFocusForControlForTest(string controlName)
+    {
+        var isTextBox = string.Equals(controlName, nameof(cueTextBox), StringComparison.Ordinal) ||
+                        string.Equals(controlName, nameof(fontSearchTextBox), StringComparison.Ordinal) ||
+                        string.Equals(controlName, nameof(WinForms.TextBox), StringComparison.Ordinal);
+        return ShouldClearTextInputFocusForControl(controlName, isTextBox);
+    }
 
     internal static CueSelectionState CueSelectionAfterClickForTest(
         IEnumerable<int> selectedIndices,
@@ -166,6 +294,16 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         return MediaPositionFromTimelinePosition(timelinePosition, mediaOffset);
     }
 
+    internal static string KeyboardSeekTargetForTest(
+        TimeSpan currentPosition,
+        TimeSpan? pendingPosition,
+        TimeSpan delta,
+        TimeSpan trimStart,
+        TimeSpan trimEnd)
+    {
+        return FormatDisplayTime(KeyboardSeekTarget(currentPosition, pendingPosition, delta, trimStart, trimEnd));
+    }
+
     internal static TimeSpan AbsolutePositionForTest(TimeSpan mediaPosition, TimeSpan mediaOffset)
     {
         return TimelinePositionFromMediaPosition(mediaPosition, mediaOffset);
@@ -174,6 +312,16 @@ internal sealed class SubtitleEditorForm : WinForms.Form
     internal static SubtitleStyle ApplyStylePresetForTest(string presetName, SubtitleStyle style)
     {
         return ApplyStylePreset(presetName, style);
+    }
+
+    internal static bool ShouldSeekPreviewOnTimelinePositionChangeForTest(bool updatingControls, bool isTimelineInteracting)
+    {
+        return ShouldSeekPreviewOnTimelinePositionChange(updatingControls, isTimelineInteracting);
+    }
+
+    internal static bool ShouldRefreshCueTimelineUiForTest(bool updatingControls, bool isTimelineInteracting)
+    {
+        return ShouldRefreshCueTimelineUi(updatingControls, isTimelineInteracting);
     }
 
     private static CueSelectionState CueSelectionAfterClick(
@@ -254,6 +402,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         WindowsTheme.ApplyTitleBarTheme(this);
 
         BeginInvoke(new Action(LoadVideoPreview));
+        cueTimeline.SetThumbnailImages([]);
     }
 
     private void LoadVideoPreview()
@@ -273,6 +422,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             mediaReady = false;
             previewLoadRetries = 0;
             playButton.Enabled = false;
+            playCueButton.Enabled = false;
             playbackLabel.Text = LoaderlyLanguage.Text("Loading preview...");
             player.Source = new Uri(mediaFilePath);
             SeekTo(trimStart);
@@ -282,6 +432,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         else
         {
             playButton.Enabled = false;
+            playCueButton.Enabled = false;
             playbackLabel.Text = LoaderlyLanguage.Text("Preview unavailable");
             UpdatePreviewSubtitle(trimStart + RelativePosition());
         }
@@ -292,6 +443,9 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         previewTimer.Stop();
         previewPrimeTimer.Stop();
         previewLoadTimer.Stop();
+        keyboardSeekTimer.Stop();
+        timelineThumbnailCancellation?.Cancel();
+        timelineThumbnailCancellation?.Dispose();
         player.Stop();
         player.Source = null;
         mediaReady = false;
@@ -393,8 +547,11 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         cueScrollPanel.Dock = WinForms.DockStyle.Fill;
         cueScrollPanel.BackColor = LoaderlyTheme.SurfaceMuted;
         cueScrollPanel.Padding = new WinForms.Padding(0, 0, 10, 0);
+        cueScrollPanel.Scroll += (_, _) => RenderCueListRows();
+        cueScrollPanel.MouseWheel += (_, _) => BeginInvoke(new Action(RenderCueListRows));
+        cueScrollPanel.Resize += (_, _) => RenderCueListRows();
         cueListPanel.Dock = WinForms.DockStyle.Top;
-        cueListPanel.AutoSize = true;
+        cueListPanel.AutoSize = false;
         cueListPanel.BackColor = LoaderlyTheme.SurfaceMuted;
         cueScrollPanel.Controls.Add(cueListPanel);
         layout.Controls.Add(cueScrollPanel, 0, 1);
@@ -408,7 +565,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         };
         row.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50));
         row.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50));
-        ConfigureButton(addCueButton, "Add cue", primary: false);
+        ConfigureButton(addCueButton, "Add at playhead", primary: false);
         ConfigureButton(deleteCueButton, "Delete", primary: false);
         addCueButton.Dock = WinForms.DockStyle.Fill;
         deleteCueButton.Dock = WinForms.DockStyle.Fill;
@@ -428,7 +585,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 34));
         layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 100));
         layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 92));
-        layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 34));
+        layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 72));
         layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 142));
         panel.Controls.Add(layout);
 
@@ -459,6 +616,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
         subtitleTextBlock.TextWrapping = Wpf.TextWrapping.Wrap;
         subtitleTextBlock.TextAlignment = Wpf.TextAlignment.Center;
+        subtitleTextBlock.FlowDirection = Wpf.FlowDirection.LeftToRight;
         subtitleTextBlock.MaxWidth = 780;
         subtitleOverlay.Child = subtitleTextBlock;
         subtitleOverlay.HorizontalAlignment = Wpf.HorizontalAlignment.Center;
@@ -489,7 +647,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
         cueTimeline.Dock = WinForms.DockStyle.Fill;
         cueTimeline.Maximum = Math.Max(1, SecondsToUnits(clipDuration.TotalSeconds));
-        cueTimeline.MinimumRange = Math.Max(1, TimeScale / 4);
+        cueTimeline.MinimumRange = MinimumCueRangeUnits();
         panel.Controls.Add(cueTimeline);
         return panel;
     }
@@ -505,23 +663,69 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         clipDuration = trimEnd - trimStart;
         updatingControls = true;
         cueTimeline.Maximum = Math.Max(1, SecondsToUnits(clipDuration.TotalSeconds));
-        cueTimeline.MinimumRange = Math.Max(1, Math.Min(TimeScale / 4, cueTimeline.Maximum));
+        cueTimeline.MinimumRange = Math.Max(1, Math.Min(MinimumCueRangeUnits(), cueTimeline.Maximum));
         cueTimeline.PositionValue = Math.Clamp(cueTimeline.PositionValue, 0, cueTimeline.Maximum);
         updatingControls = false;
         clipRangeLabel.Text = $"{LoaderlyLanguage.Text("Clip")} {FormatDisplayTime(trimStart)} - {FormatDisplayTime(trimEnd)}";
+        cueTimeline.SetThumbnailImages([]);
+    }
+
+    private async Task LoadTimelineThumbnailsAsync()
+    {
+        timelineThumbnailCancellation?.Cancel();
+        timelineThumbnailCancellation?.Dispose();
+        timelineThumbnailCancellation = new CancellationTokenSource();
+        var token = timelineThumbnailCancellation.Token;
+
+        try
+        {
+            var count = TimelineThumbnailPlan.CountForWidth(cueTimeline.Width);
+            var sourceStart = MediaPositionFromTimelinePosition(trimStart, mediaOffset);
+            var images = await timelineThumbnailService
+                .GenerateAsync(mediaFilePath, sourceStart, clipDuration, count, token)
+                .ConfigureAwait(true);
+            if (token.IsCancellationRequested || IsDisposed)
+            {
+                foreach (var image in images)
+                {
+                    image.Dispose();
+                }
+
+                return;
+            }
+
+            cueTimeline.SetThumbnailImages(images);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+        }
     }
 
     private WinForms.Control BuildMetaRow()
     {
+        var layout = new WinForms.TableLayoutPanel
+        {
+            Dock = WinForms.DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = LoaderlyTheme.Surface
+        };
+        layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 30));
+        layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 34));
+
         var row = new WinForms.TableLayoutPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 4,
             RowCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
         row.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50));
         row.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50));
+        row.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 128));
         row.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 128));
 
         cueRangeLabel.Dock = WinForms.DockStyle.Fill;
@@ -537,7 +741,40 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         playButton.Margin = new WinForms.Padding(8, 2, 0, 2);
         row.Controls.Add(playButton, 2, 0);
 
-        return row;
+        ConfigureButton(playCueButton, "Play cue", primary: false);
+        playCueButton.Enabled = false;
+        playCueButton.Dock = WinForms.DockStyle.Fill;
+        playCueButton.Margin = new WinForms.Padding(8, 2, 0, 2);
+        row.Controls.Add(playCueButton, 3, 0);
+        layout.Controls.Add(row, 0, 0);
+
+        var timingRow = new WinForms.TableLayoutPanel
+        {
+            Dock = WinForms.DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 1,
+            BackColor = LoaderlyTheme.Surface
+        };
+        timingRow.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100));
+        timingRow.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 108));
+        timingRow.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 108));
+        timingRow.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 8));
+        playbackLabel.Dock = WinForms.DockStyle.Fill;
+        playbackLabel.TextAlign = ContentAlignment.MiddleLeft;
+        playbackLabel.ForeColor = LoaderlyTheme.MutedText;
+        playbackLabel.Font = LoaderlyTheme.BodyFont(9F);
+        timingRow.Controls.Add(playbackLabel, 0, 0);
+        ConfigureButton(setCueStartButton, "Set start", primary: false);
+        ConfigureButton(setCueEndButton, "Set end", primary: false);
+        setCueStartButton.Dock = WinForms.DockStyle.Fill;
+        setCueEndButton.Dock = WinForms.DockStyle.Fill;
+        setCueStartButton.Margin = new WinForms.Padding(8, 2, 0, 2);
+        setCueEndButton.Margin = new WinForms.Padding(8, 2, 0, 2);
+        timingRow.Controls.Add(setCueStartButton, 1, 0);
+        timingRow.Controls.Add(setCueEndButton, 2, 0);
+        layout.Controls.Add(timingRow, 0, 1);
+
+        return layout;
     }
 
     private WinForms.Control BuildCueTextEditor()
@@ -647,6 +884,9 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         addCueButton.Click += (_, _) => AddCue();
         deleteCueButton.Click += (_, _) => DeleteSelectedCues();
         playButton.Click += (_, _) => TogglePlayback();
+        setCueStartButton.Click += (_, _) => SetSelectedCueStartToPlayhead();
+        setCueEndButton.Click += (_, _) => SetSelectedCueEndToPlayhead();
+        playCueButton.Click += (_, _) => PlaySelectedCue();
         saveButton.Click += (_, _) => SaveAndClose();
         cancelButton.Click += (_, _) => DialogResult = WinForms.DialogResult.Cancel;
         textColorButton.Click += (_, _) => ChooseColor(isTextColor: true);
@@ -656,10 +896,43 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         opacitySelect.SelectedIndexChanged += (_, _) => ReadStyleControls();
         boldCheckBox.CheckedChanged += (_, _) => ReadStyleControls();
         fontSearchTextBox.TextChanged += (_, _) => RenderFontList();
+        cueTimeline.SegmentClicked += (_, args) =>
+        {
+            ClearTextInputFocus();
+            SelectCue(args.SegmentIndex);
+        };
+        cueTimeline.InteractionStarted += (_, _) =>
+        {
+            ClearTextInputFocus();
+            CommitPendingKeyboardSeek();
+            isTimelineInteracting = true;
+            resumeAfterTimelineInteraction = previewTimer.Enabled;
+            if (resumeAfterTimelineInteraction)
+            {
+                previewPrimeTimer.Stop();
+                player.Pause();
+                previewTimer.Stop();
+                playButton.Text = LoaderlyLanguage.Text("Resume");
+            }
+        };
+        cueTimeline.InteractionCompleted += (_, _) =>
+        {
+            isTimelineInteracting = false;
+            UpdateSelectedCueFromTimeline();
+            SeekTo(trimStart + UnitsToTime(cueTimeline.PositionValue));
+            if (resumeAfterTimelineInteraction && player.Source is not null && mediaReady)
+            {
+                player.Play();
+                previewTimer.Start();
+                playButton.Text = LoaderlyLanguage.Text("Pause");
+            }
+
+            resumeAfterTimelineInteraction = false;
+        };
         cueTimeline.RangeChanged += (_, _) => UpdateSelectedCueFromTimeline();
         cueTimeline.PositionChanged += (_, _) =>
         {
-            if (!updatingControls)
+            if (ShouldSeekPreviewOnTimelinePositionChange(updatingControls, isTimelineInteracting))
             {
                 SeekTo(trimStart + UnitsToTime(cueTimeline.PositionValue));
             }
@@ -670,6 +943,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             player.Pause();
             mediaReady = true;
             playButton.Enabled = true;
+            playCueButton.Enabled = selectedCueIndex >= 0 && selectedCueIndex < cues.Count;
             playbackLabel.Text = LoaderlyLanguage.Text("Ready.");
             if (useFullSubtitleRange && player.NaturalDuration.HasTimeSpan)
             {
@@ -685,23 +959,30 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             previewLoadTimer.Stop();
             mediaReady = false;
             playButton.Enabled = false;
+            playCueButton.Enabled = false;
             previewTimer.Stop();
+            playbackStopAt = null;
             playButton.Text = LoaderlyLanguage.Text("Play");
             playbackLabel.Text = args.ErrorException?.Message ?? LoaderlyLanguage.Text("Preview unavailable");
         };
         player.MediaEnded += (_, _) =>
         {
             previewTimer.Stop();
+            playbackStopAt = null;
             playButton.Text = LoaderlyLanguage.Text("Play");
             SeekTo(trimStart);
         };
 
         previewTimer.Interval = 90;
         previewTimer.Tick += (_, _) => UpdatePlayback();
+        keyboardSeekTimer.Interval = KeyboardSeekDebounceMilliseconds;
+        keyboardSeekTimer.Tick += (_, _) => CommitPendingKeyboardSeek();
         previewPrimeTimer.Interval = PreviewPrimeDelayMilliseconds;
         previewPrimeTimer.Tick += (_, _) => FinishPreviewPrime();
         previewLoadTimer.Interval = PreviewLoadTimeoutMilliseconds;
         previewLoadTimer.Tick += (_, _) => RecoverFromPreviewLoadTimeout();
+        videoHost.MouseDown += (_, _) => ClearTextInputFocus();
+        videoSurface.PreviewMouseDown += (_, _) => ClearTextInputFocus();
     }
 
     private void LoadSubtitleFile()
@@ -731,17 +1012,35 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
     private void RenderCueList()
     {
+        visibleCueIndexCache = VisibleCueIndices();
+        RenderCueListRows();
+        UpdateTimelineCueSegments();
+    }
+
+    private void RenderCueListRows()
+    {
         cueListPanel.SuspendLayout();
         cueListPanel.Controls.Clear();
-        var top = 0;
-        foreach (var cueIndex in VisibleCueIndices())
+
+        var width = Math.Max(1, cueScrollPanel.ClientSize.Width - 12);
+        var viewportHeight = Math.Max(1, cueScrollPanel.ClientSize.Height);
+        cueListPanel.Width = width;
+        cueListPanel.Height = CueListVirtualHeight(visibleCueIndexCache.Count, viewportHeight);
+
+        var scrollY = Math.Max(0, -cueScrollPanel.AutoScrollPosition.Y);
+        var window = ShouldVirtualizeCueList(visibleCueIndexCache.Count)
+            ? CueListRenderWindow(visibleCueIndexCache.Count, scrollY, viewportHeight)
+            : (First: 0, Last: visibleCueIndexCache.Count - 1, Count: visibleCueIndexCache.Count);
+
+        for (var position = window.First; position <= window.Last; position++)
         {
+            var cueIndex = visibleCueIndexCache[position];
             var button = new ModernButton
             {
                 Text = CueLabel(cueIndex),
                 Dock = WinForms.DockStyle.None,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
-                Height = 34,
+                Height = CueListRowHeight,
                 Radius = 7,
                 FillColor = selectedCueIndices.Contains(cueIndex) ? LoaderlyTheme.SelectedSurface : LoaderlyTheme.SurfaceMuted,
                 HoverColor = LoaderlyTheme.ControlHover,
@@ -751,13 +1050,11 @@ internal sealed class SubtitleEditorForm : WinForms.Form
                 Tag = cueIndex
             };
             button.Click += (_, _) => SelectCueFromClick((int)button.Tag);
-            button.Width = Math.Max(1, cueScrollPanel.ClientSize.Width - 12);
-            button.Location = new Point(0, top);
+            button.Width = width;
+            button.Location = new Point(0, position * (CueListRowHeight + CueListRowGap));
             cueListPanel.Controls.Add(button);
-            top += button.Height + 4;
         }
 
-        cueListPanel.Height = Math.Max(top, cueScrollPanel.Height);
         cueListPanel.ResumeLayout();
     }
 
@@ -858,8 +1155,8 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
         var cue = cues[selectedCueIndex];
         updatingControls = true;
-        cueTextBox.Text = cue.Text;
         ApplyCueTextDirection(cue.Text);
+        cueTextBox.Text = cue.Text;
         var start = SecondsToUnits(Math.Clamp((cue.Start - trimStart).TotalSeconds, 0, clipDuration.TotalSeconds));
         var end = SecondsToUnits(Math.Clamp((cue.End - trimStart).TotalSeconds, 0, clipDuration.TotalSeconds));
         if (end <= start)
@@ -885,8 +1182,13 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         var cue = cues[selectedCueIndex];
         cues[selectedCueIndex] = cue with { Text = cueTextBox.Text.Trim() };
         ApplyCueTextDirection(cueTextBox.Text);
-        RenderCueList();
+        RenderCueListRows();
         UpdatePreviewSubtitle();
+    }
+
+    private void UpdateTimelineCueSegments()
+    {
+        cueTimeline.SetSegments(CueTimelineSegments(cues, trimStart, trimEnd, selectedCueIndex), selectedCueIndex);
     }
 
     private void UpdateSelectedCueFromTimeline()
@@ -896,33 +1198,147 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             return;
         }
 
-        var start = trimStart + UnitsToTime(cueTimeline.StartValue);
-        var end = trimStart + UnitsToTime(cueTimeline.EndValue);
-        if (end <= start)
+        var proposedStart = trimStart + UnitsToTime(cueTimeline.StartValue);
+        var proposedEnd = trimStart + UnitsToTime(cueTimeline.EndValue);
+        var range = ClampCueRangeToOpenSlot(proposedStart, proposedEnd, trimStart, trimEnd, cues, selectedCueIndex);
+
+        cues[selectedCueIndex] = cues[selectedCueIndex] with { Start = range.Start, End = range.End };
+        var correctedStart = SecondsToUnits(Math.Clamp((range.Start - trimStart).TotalSeconds, 0, clipDuration.TotalSeconds));
+        var correctedEnd = SecondsToUnits(Math.Clamp((range.End - trimStart).TotalSeconds, 0, clipDuration.TotalSeconds));
+        if (correctedStart != cueTimeline.StartValue || correctedEnd != cueTimeline.EndValue)
         {
-            end = start + TimeSpan.FromMilliseconds(500);
+            updatingControls = true;
+            cueTimeline.SetRange(correctedStart, correctedEnd);
+            cueTimeline.PositionValue = Math.Clamp(cueTimeline.PositionValue, correctedStart, correctedEnd);
+            updatingControls = false;
         }
 
-        cues[selectedCueIndex] = cues[selectedCueIndex] with { Start = start, End = end };
-        RenderCueList();
-        RefreshLabels();
-        UpdatePreviewSubtitle();
+        UpdateTimelineCueSegments();
+        if (ShouldRefreshCueTimelineUi(updatingControls, isTimelineInteracting))
+        {
+            RenderCueList();
+            RefreshLabels();
+            UpdatePreviewSubtitle();
+        }
     }
 
     private void AddCue()
     {
-        var start = trimStart + RelativePosition();
-        var end = start + TimeSpan.FromSeconds(3);
-        if (end > trimEnd)
+        var range = NewCueRangeAtPlayhead(CurrentPreviewPosition(), trimStart, trimEnd, cues, selectedIndex: -1);
+        cues.Add(new SubtitleCue(range.Start, range.End, string.Empty));
+        cues = cues.OrderBy(cue => cue.Start).ToList();
+        selectedCueIndex = cues.FindIndex(cue => cue.Start == range.Start && cue.End == range.End);
+        SelectCue(selectedCueIndex);
+        cueTextBox.Focus();
+    }
+
+    private void AddNextCueAfterCurrent()
+    {
+        var start = selectedCueIndex >= 0 && selectedCueIndex < cues.Count
+            ? cues[selectedCueIndex].End
+            : CurrentPreviewPosition();
+        var range = NewCueRangeAtPlayhead(start, trimStart, trimEnd, cues, selectedIndex: -1);
+        cues.Add(new SubtitleCue(range.Start, range.End, string.Empty));
+        cues = cues.OrderBy(cue => cue.Start).ToList();
+        selectedCueIndex = cues.FindIndex(cue => cue.Start == range.Start && cue.End == range.End);
+        SelectCue(selectedCueIndex);
+        cueTextBox.Focus();
+    }
+
+    private void SetSelectedCueStartToPlayhead()
+    {
+        if (selectedCueIndex < 0 || selectedCueIndex >= cues.Count)
         {
-            end = trimEnd;
-            start = trimEnd - TimeSpan.FromSeconds(Math.Min(3, Math.Max(0.5, clipDuration.TotalSeconds)));
+            return;
         }
 
-        cues.Add(new SubtitleCue(start, end, string.Empty));
-        cues = cues.OrderBy(cue => cue.Start).ToList();
-        selectedCueIndex = cues.FindIndex(cue => cue.Start == start && cue.End == end);
+        cues[selectedCueIndex] = SetCueStartAtPlayhead(cues[selectedCueIndex], CurrentPreviewPosition(), trimStart, trimEnd, cues, selectedCueIndex);
         SelectCue(selectedCueIndex);
+    }
+
+    private void SetSelectedCueEndToPlayhead()
+    {
+        if (selectedCueIndex < 0 || selectedCueIndex >= cues.Count)
+        {
+            return;
+        }
+
+        cues[selectedCueIndex] = SetCueEndAtPlayhead(cues[selectedCueIndex], CurrentPreviewPosition(), trimStart, trimEnd, cues, selectedCueIndex);
+        SelectCue(selectedCueIndex);
+    }
+
+    private static ManualCueRange NewCueRangeAtPlayhead(TimeSpan playhead, TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        return NewCueRangeAtPlayhead(playhead, trimStart, trimEnd, [], selectedIndex: -1);
+    }
+
+    private static ManualCueRange NewCueRangeAtPlayhead(
+        TimeSpan playhead,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        IReadOnlyList<SubtitleCue> existingCues,
+        int selectedIndex)
+    {
+        var duration = trimEnd > trimStart ? trimEnd - trimStart : TimeSpan.FromSeconds(DefaultCueDurationSeconds);
+        var cueDuration = TimeSpan.FromSeconds(Math.Min(DefaultCueDurationSeconds, Math.Max(MinimumCueDurationSeconds, duration.TotalSeconds)));
+        var start = ClampTimelinePosition(playhead, trimStart, trimEnd);
+        return ClampCueRangeToOpenSlot(start, start + cueDuration, trimStart, trimEnd, existingCues, selectedIndex);
+    }
+
+    private static SubtitleCue SetCueStartAtPlayhead(SubtitleCue cue, TimeSpan playhead, TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        return SetCueStartAtPlayhead(cue, playhead, trimStart, trimEnd, [], selectedIndex: -1);
+    }
+
+    private static SubtitleCue SetCueStartAtPlayhead(
+        SubtitleCue cue,
+        TimeSpan playhead,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        IReadOnlyList<SubtitleCue> cues,
+        int selectedIndex)
+    {
+        var start = ClampTimelinePosition(playhead, trimStart, trimEnd);
+        var end = cue.End;
+        if (end - start < TimeSpan.FromSeconds(MinimumCueDurationSeconds))
+        {
+            end = MinTime(trimEnd, start + TimeSpan.FromSeconds(MinimumCueDurationSeconds));
+            if (end - start < TimeSpan.FromSeconds(MinimumCueDurationSeconds))
+            {
+                start = MaxTime(trimStart, end - TimeSpan.FromSeconds(MinimumCueDurationSeconds));
+            }
+        }
+
+        var range = ClampCueRangeToOpenSlot(start, end, trimStart, trimEnd, cues, selectedIndex);
+        return cue with { Start = range.Start, End = range.End };
+    }
+
+    private static SubtitleCue SetCueEndAtPlayhead(SubtitleCue cue, TimeSpan playhead, TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        return SetCueEndAtPlayhead(cue, playhead, trimStart, trimEnd, [], selectedIndex: -1);
+    }
+
+    private static SubtitleCue SetCueEndAtPlayhead(
+        SubtitleCue cue,
+        TimeSpan playhead,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        IReadOnlyList<SubtitleCue> cues,
+        int selectedIndex)
+    {
+        var end = ClampTimelinePosition(playhead, trimStart, trimEnd);
+        var start = cue.Start;
+        if (end - start < TimeSpan.FromSeconds(MinimumCueDurationSeconds))
+        {
+            start = MaxTime(trimStart, end - TimeSpan.FromSeconds(MinimumCueDurationSeconds));
+            if (end - start < TimeSpan.FromSeconds(MinimumCueDurationSeconds))
+            {
+                end = MinTime(trimEnd, start + TimeSpan.FromSeconds(MinimumCueDurationSeconds));
+            }
+        }
+
+        var range = ClampCueRangeToOpenSlot(start, end, trimStart, trimEnd, cues, selectedIndex);
+        return cue with { Start = range.Start, End = range.End };
     }
 
     private void DeleteSelectedCues()
@@ -977,6 +1393,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         {
             player.Pause();
             previewTimer.Stop();
+            playbackStopAt = null;
             playButton.Text = LoaderlyLanguage.Text("Play");
             return;
         }
@@ -987,6 +1404,28 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             SeekTo(trimStart);
         }
 
+        playbackStopAt = null;
+        player.Play();
+        previewTimer.Start();
+        playButton.Text = LoaderlyLanguage.Text("Pause");
+    }
+
+    private void PlaySelectedCue()
+    {
+        if (selectedCueIndex < 0 || selectedCueIndex >= cues.Count)
+        {
+            return;
+        }
+
+        if (player.Source is null || !mediaReady)
+        {
+            playbackLabel.Text = LoaderlyLanguage.Text(File.Exists(mediaFilePath) ? "Loading preview..." : "Preview unavailable");
+            return;
+        }
+
+        var cue = cues[selectedCueIndex];
+        playbackStopAt = cue.End;
+        SeekTo(cue.Start);
         player.Play();
         previewTimer.Start();
         playButton.Text = LoaderlyLanguage.Text("Pause");
@@ -1010,6 +1449,12 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             return true;
         }
 
+        if (ShouldAddNextCueShortcut(keyData))
+        {
+            AddNextCueAfterCurrent();
+            return true;
+        }
+
         if (keyCode == WinForms.Keys.Escape)
         {
             DialogResult = WinForms.DialogResult.Cancel;
@@ -1024,6 +1469,18 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         if (!ctrl && !shift && keyCode == WinForms.Keys.Delete)
         {
             DeleteSelectedCues();
+            return true;
+        }
+
+        if (ShouldSetCueStartShortcut(keyData))
+        {
+            SetSelectedCueStartToPlayhead();
+            return true;
+        }
+
+        if (ShouldSetCueEndShortcut(keyData))
+        {
+            SetSelectedCueEndToPlayhead();
             return true;
         }
 
@@ -1043,11 +1500,11 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             var direction = keyCode == WinForms.Keys.Left ? -1 : 1;
             if (ctrl && shift)
             {
-                StepPreviewFrame(direction);
+                StepPreviewFrame(direction, deferPreviewSeek: true);
             }
             else
             {
-                StepPreview(TimeSpan.FromSeconds(direction * (shift ? 5 : 1)));
+                StepPreview(TimeSpan.FromSeconds(direction * (shift ? 5 : 1)), deferPreviewSeek: true);
             }
 
             return true;
@@ -1093,26 +1550,108 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         return !ctrl && (keyCode == WinForms.Keys.Home || keyCode == WinForms.Keys.End);
     }
 
+    private static bool ShouldAddNextCueShortcut(WinForms.Keys keyData)
+    {
+        var keyCode = keyData & WinForms.Keys.KeyCode;
+        return keyCode == WinForms.Keys.Enter &&
+               keyData.HasFlag(WinForms.Keys.Control) &&
+               !keyData.HasFlag(WinForms.Keys.Shift) &&
+               !keyData.HasFlag(WinForms.Keys.Alt);
+    }
+
+    private static bool ShouldSetCueStartShortcut(WinForms.Keys keyData)
+    {
+        return (keyData & WinForms.Keys.KeyCode) == WinForms.Keys.OemOpenBrackets &&
+               !keyData.HasFlag(WinForms.Keys.Control) &&
+               !keyData.HasFlag(WinForms.Keys.Shift) &&
+               !keyData.HasFlag(WinForms.Keys.Alt);
+    }
+
+    private static bool ShouldSetCueEndShortcut(WinForms.Keys keyData)
+    {
+        return (keyData & WinForms.Keys.KeyCode) == WinForms.Keys.OemCloseBrackets &&
+               !keyData.HasFlag(WinForms.Keys.Control) &&
+               !keyData.HasFlag(WinForms.Keys.Shift) &&
+               !keyData.HasFlag(WinForms.Keys.Alt);
+    }
+
     private bool IsTypingInTextField()
     {
         return cueTextBox.Focused || fontSearchTextBox.Focused;
     }
 
-    private void StepPreview(TimeSpan delta)
+    private void AttachTextInputFocusClearers(WinForms.Control root)
     {
-        if (previewTimer.Enabled)
+        foreach (WinForms.Control control in root.Controls)
+        {
+            AttachTextInputFocusClearers(control);
+        }
+
+        if (ShouldClearTextInputFocusWhenClicked(root))
+        {
+            root.MouseDown += (_, _) => ClearTextInputFocus();
+        }
+    }
+
+    private bool ShouldClearTextInputFocusWhenClicked(WinForms.Control control)
+    {
+        return ShouldClearTextInputFocusForControl(
+            TextInputFocusControlName(control),
+            control is WinForms.TextBox);
+    }
+
+    private static string TextInputFocusControlName(WinForms.Control control)
+    {
+        if (!string.IsNullOrWhiteSpace(control.Name))
+        {
+            return control.Name;
+        }
+
+        return control.GetType().Name;
+    }
+
+    private static bool ShouldClearTextInputFocusForControl(string controlName, bool isTextBox)
+    {
+        return !isTextBox &&
+               !string.Equals(controlName, nameof(cueTextBox), StringComparison.Ordinal) &&
+               !string.Equals(controlName, nameof(fontSearchTextBox), StringComparison.Ordinal);
+    }
+
+    private void ClearTextInputFocus()
+    {
+        if (!IsTypingInTextField())
+        {
+            return;
+        }
+
+        cueTextBox.SelectionLength = 0;
+        fontSearchTextBox.SelectionLength = 0;
+        ActiveControl = null;
+        Select();
+    }
+
+    private void StepPreview(TimeSpan delta, bool deferPreviewSeek = false)
+    {
+        if (!deferPreviewSeek && previewTimer.Enabled)
         {
             player.Pause();
             previewTimer.Stop();
             playButton.Text = LoaderlyLanguage.Text("Play");
         }
 
-        SeekTo(CurrentPreviewPosition() + delta);
+        var nextPosition = KeyboardSeekTarget(CurrentPreviewPosition(), pendingKeyboardSeek, delta, trimStart, trimEnd);
+        if (deferPreviewSeek)
+        {
+            QueueKeyboardSeek(nextPosition);
+            return;
+        }
+
+        SeekTo(nextPosition);
     }
 
-    private void StepPreviewFrame(int direction)
+    private void StepPreviewFrame(int direction, bool deferPreviewSeek = false)
     {
-        StepPreview(TimeSpan.FromSeconds(direction / 30.0));
+        StepPreview(TimeSpan.FromSeconds(direction / 30.0), deferPreviewSeek);
     }
 
     private void UpdatePlayback()
@@ -1123,12 +1662,14 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         }
 
         var position = CurrentPreviewPosition();
-        if (position >= trimEnd)
+        var stopAt = playbackStopAt ?? trimEnd;
+        if (position >= stopAt)
         {
             player.Pause();
             previewTimer.Stop();
+            playbackStopAt = null;
             playButton.Text = LoaderlyLanguage.Text("Play");
-            SeekTo(trimStart);
+            SeekTo(stopAt >= trimEnd ? trimStart : stopAt);
             return;
         }
 
@@ -1202,13 +1743,64 @@ internal sealed class SubtitleEditorForm : WinForms.Form
             : (false, "Preview unavailable");
     }
 
+    private static bool ShouldSeekPreviewOnTimelinePositionChange(bool updatingControls, bool isTimelineInteracting)
+    {
+        return !updatingControls && !isTimelineInteracting;
+    }
+
+    private static bool ShouldRefreshCueTimelineUi(bool updatingControls, bool isTimelineInteracting)
+    {
+        return !updatingControls && !isTimelineInteracting;
+    }
+
+    private void QueueKeyboardSeek(TimeSpan position)
+    {
+        if (previewTimer.Enabled && !resumeAfterKeyboardSeek)
+        {
+            previewPrimeTimer.Stop();
+            player.Pause();
+            previewTimer.Stop();
+            playButton.Text = LoaderlyLanguage.Text("Resume");
+            resumeAfterKeyboardSeek = true;
+        }
+
+        var bounded = ClampTimelinePosition(position, trimStart, trimEnd);
+        pendingKeyboardSeek = bounded;
+
+        updatingControls = true;
+        cueTimeline.PositionValue = SecondsToUnits((bounded - trimStart).TotalSeconds);
+        updatingControls = false;
+        RefreshLabels();
+        UpdatePreviewSubtitle(bounded);
+
+        keyboardSeekTimer.Stop();
+        keyboardSeekTimer.Start();
+    }
+
+    private void CommitPendingKeyboardSeek()
+    {
+        keyboardSeekTimer.Stop();
+        if (pendingKeyboardSeek is not { } position)
+        {
+            return;
+        }
+
+        var shouldResume = resumeAfterKeyboardSeek;
+        pendingKeyboardSeek = null;
+        resumeAfterKeyboardSeek = false;
+        SeekTo(position);
+
+        if (shouldResume && player.Source is not null && mediaReady)
+        {
+            player.Play();
+            previewTimer.Start();
+            playButton.Text = LoaderlyLanguage.Text("Pause");
+        }
+    }
+
     private void SeekTo(TimeSpan position)
     {
-        var bounded = position < trimStart
-            ? trimStart
-            : position > trimEnd
-                ? trimEnd
-                : position;
+        var bounded = ClampTimelinePosition(position, trimStart, trimEnd);
         if (player.Source is not null && mediaReady)
         {
             player.Position = MediaPositionFromTimelinePosition(bounded, mediaOffset);
@@ -1229,6 +1821,7 @@ internal sealed class SubtitleEditorForm : WinForms.Form
     private void UpdatePreviewSubtitle(TimeSpan? position = null)
     {
         var text = SrtSubtitleService.TextAt(cues, position ?? CurrentPreviewPosition());
+        ApplyPreviewSubtitleDirection(text);
         subtitleTextBlock.Text = text;
         subtitleOverlay.Visibility = string.IsNullOrWhiteSpace(text)
             ? Wpf.Visibility.Collapsed
@@ -1237,9 +1830,18 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
     private void ApplyCueTextDirection(string text)
     {
-        var isRtl = ContainsRtlText(text);
+        var isRtl = SubtitleTextDirection.ContainsRtlText(text);
         cueTextBox.RightToLeft = isRtl ? WinForms.RightToLeft.Yes : WinForms.RightToLeft.No;
         cueTextBox.TextAlign = isRtl ? WinForms.HorizontalAlignment.Right : WinForms.HorizontalAlignment.Left;
+    }
+
+    private void ApplyPreviewSubtitleDirection(string text)
+    {
+        var direction = SubtitleTextDirection.ContainsRtlText(text)
+            ? Wpf.FlowDirection.RightToLeft
+            : Wpf.FlowDirection.LeftToRight;
+        subtitleTextBlock.FlowDirection = direction;
+        subtitleOverlay.FlowDirection = direction;
     }
 
     private void RefreshLabels()
@@ -1247,14 +1849,18 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         if (selectedCueIndex >= 0 && selectedCueIndex < cues.Count)
         {
             var cue = cues[selectedCueIndex];
-            cueRangeLabel.Text = $"{FormatDisplayTime(cue.Start - trimStart)} - {FormatDisplayTime(cue.End - trimStart)}";
+            cueRangeLabel.Text = CueTimingSummary(cue, trimStart);
         }
         else
         {
-            cueRangeLabel.Text = string.Empty;
+            cueRangeLabel.Text = LoaderlyLanguage.Text("No cue selected");
         }
 
-        playbackLabel.Text = FormatDisplayTime(RelativePosition());
+        playbackLabel.Text = $"{LoaderlyLanguage.Text("Playhead")} {FormatDisplayTimePrecise(RelativePosition())}";
+        var hasCue = selectedCueIndex >= 0 && selectedCueIndex < cues.Count;
+        setCueStartButton.Enabled = hasCue;
+        setCueEndButton.Enabled = hasCue;
+        playCueButton.Enabled = hasCue && mediaReady;
     }
 
     private void ApplyStyleControls()
@@ -1364,14 +1970,18 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
     private string CueLabel(int index)
     {
-        var cue = cues[index];
+        return CueListLabel(cues[index], trimStart);
+    }
+
+    private static string CueListLabel(SubtitleCue cue, TimeSpan trimStart)
+    {
         var text = cue.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
         if (string.IsNullOrWhiteSpace(text))
         {
-            text = "(empty)";
+            text = LoaderlyLanguage.Text("Empty");
         }
 
-        return $"{FormatDisplayTime(cue.Start - trimStart)}  {text}";
+        return $"{FormatDisplayTimePrecise(cue.Start - trimStart)} - {FormatDisplayTimePrecise(cue.End - trimStart)}  {text}";
     }
 
     private TimeSpan RelativePosition()
@@ -1387,6 +1997,11 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
     private TimeSpan CurrentPreviewPosition()
     {
+        if (pendingKeyboardSeek is { } keyboardPosition)
+        {
+            return keyboardPosition;
+        }
+
         if (player.Source is not null && mediaReady)
         {
             return TimelinePositionFromMediaPosition(player.Position, mediaOffset);
@@ -1434,25 +2049,226 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         }
     }
 
+    private static IReadOnlyList<TimelineSegmentDisplay> CueTimelineSegments(
+        IReadOnlyList<SubtitleCue> cues,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        int selectedIndex)
+    {
+        var boundedTrimEnd = trimEnd > trimStart
+            ? trimEnd
+            : trimStart + TimeSpan.FromSeconds(DefaultCueDurationSeconds);
+        var maximum = SecondsToUnits((boundedTrimEnd - trimStart).TotalSeconds);
+        return cues
+            .Select((cue, index) =>
+            {
+                var start = SecondsToUnits(Math.Clamp((cue.Start - trimStart).TotalSeconds, 0, (boundedTrimEnd - trimStart).TotalSeconds));
+                var end = SecondsToUnits(Math.Clamp((cue.End - trimStart).TotalSeconds, 0, (boundedTrimEnd - trimStart).TotalSeconds));
+                if (end <= start && cue.End > cue.Start && start < maximum)
+                {
+                    end = Math.Min(maximum, start + Math.Max(1, MinimumCueRangeUnits()));
+                }
+
+                return new TimelineSegmentDisplay(
+                    start,
+                    end,
+                    HasTransitionAfter: false,
+                    IsRemoved: false,
+                    BlocksSelection: index != selectedIndex);
+            })
+            .ToList();
+    }
+
+    private static ManualCueRange ClampCueRangeToOpenSlot(
+        TimeSpan proposedStart,
+        TimeSpan proposedEnd,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        IReadOnlyList<SubtitleCue> cues,
+        int selectedIndex)
+    {
+        var boundedTrimEnd = trimEnd > trimStart
+            ? trimEnd
+            : trimStart + TimeSpan.FromSeconds(DefaultCueDurationSeconds);
+        var minimumDuration = MinimumCueDurationFor(trimStart, boundedTrimEnd);
+        var intervals = AvailableCueIntervals(trimStart, boundedTrimEnd, cues, selectedIndex);
+        if (intervals.Count == 0)
+        {
+            return ClampCueRangeInsideBounds(proposedStart, proposedEnd, trimStart, boundedTrimEnd, minimumDuration);
+        }
+
+        var start = ClampTimelinePosition(proposedStart, trimStart, boundedTrimEnd);
+        var duration = proposedEnd >= proposedStart
+            ? proposedEnd - proposedStart
+            : proposedStart - proposedEnd;
+        if (duration < minimumDuration)
+        {
+            duration = minimumDuration;
+        }
+
+        var interval = BestCueIntervalFor(start, intervals);
+        var intervalDuration = interval.End - interval.Start;
+        if (duration > intervalDuration)
+        {
+            duration = intervalDuration;
+        }
+
+        var maxStart = interval.End - duration;
+        var clampedStart = ClampTime(start, interval.Start, maxStart);
+        return new ManualCueRange(clampedStart, clampedStart + duration);
+    }
+
+    private static ManualCueRange ClampCueRangeInsideBounds(
+        TimeSpan proposedStart,
+        TimeSpan proposedEnd,
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        TimeSpan minimumDuration)
+    {
+        var duration = proposedEnd >= proposedStart
+            ? proposedEnd - proposedStart
+            : proposedStart - proposedEnd;
+        if (duration < minimumDuration)
+        {
+            duration = minimumDuration;
+        }
+
+        var maxDuration = trimEnd > trimStart ? trimEnd - trimStart : minimumDuration;
+        if (duration > maxDuration)
+        {
+            duration = maxDuration;
+        }
+
+        var start = ClampTimelinePosition(proposedStart, trimStart, trimEnd);
+        var maxStart = trimEnd - duration;
+        start = ClampTime(start, trimStart, maxStart);
+        return new ManualCueRange(start, start + duration);
+    }
+
+    private static IReadOnlyList<ManualCueRange> AvailableCueIntervals(
+        TimeSpan trimStart,
+        TimeSpan trimEnd,
+        IReadOnlyList<SubtitleCue> cues,
+        int selectedIndex)
+    {
+        var minimumDuration = MinimumCueDurationFor(trimStart, trimEnd);
+        var gap = TimeSpan.FromSeconds(CueSeparationSeconds);
+        var intervals = new List<ManualCueRange>();
+        var cursor = trimStart;
+        foreach (var item in cues
+            .Select((cue, index) => (Cue: cue, Index: index))
+            .Where(item => item.Index != selectedIndex)
+            .OrderBy(item => item.Cue.Start)
+            .ThenBy(item => item.Cue.End))
+        {
+            if (item.Cue.End <= trimStart || item.Cue.Start >= trimEnd)
+            {
+                continue;
+            }
+
+            var blockerStart = ClampTimelinePosition(item.Cue.Start, trimStart, trimEnd);
+            var blockerEnd = ClampTimelinePosition(item.Cue.End, trimStart, trimEnd);
+            if (blockerEnd <= blockerStart)
+            {
+                continue;
+            }
+
+            var intervalEnd = MaxTime(trimStart, blockerStart - gap);
+            if (intervalEnd - cursor >= minimumDuration)
+            {
+                intervals.Add(new ManualCueRange(cursor, intervalEnd));
+            }
+
+            cursor = MaxTime(cursor, MinTime(trimEnd, blockerEnd + gap));
+        }
+
+        if (trimEnd - cursor >= minimumDuration)
+        {
+            intervals.Add(new ManualCueRange(cursor, trimEnd));
+        }
+
+        return intervals;
+    }
+
+    private static ManualCueRange BestCueIntervalFor(TimeSpan anchor, IReadOnlyList<ManualCueRange> intervals)
+    {
+        foreach (var interval in intervals)
+        {
+            if (anchor >= interval.Start && anchor <= interval.End)
+            {
+                return interval;
+            }
+        }
+
+        var after = intervals
+            .Where(interval => interval.Start >= anchor)
+            .OrderBy(interval => interval.Start)
+            .FirstOrDefault();
+        if (after.End > after.Start)
+        {
+            return after;
+        }
+
+        return intervals
+            .OrderBy(interval => Math.Abs((interval.End - anchor).Ticks))
+            .First();
+    }
+
+    private static TimeSpan MinimumCueDurationFor(TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        var duration = trimEnd - trimStart;
+        var minimumDuration = TimeSpan.FromSeconds(MinimumCueDurationSeconds);
+        return duration > TimeSpan.Zero && duration < minimumDuration ? duration : minimumDuration;
+    }
+
+    private static int MinimumCueRangeUnits()
+    {
+        return Math.Max(1, SecondsToUnits(MinimumCueDurationSeconds));
+    }
+
+    private static TimeSpan ClampTime(TimeSpan value, TimeSpan minimum, TimeSpan maximum)
+    {
+        if (maximum < minimum)
+        {
+            return minimum;
+        }
+
+        if (value < minimum)
+        {
+            return minimum;
+        }
+
+        return value > maximum ? maximum : value;
+    }
+
     private static TimeSpan MaxTime(TimeSpan first, TimeSpan second)
     {
         return first >= second ? first : second;
     }
 
-    private static bool ContainsRtlText(string text)
+    private static TimeSpan MinTime(TimeSpan first, TimeSpan second)
     {
-        foreach (var character in text)
+        return first <= second ? first : second;
+    }
+
+    private static TimeSpan KeyboardSeekTarget(
+        TimeSpan currentPosition,
+        TimeSpan? pendingPosition,
+        TimeSpan delta,
+        TimeSpan trimStart,
+        TimeSpan trimEnd)
+    {
+        return ClampTimelinePosition((pendingPosition ?? currentPosition) + delta, trimStart, trimEnd);
+    }
+
+    private static TimeSpan ClampTimelinePosition(TimeSpan position, TimeSpan trimStart, TimeSpan trimEnd)
+    {
+        if (position < trimStart)
         {
-            var code = character;
-            if ((code >= 0x0590 && code <= 0x08FF) ||
-                (code >= 0xFB1D && code <= 0xFDFF) ||
-                (code >= 0xFE70 && code <= 0xFEFF))
-            {
-                return true;
-            }
+            return trimStart;
         }
 
-        return false;
+        return position > trimEnd ? trimEnd : position;
     }
 
     private static void StyleColorButton(ModernButton button, string htmlColor)
@@ -1489,6 +2305,59 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         return time.TotalHours >= 1
             ? time.ToString(@"h\:mm\:ss")
             : time.ToString(@"m\:ss");
+    }
+
+    private static string FormatDisplayTimePrecise(TimeSpan time)
+    {
+        if (time < TimeSpan.Zero)
+        {
+            time = TimeSpan.Zero;
+        }
+
+        return time.TotalHours >= 1
+            ? time.ToString(@"h\:mm\:ss\.f")
+            : time.ToString(@"m\:ss\.f");
+    }
+
+    private static string CueTimingSummary(SubtitleCue cue, TimeSpan trimStart)
+    {
+        var duration = cue.End > cue.Start ? cue.End - cue.Start : TimeSpan.Zero;
+        return $"{LoaderlyLanguage.Text("Start")} {FormatDisplayTimePrecise(cue.Start - trimStart)} | {LoaderlyLanguage.Text("End")} {FormatDisplayTimePrecise(cue.End - trimStart)} | {LoaderlyLanguage.Text("Duration")} {duration.TotalSeconds:0.0}s";
+    }
+
+    private static Icon? SubtitleEditorWindowIcon()
+    {
+        return LoaderlyAssets.AppIcon;
+    }
+
+    private static bool ShouldVirtualizeCueList(int visibleCueCount)
+    {
+        return visibleCueCount > CueListVirtualizationThreshold;
+    }
+
+    private static (int First, int Last, int Count) CueListRenderWindow(int visibleCueCount, int scrollY, int viewportHeight)
+    {
+        if (visibleCueCount <= 0)
+        {
+            return (0, -1, 0);
+        }
+
+        var stride = CueListRowHeight + CueListRowGap;
+        var first = Math.Max(0, (scrollY / stride) - CueListOverscanRows);
+        var visibleRows = Math.Max(1, (int)Math.Ceiling(Math.Max(1, viewportHeight) / (double)stride)) + (CueListOverscanRows * 2);
+        var last = Math.Min(visibleCueCount - 1, first + visibleRows - 1);
+        return (first, last, Math.Max(0, last - first + 1));
+    }
+
+    private static int CueListVirtualHeight(int visibleCueCount, int viewportHeight)
+    {
+        if (visibleCueCount <= 0)
+        {
+            return Math.Max(1, viewportHeight);
+        }
+
+        var stride = CueListRowHeight + CueListRowGap;
+        return Math.Max(Math.Max(1, viewportHeight), (visibleCueCount * stride) - CueListRowGap);
     }
 
     private static int SecondsToUnits(double seconds)
