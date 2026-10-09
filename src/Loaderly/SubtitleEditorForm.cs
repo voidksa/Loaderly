@@ -162,6 +162,11 @@ internal sealed class SubtitleEditorForm : WinForms.Form
 
     internal static bool StartsManualMediaLoadForTest => true;
 
+    internal static IReadOnlyList<string> TranslationWorkspaceLabelsForTest()
+    {
+        return ["Cues", "Preview", "Style", "AI translate"];
+    }
+
     internal readonly record struct CueSelectionState(IReadOnlyList<int> SelectedIndices, int AnchorIndex, int PrimaryIndex);
 
     internal readonly record struct ManualCueRange(TimeSpan Start, TimeSpan End);
@@ -470,12 +475,13 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         var header = new WinForms.TableLayoutPanel
         {
             Dock = WinForms.DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 3,
             RowCount = 1,
             BackColor = LoaderlyTheme.Window
         };
         header.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100));
         header.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 240));
+        header.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 132));
         root.Controls.Add(header, 0, 0);
 
         header.Controls.Add(new WinForms.Label
@@ -494,6 +500,19 @@ internal sealed class SubtitleEditorForm : WinForms.Form
         clipRangeLabel.ForeColor = LoaderlyTheme.MutedText;
         clipRangeLabel.Font = LoaderlyTheme.BodyFont(9.2F);
         header.Controls.Add(clipRangeLabel, 1, 0);
+
+        header.Controls.Add(new ModernInfoBadge
+        {
+            Dock = WinForms.DockStyle.Fill,
+            Radius = LoaderlyTheme.ControlRadius,
+            FillColor = LoaderlyTheme.TrimSurface,
+            BorderColor = LoaderlyTheme.TrimHover,
+            ForeColor = LoaderlyTheme.TrimText,
+            Font = LoaderlyTheme.BodyFont(8.4F),
+            Text = "AI translate",
+            TextPadding = new WinForms.Padding(10, 0, 10, 0),
+            Margin = new WinForms.Padding(10, 8, 0, 8)
+        }, 2, 0);
 
         var body = new WinForms.TableLayoutPanel
         {

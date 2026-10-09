@@ -1,105 +1,86 @@
 <div align="center">
-  <img src="assets/loaderly-256.png" alt="Loaderly app icon" width="112" height="112">
-
-  <h1>Loaderly</h1>
-
+  <img src="assets/loaderly-256.png" alt="Loaderly app icon" width="96" height="96">
+  <h1>Loaderly 2.0</h1>
+  <p>A focused Windows workspace for downloading and editing video and audio.</p>
   <p>
-    <strong>A Windows desktop app for downloading, organizing, trimming, subtitling, and exporting online media.</strong>
-  </p>
-
-  <p>
-    <a href="README.ar.md">العربية</a>
-  </p>
-
-  <p>
-    <a href="https://github.com/voidksa/Loaderly/releases/latest"><img alt="Download Loaderly" src="https://img.shields.io/badge/download-latest%20release-4f8cff?style=for-the-badge"></a>
-    <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-2ec5ff?style=for-the-badge">
-    <img alt="Source available" src="https://img.shields.io/badge/source-available-7c5cff?style=for-the-badge">
-    <img alt="License" src="https://img.shields.io/badge/license-PolyForm%20NC-202637?style=for-the-badge">
+    <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.0.0"><strong>Download for Windows · v2.0</strong></a>
+    · <a href="https://loaderly-docs.voidksa.workers.dev/">Website &amp; documentation</a>
+    · <a href="README.ar.md">العربية</a>
   </p>
 </div>
 
-<p align="center">
-  <a href="https://github.com/voidksa/Loaderly/releases/latest"><strong>Download Loaderly for Windows</strong></a>
-</p>
+![The Loaderly video editor](docs/images/loaderly-editor-en.png)
 
-<p align="center">
-  <img src="docs/images/loaderly-downloads-en.png" alt="Loaderly downloads workspace" width="92%">
-</p>
+Bring in a link or a local file, refine your clip and export it from one workspace. Loaderly combines a download queue, a media library, video and audio editing, and subtitles in an interface that works in English and Arabic.
 
-<p align="center">
-  <img src="docs/images/loaderly-settings-en.png" alt="Loaderly settings screen" width="76%">
-</p>
+## What's new in 2.0
 
-## What Loaderly Does
+- **A new workspace:** a refreshed app icon, a clearer Library and Downloads view, and an editor built around your media.
+- **Video editing:** remove sections, blur and track an area, zoom, add text, change speed, and reframe for different screen sizes.
+- **Audio editing:** extract sound from a video or open an audio file, adjust volume, fades, bass and treble, then save as MP3.
+- **Speed and sound:** enter an exact rate, use the slider or pick a preset. Preserve the pitch, let it follow the speed, or try Warm, Bright and Radio sound.
+- **Your own visualizer:** choose bars, a wave, a ring or dots, or draw a custom shape in the [online designer](https://loaderly-docs.voidksa.workers.dev/docs/audio-visualizer/#visualizer-builder). Customize colors and movement, hide labels for screen recording, and share the look with its own code.
+- **Subtitles:** review and edit subtitles, then translate them with your own supported AI provider account.
+- **Personalization:** six themes, separate light and dark palettes, color codes you can paste and copy, spacing and corner controls, and shareable theme files.
 
-Loaderly gives you one desktop workspace for media links. Paste a URL, download the file, keep it in a local library, trim the part you need, work with subtitles, and export the result without jumping between separate tools.
+See the [full 2.0 changelog](CHANGELOG.md#20---2026-10-10) or follow the [getting started guide](https://loaderly-docs.voidksa.workers.dev/docs/getting-started/).
 
-## Highlights
+## Downloads and library
 
-- Download from YouTube, TikTok, Instagram, X/Twitter, Facebook, Vimeo, Reddit, SoundCloud, and other supported sites.
-- Add single links, multi-line batches, and playlists to the queue.
-- Keep a local media library with thumbnails, source links, file actions, title preservation, and watch/trim access.
-- Add videos from your PC into the library, then edit them with the same trim, subtitle, snapshot, blur, and zoom tools.
-- Track downloads with percentage, downloaded/total size, speed, and ETA when the provider reports them.
-- Trim clips with internal cut ranges, saved edit state, right-click cut actions, hard cuts, blur regions for hiding part of the video, and zoom regions for focusing on a selected area.
-- Load, edit, translate, style, hide, restore, and burn subtitles with timeline thumbnails in the subtitle editor.
-- Update from GitHub Releases directly inside the app; Loaderly downloads the installer, closes the running app, installs the update, and reopens when complete.
-- Use the app in English or Arabic with light, dark, or system theme modes.
+Paste a single link, several links or a supported playlist. Choose a quality, follow the queue and retry a failed download. Open downloaded files or import your own video and audio into the library.
 
-## Latest Release
+Supported sources include YouTube, TikTok, Instagram, X, Facebook, Vimeo, Reddit and SoundCloud. Availability depends on the source and its restrictions.
 
-Loaderly 1.1.0 is available now. See [CHANGELOG.md](CHANGELOG.md) for the full list of release changes and useful shortcuts.
+![The download workspace](docs/images/loaderly-downloads-en.png)
 
-## Download
+<details>
+<summary>See the media library</summary>
 
-Download the Windows installer from the latest release:
+![The media library](docs/images/loaderly-library-en.png)
 
-<p align="center">
-  <a href="https://github.com/voidksa/Loaderly/releases/latest">
-    <img alt="Download latest Loaderly release" src="https://img.shields.io/badge/Download-Loaderly%20Setup-4f8cff?style=for-the-badge">
-  </a>
-</p>
+</details>
 
-Run the installer and open Loaderly from the Start menu. Windows 10 or newer is recommended.
+## Make it yours
 
-## Support
+Choose a preset or fine-tune both light and dark colors. Copy a color code, import a theme, or share your own.
 
-If you'd like to help me keep building and maintaining Loaderly, you can [support my work through Creators](https://creators.sa/en/voidksa). Support is entirely optional. No expectations.
+![Appearance preferences](docs/images/loaderly-settings-en.png)
 
-## Media Player Requirement
+<details>
+<summary>See the audio visualizer</summary>
 
-Watch / Trim uses Windows media components for video preview. If Watch / Trim shows `Windows Media Player version 10 or later is required.`, the Windows Media Player optional feature is missing even if the newer Media Player app is installed.
+![Audio visualizer customization](docs/images/loaderly-visualizer-en.png)
 
-Open PowerShell or Command Prompt as administrator, run this command, then restart Windows:
+Clean view hides the editing interface so you can record the visualizer with a screen recorder. Audio export saves MP3 sound; it does not create a visualizer video.
 
-```powershell
-DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0
-```
+[Audio and visualizer guides](https://loaderly-docs.voidksa.workers.dev/docs/audio/)
 
-You can also install or update Media Player from Microsoft Store, but the DISM command above is the fix for the missing Windows capability:
+</details>
 
-<p align="center">
-  <a href="https://apps.microsoft.com/detail/9WZDNCRFJ3PT">
-    <img src="docs/images/windows-media-player.svg" alt="Media Player icon" width="72" height="72"><br>
-    <strong>Install Media Player from Microsoft Store</strong>
-  </a>
-</p>
+## Install or update
 
-On Windows N editions, install the Microsoft Media Feature Pack too if Media Player does not appear or playback still fails after the command.
+Download **Loaderly-Setup-2.0.exe** from the [2.0 release](https://github.com/voidksa/Loaderly/releases/tag/v2.0.0). Loaderly supports **Windows 10 and 11, 64-bit**, with English and Arabic interfaces.
 
-## Privacy
+Finish active downloads and exports before updating, then run the installer. Updating keeps your media and settings. See the [installation guide](https://loaderly-docs.voidksa.workers.dev/docs/installation/) for the steps.
 
-Loaderly keeps its app settings, download history, thumbnails, subtitle preferences, and local library data on your device. Features that download media, check for updates, or translate subtitles may contact the relevant online services only when you use them.
+**Coming from 1.x?** If the old Watch / Trim window reports that Windows Media Player is required, see the [legacy preview help](https://loaderly-docs.voidksa.workers.dev/docs/troubleshooting/#media-player). That message belongs to the older preview and is not a requirement for the 2.0 player.
 
-Do not publish personal API keys, credentials, signing certificates, or private configuration files.
+## Community looks
 
-## Source Availability
+Discover [app themes](https://github.com/voidksa/Loaderly/discussions/categories/app-themes) and [audio visualizers](https://github.com/voidksa/Loaderly/discussions/categories/audio-visualizers) made by the community. Share your own design in its category with a screenshot and the complete code. Browsing is open to everyone; publishing or commenting needs a GitHub account.
 
-This repository is provided so users can inspect the project and use it for permitted noncommercial purposes. The recommended way to use Loaderly is the official Windows installer from the release page.
+[How to share and import looks](https://loaderly-docs.voidksa.workers.dev/docs/community/).
 
-Commercial use, resale, paid hosting, rebranding, or publishing Loaderly as another product requires written permission from the copyright holder.
+## Privacy and support
 
-## License
+Editing runs on your device. Downloads contact the source website; AI translation sends subtitle text to the provider you choose when you request it. Read the [files and privacy guide](https://loaderly-docs.voidksa.workers.dev/docs/privacy/).
 
-Loaderly is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+Found a problem? [Open an issue](https://github.com/voidksa/Loaderly/issues) with the steps to reproduce it and a screenshot if useful. Leave out private files, account details and API keys.
+
+[Support Void](https://creators.sa/en/voidksa) if you'd like to help me keep building. Support is optional.
+
+## Source and license
+
+Loaderly is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). You can inspect the code and use it for permitted noncommercial purposes. Commercial use, resale or commercial rebranding requires separate permission.
+
+Use the official releases linked above for the Windows installer.

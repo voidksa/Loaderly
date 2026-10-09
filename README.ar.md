@@ -1,105 +1,90 @@
-<div align="center" dir="rtl">
-  <img src="assets/loaderly-256.png" alt="أيقونة Loaderly" width="112" height="112">
+<div dir="rtl">
 
-  <h1>Loaderly</h1>
-
+<div align="center">
+  <img src="assets/loaderly-256.png" alt="أيقونة Loaderly" width="96" height="96">
+  <h1>Loaderly 2.0</h1>
+  <p>مساحة واحدة على ويندوز لتنزيل الفيديو والصوت وتحريرهما.</p>
   <p>
-    <strong>تطبيق ويندوز لتحميل الوسائط وتنظيمها وقصها والعمل على الترجمة وتصديرها من مكان واحد.</strong>
-  </p>
-
-  <p>
-    <a href="README.md">English</a>
-  </p>
-
-  <p>
-    <a href="https://github.com/voidksa/Loaderly/releases/latest"><img alt="تحميل Loaderly" src="https://img.shields.io/badge/download-latest%20release-4f8cff?style=for-the-badge"></a>
-    <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-2ec5ff?style=for-the-badge">
-    <img alt="Source available" src="https://img.shields.io/badge/source-available-7c5cff?style=for-the-badge">
-    <img alt="License" src="https://img.shields.io/badge/license-PolyForm%20NC-202637?style=for-the-badge">
+    <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.0.0"><strong>تنزيل لويندوز · v2.0</strong></a>
+    · <a href="https://loaderly-docs.voidksa.workers.dev/ar/">الموقع والوثائق</a>
+    · <a href="README.md">English</a>
   </p>
 </div>
 
-<p align="center" dir="rtl">
-  <a href="https://github.com/voidksa/Loaderly/releases/latest"><strong>تحميل Loaderly لويندوز</strong></a>
-</p>
+![محرر الفيديو في Loaderly](docs/images/loaderly-editor-ar.png)
 
-<p align="center">
-  <img src="docs/images/loaderly-downloads-ar.png" alt="واجهة التنزيلات في Loaderly" width="92%">
-</p>
+أضف رابطًا أو ملفًا من جهازك، وعدّل المقطع، ثم صدّره من مكان واحد. يجمع Loaderly قائمة التنزيلات ومكتبة الوسائط وتحرير الفيديو والصوت والترجمة في واجهة تدعم العربية والإنجليزية.
 
-<p align="center">
-  <img src="docs/images/loaderly-settings-ar.png" alt="إعدادات Loaderly" width="76%">
-</p>
+## الجديد في 2.0
 
-## ماذا يفعل Loaderly؟
+- **مساحة عمل جديدة:** أيقونة جديدة للبرنامج، ومكتبة وتنزيلات أوضح، ومحرر يضع المقطع في المقدمة.
+- **تحرير الفيديو:** احذف أجزاء من المقطع، وأضف التمويه والتتبّع والتقريب والنصوص، وغيّر السرعة ومقاس الفيديو.
+- **تحرير الصوت:** استخرج الصوت من فيديو أو افتح ملفًا صوتيًا، واضبط مستوى الصوت والتلاشي والجهير والحدّة، ثم احفظه بصيغة MP3.
+- **السرعة وطابع الصوت:** اكتب السرعة مباشرة، أو استخدم الشريط والقيم الجاهزة. حافظ على طبقة الصوت، أو اجعلها تتغيّر مع السرعة، أو جرّب الصوت الدافئ أو الساطع أو طابع الراديو.
+- **طيف صوت بطريقتك:** اختر الأعمدة أو الموجة أو الحلقة أو النقاط، أو ارسم شكلًا خاصًا في [المصمّم بالموقع](https://loaderly-docs.voidksa.workers.dev/ar/docs/audio-visualizer/#visualizer-builder). خصّص الألوان والحركة، وأخفِ النصوص لتسجيل الشاشة، وشارك المظهر بكود مستقل.
+- **الترجمة:** راجع النصوص وعدّلها، ثم ترجمها باستخدام حسابك لدى أحد مزوّدي الذكاء الاصطناعي المدعومين.
+- **تخصيص المظهر:** ستة مظاهر جاهزة، وألوان مستقلة للوضعين الفاتح والمظلم، وأكواد ألوان قابلة للنسخ واللصق، وتحكم بالمسافات والزوايا، ومشاركة المظهر بملف.
 
-Loaderly يجمع التعامل مع روابط الوسائط في تطبيق واحد على ويندوز. الصق الرابط، حمّل الملف، احتفظ به في مكتبة محلية، قص الجزء الذي تحتاجه، عدّل الترجمة، ثم صدّر النتيجة بدون التنقل بين أدوات كثيرة.
+اقرأ [سجل تغييرات 2.0](CHANGELOG.md#20---2026-10-10)، أو ابدأ من [دليل الاستخدام الأول](https://loaderly-docs.voidksa.workers.dev/ar/docs/getting-started/).
 
-## المزايا
+## التنزيلات والمكتبة
 
-- تحميل من YouTube وTikTok وInstagram وX/Twitter وFacebook وVimeo وReddit وSoundCloud ومواقع أخرى مدعومة.
-- إضافة رابط واحد، دفعات متعددة الأسطر، أو قوائم تشغيل إلى قائمة الانتظار.
-- مكتبة محلية مع صور مصغرة، روابط المصدر، إجراءات الملفات، حفظ العناوين الصحيحة، وفتح المشاهدة أو القص.
-- إضافة فيديوهات من جهازك إلى المكتبة وتعديلها بنفس أدوات القص والترجمة واللقطة والبلور والزوم.
-- متابعة التنزيل بنسبة التقدم، الحجم المحمل/الإجمالي، السرعة، والوقت المتبقي عند توفرها من المزود.
-- قص المقاطع مع حذف أجزاء داخلية، حفظ حالة التعديل، قائمة كلك يمين على القصات، قص مباشر بدون انتقالات، وBlur لإخفاء جزء من الفيديو، وZoom للتركيز على منطقة محددة.
-- تحميل ملفات الترجمة وتعديلها وترجمتها وتنسيقها وإخفاؤها واستعادتها ودمجها مع الفيديو، مع صور مصغرة في تايملاين محرر الترجمة.
-- التحديث من GitHub Releases مباشرة من داخل التطبيق؛ Loaderly ينزل المثبت، يغلق التطبيق المفتوح، يثبت التحديث، ثم يعيد فتحه بعد الانتهاء.
-- واجهة عربية أو إنجليزية مع الوضع الفاتح أو الداكن أو وضع النظام.
+الصق رابطًا واحدًا أو عدة روابط أو قائمة تشغيل مدعومة. اختر الجودة، وتابع التنزيلات، وأعد محاولة أي تنزيل لم يكتمل. افتح الملفات المنزّلة أو أضف ملفات الفيديو والصوت الموجودة على جهازك إلى المكتبة.
 
-## آخر إصدار
+تشمل المصادر المدعومة YouTube وTikTok وInstagram وX وFacebook وVimeo وReddit وSoundCloud. يعتمد توفر التنزيل على الموقع المصدر وقيوده.
 
-Loaderly 1.1.0 متوفر الآن. التفاصيل الكاملة للتغييرات والاختصارات موجودة في [CHANGELOG.md](CHANGELOG.md).
+![واجهة التنزيلات](docs/images/loaderly-downloads-ar.png)
 
-## التحميل
+<details>
+<summary>عرض مكتبة الوسائط</summary>
 
-حمّل مثبت ويندوز من آخر إصدار:
+![مكتبة الوسائط](docs/images/loaderly-library-ar.png)
 
-<p align="center" dir="rtl">
-  <a href="https://github.com/voidksa/Loaderly/releases/latest">
-    <img alt="تحميل آخر إصدار من Loaderly" src="https://img.shields.io/badge/Download-Loaderly%20Setup-4f8cff?style=for-the-badge">
-  </a>
-</p>
+</details>
 
-بعد التحميل شغّل المثبت، ثم افتح Loaderly من قائمة Start. يفضّل استخدام Windows 10 أو أحدث.
+## خصّصه بطريقتك
 
-## الدعم
+اختر مظهرًا جاهزًا أو عدّل ألوان الوضعين الفاتح والمظلم. انسخ كود اللون، أو استورد مظهرًا، أو شارك تصميمك.
 
-إذا رغبت في مساعدتي على مواصلة تطوير Loaderly وصيانته، يمكنك [دعم عملي عبر Creators](https://creators.sa/en/voidksa). الدعم اختياري بالكامل، دون أي التزام.
+![إعدادات المظهر](docs/images/loaderly-settings-ar.png)
 
-## متطلب Media Player
+<details>
+<summary>عرض تخصيص طيف الصوت</summary>
 
-ميزة Watch / Trim تعتمد على مكونات تشغيل الوسائط في ويندوز لعرض معاينة الفيديو. إذا ظهرت رسالة `Windows Media Player version 10 or later is required.` عند فتح Watch / Trim، فهذا يعني غالبًا أن ميزة Windows Media Player الاختيارية غير مثبتة حتى لو كان تطبيق Media Player الجديد موجودًا.
+![تخصيص طيف الصوت](docs/images/loaderly-visualizer-ar.png)
 
-افتح PowerShell أو Command Prompt كمسؤول، شغّل هذا الأمر، ثم أعد تشغيل ويندوز:
+يخفي العرض النظيف واجهة التحرير لتسجيل الطيف بأداة تسجيل الشاشة. يحفظ تصدير الصوت ملف MP3 فقط، ولا ينشئ فيديو للطيف.
 
-```powershell
-DISM /Online /Add-Capability /CapabilityName:Media.WindowsMediaPlayer~~~~0.0.12.0
-```
+[أدلة الصوت والطيف](https://loaderly-docs.voidksa.workers.dev/ar/docs/audio/)
 
-يمكنك أيضًا تثبيت أو تحديث Media Player من Microsoft Store، لكن أمر DISM بالأعلى هو الحل للمكوّن الناقص داخل ويندوز:
+</details>
 
-<p align="center" dir="rtl">
-  <a href="https://apps.microsoft.com/detail/9WZDNCRFJ3PT">
-    <img src="docs/images/windows-media-player.svg" alt="أيقونة Media Player" width="72" height="72"><br>
-    <strong>تثبيت Media Player من Microsoft Store</strong>
-  </a>
-</p>
+## التثبيت والتحديث
 
-إذا كان الجهاز يعمل بإصدار Windows N واستمرت المشكلة بعد الأمر، ثبّت Microsoft Media Feature Pack أيضًا.
+نزّل **Loaderly-Setup-2.0.exe** من [صفحة الإصدار 2.0](https://github.com/voidksa/Loaderly/releases/tag/v2.0.0). يدعم البرنامج **ويندوز 10 و11 بنواة 64 بت**، بواجهة عربية وإنجليزية.
 
-## الخصوصية
+أكمل التنزيلات والتصدير الجاري قبل التحديث، ثم شغّل المثبّت. يحتفظ التحديث بملفاتك وإعداداتك. راجع الخطوات في [دليل التثبيت](https://loaderly-docs.voidksa.workers.dev/ar/docs/installation/).
 
-Loaderly يحفظ إعدادات التطبيق، سجل التنزيلات، الصور المصغرة، تفضيلات الترجمة، وبيانات المكتبة المحلية على جهازك. ميزات تنزيل الوسائط أو البحث عن التحديثات أو ترجمة الترجمة قد تتصل بالخدمات المطلوبة فقط عند استخدامها.
+**تنتقل من الإصدار 1.x؟** إذا ظهرت رسالة تتطلب Windows Media Player في نافذة Watch / Trim القديمة، راجع [حل مشكلة المعاينة القديمة](https://loaderly-docs.voidksa.workers.dev/ar/docs/troubleshooting/#media-player). تخص الرسالة المشغّل القديم، ولا يُعد تثبيته شرطًا لمشغّل الإصدار 2.0.
 
-لا تنشر مفاتيح API الشخصية أو بيانات الدخول أو شهادات التوقيع أو ملفات الإعدادات الخاصة.
+## مظاهر المجتمع
 
-## توفر المصدر
+اكتشف [ثيمات البرنامج](https://github.com/voidksa/Loaderly/discussions/categories/app-themes) و[أشكال طيف الصوت](https://github.com/voidksa/Loaderly/discussions/categories/audio-visualizers) من تصميم المجتمع. شارك تصميمك في القسم المناسب مع صورة والكود كاملًا. التصفّح متاح للجميع؛ ويحتاج النشر أو التعليق إلى حساب GitHub.
 
-هذا المستودع متاح للاطلاع على المشروع واستخدامه ضمن الأغراض غير التجارية المسموحة في الترخيص. الطريقة الموصى بها لاستخدام Loaderly هي تحميل مثبت ويندوز الرسمي من صفحة الإصدارات.
+[طريقة مشاركة المظاهر وتركيبها](https://loaderly-docs.voidksa.workers.dev/ar/docs/community/).
 
-الاستخدام التجاري، إعادة البيع، الاستضافة المدفوعة، إعادة التسمية، أو نشر Loaderly كمنتج آخر يتطلب إذنًا كتابيًا من صاحب الحقوق.
+## الخصوصية والدعم
 
-## الترخيص
+يعمل التحرير على جهازك. تتصل التنزيلات بالموقع المصدر، وتُرسل نصوص الترجمة إلى المزوّد الذي تختاره عند طلب الترجمة بالذكاء الاصطناعي. التفاصيل في [دليل الملفات والخصوصية](https://loaderly-docs.voidksa.workers.dev/ar/docs/privacy/).
 
-Loaderly متاح المصدر تحت ترخيص [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+واجهت مشكلة؟ [افتح بلاغًا](https://github.com/voidksa/Loaderly/issues) مع خطوات تكرارها وصورة عند الحاجة. تجنّب إرفاق الملفات الخاصة وبيانات الحساب ومفاتيح API.
+
+[ادعم Void](https://creators.sa/en/voidksa) إذا أحببت المساهمة في استمراري بالتطوير. الدعم اختياري.
+
+## المصدر والترخيص
+
+يتوفر مصدر Loaderly وفق [ترخيص PolyForm Noncommercial 1.0.0](LICENSE.md). يمكنك الاطلاع على الكود واستخدامه للأغراض غير التجارية التي يسمح بها الترخيص. يتطلب الاستخدام التجاري أو إعادة البيع أو إعادة تقديمه تجاريًا إذنًا منفصلًا.
+
+احصل على مثبّت ويندوز من صفحة الإصدارات الرسمية المرتبطة أعلاه.
+
+</div>

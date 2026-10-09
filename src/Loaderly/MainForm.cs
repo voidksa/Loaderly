@@ -22,31 +22,38 @@ internal sealed class MainForm : Form
     private const int SidebarContentWidth = SidebarWidth - (SidebarHorizontalPadding * 2);
     private const int SidebarSavedItemsBadgeWidth = SidebarContentWidth;
     private const int SidebarActionButtonWidth = SidebarContentWidth;
-    private const int CommandPanelRowHeight = 232;
+    private const int CommandPanelRowHeight = 268;
     private const int UrlInputRowHeight = 76;
-    private const int CommandOptionsRowHeight = 68;
+    private const int CommandOptionsRowHeight = 104;
     private const int CommandQualityLabelColumnWidth = 86;
-    private const int CommandQualityColumnWidth = 156;
+    private const int CommandQualityColumnWidth = 130;
     private const int CommandPlaylistColumnWidth = 154;
     private const int CommandSubtitlesColumnWidth = 118;
     private const int CommandLocalVideoColumnWidth = 136;
     private const int CommandAddQueueColumnWidth = 136;
     private const string UrlInputPlaceholder = "Paste URLs, one per line";
+    private const string LibrarySearchPlaceholder = "Search library";
     private const string LocalVideoDialogFilter = "Video files (*.mp4;*.m4v;*.mov;*.mkv;*.webm;*.avi)|*.mp4;*.m4v;*.mov;*.mkv;*.webm;*.avi|All files (*.*)|*.*";
-    private const int HistoryCardHeight = 98;
-    private const int HistoryCardTextTopSpacer = 3;
-    private const int HistoryCardTitleRowHeight = 44;
+    private const int HistoryCardHeight = 116;
+    private const int HistoryCardTextTopSpacer = 5;
+    private const int HistoryCardTitleRowHeight = 50;
     private const int HistoryCardMetaRowHeight = 20;
-    private const int HistoryCardThumbnailColumnWidth = 102;
+    private const int HistoryCardThumbnailColumnWidth = 124;
     private const bool HistoryCardUsesSideAccent = false;
     private const bool HistoryCardShowsFileNameRow = false;
-    private const int DetailsThumbnailRowHeight = 168;
-    private const int DetailsTitleRowHeight = 68;
-    private const int DetailsMetaRowHeight = 28;
-    private const int DetailsPathRowHeight = 24;
+    private const int DetailsThumbnailRowHeight = 122;
+    private const int DetailsTitleRowHeight = 58;
+    private const int DetailsMetaRowHeight = 24;
+    private const int DetailsPathRowHeight = 20;
+    private const int DashboardOverviewRowHeight = 124;
     private const int QueueCardVisualThrottleMs = 500;
-    private const string PrimaryWorkspaceTitle = "Media Library";
-    private const string PrimaryWorkspaceSubtitle = "Download, trim, subtitle, and export from YouTube, TikTok, Instagram, X/Twitter, Facebook, Vimeo, Reddit, SoundCloud, and more.";
+    private const string PrimaryWorkspaceTitle = "Dashboard";
+    private const string PrimaryWorkspaceSubtitle = "Active downloads, quick actions, and recent media in one clean workspace.";
+    private const string LibraryFilterAll = "All";
+    private const string LibraryFilterLocal = "Local";
+    private const string LibraryFilterDownloaded = "Downloaded";
+    private const string LibraryFilterEdited = "Edited";
+    private const string LibraryFilterTranslated = "Translated";
     private const string QueueTitleLabelName = "queue-title";
     private const string QueueStateLabelName = "queue-state";
     private const string QueueDetailLabelName = "queue-detail";
@@ -119,9 +126,9 @@ internal sealed class MainForm : Form
             "QualitySelect:1,0",
             "Playlist:2,0",
             "Subtitles:3,0",
-            "SubtitleLanguage:4,0,3",
-            "LocalVideo:5,1",
-            "AddToQueue:6,1"
+            "SubtitleLanguage:0,1,4",
+            "LocalVideo:0,2,2",
+            "AddToQueue:2,2,2"
         ];
     }
 
@@ -214,9 +221,51 @@ internal sealed class MainForm : Form
         return ["Updates", "Tools", "Settings", "About", "Logs"];
     }
 
+    internal static IReadOnlyList<string> PrimaryNavigationLabelsForTest()
+    {
+        return PrimaryNavigationLabels();
+    }
+
+    internal static IReadOnlyList<string> LibraryFilterLabelsForTest()
+    {
+        return LibraryFilterLabels();
+    }
+
+    internal static IReadOnlyList<string> DashboardSectionLabelsForTest()
+    {
+        return DashboardSectionLabels();
+    }
+
+    internal static IReadOnlyList<string> LibraryColumnLabelsForTest()
+    {
+        return LibraryColumnLabels();
+    }
+
+    internal static string LibrarySearchPlaceholderForTest => LibrarySearchPlaceholder;
+
     internal static IReadOnlyList<string> DetailsActionLabelsForTest()
     {
         return DetailsActionLabels();
+    }
+
+    private static IReadOnlyList<string> PrimaryNavigationLabels()
+    {
+        return ["Home", "Library", "Downloads", "Editing", "AI Tools", "Settings"];
+    }
+
+    private static IReadOnlyList<string> DashboardSectionLabels()
+    {
+        return ["Active downloads", "Paste links", "Queue", "Recent media"];
+    }
+
+    private static IReadOnlyList<string> LibraryColumnLabels()
+    {
+        return ["Thumbnail", "Title", "Duration", "Size", "Status", "Date"];
+    }
+
+    private static IReadOnlyList<string> LibraryFilterLabels()
+    {
+        return [LibraryFilterAll, LibraryFilterLocal, LibraryFilterDownloaded, LibraryFilterEdited, LibraryFilterTranslated];
     }
 
     internal static string PrimaryWorkspaceTitleForTest => PrimaryWorkspaceTitle;
@@ -253,16 +302,23 @@ internal sealed class MainForm : Form
     private readonly FlowLayoutPanel historyFlow = new SeamlessFlowPanel();
     private readonly ModernProgressBar progressBar = new();
     private readonly Label statusLabel = new();
+    private readonly Label dashboardActiveDownloadsValue = new();
+    private readonly Label dashboardPasteLinksValue = new();
+    private readonly Label dashboardQueueValue = new();
+    private readonly Label dashboardRecentMediaValue = new();
     private readonly Label detailsTitle = new();
     private readonly Label detailsMeta = new();
     private readonly Label detailsPath = new();
+    private readonly Label libraryCountLabel = new();
     private readonly CoverPictureBox detailsThumbnail = new();
     private readonly ModernButton downloadButton = new();
     private readonly ModernButton localVideoButton = new();
+    private readonly ModernButton homeButton = new();
     private readonly ModernButton downloadsButton = new();
     private readonly ModernButton libraryButton = new();
     private readonly ModernButton trimNavButton = new();
     private readonly ModernButton subtitleNavButton = new();
+    private readonly ModernButton aiToolsButton = new();
     private readonly ModernButton browseButton = new();
     private readonly ModernButton copyButton = new();
     private readonly ModernButton openFileButton = new();
@@ -277,6 +333,7 @@ internal sealed class MainForm : Form
     private readonly ModernButton toolsButton = new();
     private readonly ModernButton aboutButton = new();
     private readonly ModernButton logsButton = new();
+    private readonly List<ModernButton> libraryFilterButtons = [];
     private readonly ModernInfoBadge savedItemsBadge = new();
     private readonly NotifyIcon trayIcon = new();
     private readonly ContextMenuStrip trayMenu = new();
@@ -298,6 +355,7 @@ internal sealed class MainForm : Form
     private bool historyRenderPending;
     private bool startupWorkStarted;
     private bool urlTextBoxLayoutAttached;
+    private string selectedLibraryFilter = LibraryFilterAll;
 
     private enum TrayMenuIconKind
     {
@@ -336,7 +394,7 @@ internal sealed class MainForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1024, 680);
-        Size = new Size(1220, 780);
+        Size = new Size(1560, 980);
         Font = LoaderlyTheme.BodyFont(10F);
         BackColor = LoaderlyTheme.Window;
         AllowDrop = true;
@@ -411,6 +469,7 @@ internal sealed class MainForm : Form
         SelectFirstHistoryItem();
         UpdateSavedItemsBadge();
         SetQueueProgress(downloadQueue.Any(item => item.State == DownloadTaskState.Queued || item.State == DownloadTaskState.Running));
+        UpdateDashboardMetrics();
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -559,19 +618,24 @@ internal sealed class MainForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 9,
+            RowCount = 14,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Sidebar
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         sidebar.Controls.Add(layout);
 
         var brand = new TableLayoutPanel
@@ -636,25 +700,45 @@ internal sealed class MainForm : Form
         UpdateSavedItemsBadge();
         layout.Controls.Add(savedItemsBadge, 0, 1);
 
-        updateButton.Text = "Updates";
-        StyleSidebarButton(updateButton);
-        layout.Controls.Add(updateButton, 0, 2);
+        homeButton.Text = "Home";
+        StyleSidebarButton(homeButton, active: true);
+        layout.Controls.Add(homeButton, 0, 2);
 
-        toolsButton.Text = "Tools";
-        StyleSidebarButton(toolsButton);
-        layout.Controls.Add(toolsButton, 0, 3);
+        libraryButton.Text = "Library";
+        StyleSidebarButton(libraryButton);
+        layout.Controls.Add(libraryButton, 0, 3);
+
+        downloadsButton.Text = "Downloads";
+        StyleSidebarButton(downloadsButton);
+        layout.Controls.Add(downloadsButton, 0, 4);
+
+        trimNavButton.Text = "Editing";
+        StyleSidebarButton(trimNavButton);
+        layout.Controls.Add(trimNavButton, 0, 5);
+
+        aiToolsButton.Text = "AI Tools";
+        StyleSidebarButton(aiToolsButton);
+        layout.Controls.Add(aiToolsButton, 0, 6);
 
         settingsButton.Text = "Settings";
         StyleSidebarButton(settingsButton);
-        layout.Controls.Add(settingsButton, 0, 4);
+        layout.Controls.Add(settingsButton, 0, 7);
+
+        updateButton.Text = "Updates";
+        StyleSidebarButton(updateButton);
+        layout.Controls.Add(updateButton, 0, 9);
+
+        toolsButton.Text = "Tools";
+        StyleSidebarButton(toolsButton);
+        layout.Controls.Add(toolsButton, 0, 10);
 
         aboutButton.Text = "About";
         StyleSidebarButton(aboutButton);
-        layout.Controls.Add(aboutButton, 0, 6);
+        layout.Controls.Add(aboutButton, 0, 11);
 
         logsButton.Text = "Logs";
         StyleSidebarButton(logsButton);
-        layout.Controls.Add(logsButton, 0, 7);
+        layout.Controls.Add(logsButton, 0, 12);
 
         layout.Controls.Add(new Label
         {
@@ -664,7 +748,7 @@ internal sealed class MainForm : Form
             Font = LoaderlyTheme.BodyFont(8.6F),
             TextAlign = NearBottomAlignment(),
             Margin = new Padding(0)
-        }, 0, 8);
+        }, 0, 13);
         return sidebar;
     }
 
@@ -740,19 +824,17 @@ internal sealed class MainForm : Form
         var content = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 3,
+            RowCount = 2,
             ColumnCount = 1,
             Padding = new Padding(28, 26, 28, 22),
             BackColor = LoaderlyTheme.Window,
             RightToLeft = RightToLeft.No
         };
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, CommandPanelRowHeight));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         content.Controls.Add(BuildHeader(), 0, 0);
-        content.Controls.Add(BuildCommandPanel(), 0, 1);
-        content.Controls.Add(BuildMainArea(), 0, 2);
+        content.Controls.Add(BuildStudioWorkspace(), 0, 1);
         return content;
     }
 
@@ -817,6 +899,84 @@ internal sealed class MainForm : Form
         return header;
     }
 
+    private Control BuildDashboardOverview()
+    {
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 1,
+            ColumnCount = 4,
+            BackColor = LoaderlyTheme.Window,
+            Margin = new Padding(0, 0, 0, 14),
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
+        };
+        for (var index = 0; index < 4; index++)
+        {
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        }
+
+        grid.Controls.Add(BuildDashboardMetricCard("Active downloads", dashboardActiveDownloadsValue, "Running now", accent: true), 0, 0);
+        grid.Controls.Add(BuildDashboardMetricCard("Paste links", dashboardPasteLinksValue, "Batch input ready", accent: false), 1, 0);
+        grid.Controls.Add(BuildDashboardMetricCard("Queue", dashboardQueueValue, "Waiting or running", accent: false), 2, 0);
+        grid.Controls.Add(BuildDashboardMetricCard("Recent media", dashboardRecentMediaValue, "Saved locally", accent: false), 3, 0);
+        UpdateDashboardMetrics();
+        return grid;
+    }
+
+    private Control BuildDashboardMetricCard(string title, Label valueLabel, string caption, bool accent)
+    {
+        var card = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.CardRadius,
+            BackColor = accent ? LoaderlyTheme.SelectedSurface : LoaderlyTheme.SurfaceMuted,
+            BorderColor = accent ? LoaderlyTheme.SelectedBorder : LoaderlyTheme.Border,
+            Padding = new Padding(14, 10, 14, 10),
+            Margin = LoaderlyLanguage.IsArabic ? new Padding(8, 0, 0, 0) : new Padding(0, 0, 8, 0)
+        };
+
+        var stack = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 3,
+            ColumnCount = 1,
+            BackColor = card.BackColor
+        };
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        stack.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        card.Controls.Add(stack);
+
+        stack.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = title,
+            ForeColor = LoaderlyTheme.MutedText,
+            Font = LoaderlyTheme.BodyFont(8.7F),
+            AutoEllipsis = true,
+            TextAlign = NearMiddleAlignment()
+        }, 0, 0);
+
+        valueLabel.Dock = DockStyle.Fill;
+        valueLabel.ForeColor = accent ? LoaderlyTheme.Accent : LoaderlyTheme.Text;
+        valueLabel.Font = LoaderlyTheme.TitleFont(20F);
+        valueLabel.AutoEllipsis = true;
+        valueLabel.TextAlign = NearMiddleAlignment();
+        stack.Controls.Add(valueLabel, 0, 1);
+
+        stack.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = caption,
+            ForeColor = LoaderlyTheme.MutedText,
+            Font = LoaderlyTheme.BodyFont(8.2F),
+            AutoEllipsis = true,
+            TextAlign = NearTopAlignment()
+        }, 0, 2);
+
+        return card;
+    }
+
     private Control BuildCommandPanel()
     {
         var panel = new RoundedPanel
@@ -832,15 +992,18 @@ internal sealed class MainForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 4,
+            RowCount = 5,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UrlInputRowHeight));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, CommandOptionsRowHeight));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 8));
         panel.Controls.Add(layout);
+
+        layout.Controls.Add(BuildDownloadCommandHeader(), 0, 0);
 
         urlInputHost.Dock = DockStyle.Fill;
         urlInputHost.Radius = LoaderlyTheme.ControlRadius;
@@ -848,7 +1011,7 @@ internal sealed class MainForm : Form
         urlInputHost.BorderColor = LoaderlyTheme.Border;
         urlInputHost.Margin = new Padding(0, 0, 0, 8);
         urlInputHost.Cursor = Cursors.IBeam;
-        layout.Controls.Add(urlInputHost, 0, 0);
+        layout.Controls.Add(urlInputHost, 0, 1);
 
         urlTextBox.Dock = DockStyle.None;
         urlTextBox.AutoSize = false;
@@ -871,21 +1034,19 @@ internal sealed class MainForm : Form
         var optionsRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 7,
-            RowCount = 2,
+            ColumnCount = 4,
+            RowCount = 3,
             BackColor = LoaderlyTheme.Surface,
             RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
         };
         optionsRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         optionsRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        optionsRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandQualityLabelColumnWidth));
         optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandQualityColumnWidth));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandPlaylistColumnWidth));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandSubtitlesColumnWidth));
+        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandLocalVideoColumnWidth));
-        optionsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, CommandAddQueueColumnWidth));
-        layout.Controls.Add(optionsRow, 0, 1);
+        layout.Controls.Add(optionsRow, 0, 2);
 
         optionsRow.Controls.Add(new Label
         {
@@ -906,7 +1067,7 @@ internal sealed class MainForm : Form
         qualityComboBox.Margin = new Padding(0, 2, 0, 6);
         optionsRow.Controls.Add(qualityComboBox, 1, 0);
 
-        playlistCheckBox.Text = "Playlists / batch";
+        playlistCheckBox.Text = "Playlist";
         playlistCheckBox.Checked = true;
         StyleOptionCheckBox(playlistCheckBox);
         optionsRow.Controls.Add(playlistCheckBox, 2, 0);
@@ -925,15 +1086,16 @@ internal sealed class MainForm : Form
         subtitleLanguageSelect.Font = LoaderlyTheme.BodyFont(9.2F);
         subtitleLanguageSelect.Margin = new Padding(0, 2, 0, 6);
         subtitleLanguageSelect.Enabled = subtitlesCheckBox.Checked;
-        optionsRow.Controls.Add(subtitleLanguageSelect, 4, 0);
-        optionsRow.SetColumnSpan(subtitleLanguageSelect, 3);
+        optionsRow.Controls.Add(subtitleLanguageSelect, 0, 1);
+        optionsRow.SetColumnSpan(subtitleLanguageSelect, 4);
 
         localVideoButton.Text = "Add local video";
         localVideoButton.DisplayText = LoaderlyLanguage.Text("Add local video");
         StyleSecondaryButton(localVideoButton);
         localVideoButton.Dock = DockStyle.Fill;
-        localVideoButton.Margin = new Padding(0, 2, 10, 6);
-        optionsRow.Controls.Add(localVideoButton, 5, 1);
+        localVideoButton.Margin = new Padding(0, 2, 8, 6);
+        optionsRow.Controls.Add(localVideoButton, 0, 2);
+        optionsRow.SetColumnSpan(localVideoButton, 2);
 
         downloadButton.Text = "Add to queue";
         downloadButton.DisplayText = LoaderlyLanguage.Text("Add to queue");
@@ -945,7 +1107,8 @@ internal sealed class MainForm : Form
         downloadButton.ForeColor = Color.White;
         downloadButton.Font = LoaderlyTheme.BodyFont(10.2F);
         downloadButton.Margin = new Padding(0, 2, 0, 6);
-        optionsRow.Controls.Add(downloadButton, 6, 1);
+        optionsRow.Controls.Add(downloadButton, 2, 2);
+        optionsRow.SetColumnSpan(downloadButton, 2);
 
         var folderRow = new TableLayoutPanel
         {
@@ -958,7 +1121,7 @@ internal sealed class MainForm : Form
         folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
         folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
-        layout.Controls.Add(folderRow, 0, 2);
+        layout.Controls.Add(folderRow, 0, 3);
 
         folderRow.Controls.Add(new Label
         {
@@ -988,7 +1151,158 @@ internal sealed class MainForm : Form
         progressBar.Margin = new Padding(0, 8, 0, 0);
         progressBar.RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No;
         progressBar.Visible = false;
-        layout.Controls.Add(progressBar, 0, 3);
+        layout.Controls.Add(progressBar, 0, 4);
+        return panel;
+    }
+
+    private Control BuildDownloadCommandHeader()
+    {
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = LoaderlyTheme.Surface,
+            Margin = new Padding(0, 0, 0, 6),
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
+
+        header.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Paste links",
+            ForeColor = LoaderlyTheme.Text,
+            Font = LoaderlyTheme.TitleFont(14.5F),
+            TextAlign = NearMiddleAlignment()
+        }, 0, 0);
+
+        header.Controls.Add(new ModernInfoBadge
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.ControlRadius,
+            FillColor = LoaderlyTheme.SelectedSurface,
+            BorderColor = LoaderlyTheme.SelectedBorder,
+            ForeColor = LoaderlyTheme.Accent,
+            Font = LoaderlyTheme.BodyFont(8.6F),
+            Text = "Fast queue",
+            TextPadding = new Padding(10, 0, 10, 0),
+            Margin = new Padding(8, 2, 0, 4)
+        }, 1, 0);
+
+        return header;
+    }
+
+    private Control BuildStudioWorkspace()
+    {
+        var workspace = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = LoaderlyTheme.Window,
+            RightToLeft = RightToLeft.No
+        };
+        if (LoaderlyLanguage.IsArabic)
+        {
+            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 332));
+            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
+        else
+        {
+            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 332));
+        }
+
+        var workColumn = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            BackColor = LoaderlyTheme.Window,
+            Margin = LoaderlyLanguage.IsArabic ? new Padding(18, 0, 0, 0) : new Padding(0, 0, 18, 0)
+        };
+        workColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, DashboardOverviewRowHeight));
+        workColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, CommandPanelRowHeight));
+        workColumn.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        workColumn.Controls.Add(BuildDashboardOverview(), 0, 0);
+        workColumn.Controls.Add(BuildCommandPanel(), 0, 1);
+        workColumn.Controls.Add(BuildLibraryPanel(), 0, 2);
+
+        var details = BuildDetailsPanel();
+        if (LoaderlyLanguage.IsArabic)
+        {
+            workspace.Controls.Add(details, 0, 0);
+            workspace.Controls.Add(workColumn, 1, 0);
+        }
+        else
+        {
+            workspace.Controls.Add(workColumn, 0, 0);
+            workspace.Controls.Add(details, 1, 0);
+        }
+
+        return workspace;
+    }
+
+    private Control BuildLibraryPanel()
+    {
+        var panel = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.PanelRadius,
+            BackColor = LoaderlyTheme.Surface,
+            BorderColor = LoaderlyTheme.Border,
+            Padding = new Padding(18),
+            Margin = new Padding(0, 0, 0, 18)
+        };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 4,
+            ColumnCount = 1,
+            BackColor = LoaderlyTheme.Surface
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.Controls.Add(layout);
+
+        layout.Controls.Add(BuildLibraryToolbar(), 0, 0);
+
+        var searchHost = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.ControlRadius,
+            BackColor = LoaderlyTheme.SurfaceMuted,
+            BorderColor = LoaderlyTheme.Border,
+            Margin = new Padding(0, 0, 0, 12)
+        };
+        searchTextBox.Dock = DockStyle.None;
+        searchTextBox.AutoSize = false;
+        searchTextBox.Height = ModernTextBoxPlacement.TextBoxHeight;
+        searchTextBox.PlaceholderText = LibrarySearchPlaceholder;
+        searchTextBox.BorderStyle = BorderStyle.None;
+        searchTextBox.Font = LoaderlyTheme.BodyFont(10F);
+        searchTextBox.BackColor = LoaderlyTheme.SurfaceMuted;
+        searchTextBox.ForeColor = LoaderlyTheme.Text;
+        searchTextBox.Margin = new Padding(0);
+        searchHost.Controls.Add(searchTextBox);
+        ModernTextBoxPlacement.Attach(searchHost, searchTextBox);
+        layout.Controls.Add(searchHost, 0, 1);
+
+        layout.Controls.Add(BuildLibraryTableHeader(), 0, 2);
+
+        historyFlow.Dock = DockStyle.Fill;
+        historyFlow.AutoScroll = true;
+        historyFlow.WrapContents = false;
+        historyFlow.FlowDirection = FlowDirection.TopDown;
+        historyFlow.BackColor = LoaderlyTheme.Surface;
+        historyFlow.Padding = new Padding(0, 0, 12, 12);
+        historyFlow.TabStop = false;
+        layout.Controls.Add(historyFlow, 0, 3);
+
         return panel;
     }
 
@@ -1019,19 +1333,22 @@ internal sealed class MainForm : Form
             Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
-            Padding = new Padding(16),
+            Padding = new Padding(18),
             Margin = LoaderlyLanguage.IsArabic ? new Padding(18, 0, 0, 18) : new Padding(0, 0, 18, 18)
         };
         var historyLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 2,
+            RowCount = 3,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
+        historyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         historyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         historyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         historyPanel.Controls.Add(historyLayout);
+
+        historyLayout.Controls.Add(BuildLibraryToolbar(), 0, 0);
 
         var searchHost = new RoundedPanel
         {
@@ -1044,7 +1361,7 @@ internal sealed class MainForm : Form
         searchTextBox.Dock = DockStyle.None;
         searchTextBox.AutoSize = false;
         searchTextBox.Height = ModernTextBoxPlacement.TextBoxHeight;
-        searchTextBox.PlaceholderText = "Search downloads";
+        searchTextBox.PlaceholderText = LibrarySearchPlaceholder;
         searchTextBox.BorderStyle = BorderStyle.None;
         searchTextBox.Font = LoaderlyTheme.BodyFont(10F);
         searchTextBox.BackColor = LoaderlyTheme.SurfaceMuted;
@@ -1053,7 +1370,7 @@ internal sealed class MainForm : Form
         searchHost.Controls.Add(searchTextBox);
         ModernTextBoxPlacement.Attach(searchHost, searchTextBox);
 
-        historyLayout.Controls.Add(searchHost, 0, 0);
+        historyLayout.Controls.Add(searchHost, 0, 1);
 
         historyFlow.Dock = DockStyle.Fill;
         historyFlow.AutoScroll = true;
@@ -1062,7 +1379,7 @@ internal sealed class MainForm : Form
         historyFlow.BackColor = LoaderlyTheme.Surface;
         historyFlow.Padding = new Padding(0, 0, 12, 12);
         historyFlow.TabStop = false;
-        historyLayout.Controls.Add(historyFlow, 0, 1);
+        historyLayout.Controls.Add(historyFlow, 0, 2);
         if (LoaderlyLanguage.IsArabic)
         {
             split.Controls.Add(BuildDetailsPanel(), 0, 0);
@@ -1076,6 +1393,124 @@ internal sealed class MainForm : Form
         return split;
     }
 
+    private Control BuildLibraryToolbar()
+    {
+        var toolbar = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 2,
+            ColumnCount = 1,
+            BackColor = LoaderlyTheme.Surface,
+            Margin = new Padding(0, 0, 0, 8)
+        };
+        toolbar.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        toolbar.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
+
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 1,
+            ColumnCount = 2,
+            BackColor = LoaderlyTheme.Surface,
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+        toolbar.Controls.Add(header, 0, 0);
+
+        header.Controls.Add(new Label
+        {
+            Text = "Recent media",
+            Dock = DockStyle.Fill,
+            ForeColor = LoaderlyTheme.Text,
+            Font = LoaderlyTheme.TitleFont(14F),
+            TextAlign = NearMiddleAlignment()
+        }, 0, 0);
+
+        libraryCountLabel.Text = LoaderlyLanguage.SavedItems(history.Count);
+        libraryCountLabel.Dock = DockStyle.Fill;
+        libraryCountLabel.ForeColor = LoaderlyTheme.MutedText;
+        libraryCountLabel.Font = LoaderlyTheme.BodyFont(8.8F);
+        libraryCountLabel.TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.MiddleLeft : ContentAlignment.MiddleRight;
+        header.Controls.Add(libraryCountLabel, 1, 0);
+
+        var filters = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = LoaderlyLanguage.IsArabic ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
+            WrapContents = true,
+            AutoScroll = false,
+            BackColor = LoaderlyTheme.Surface,
+            Margin = new Padding(0)
+        };
+        toolbar.Controls.Add(filters, 0, 1);
+
+        libraryFilterButtons.Clear();
+        foreach (var label in LibraryFilterLabels())
+        {
+            var button = new ModernButton
+            {
+                Text = label,
+                DisplayText = LoaderlyLanguage.Text(label),
+                Size = new Size(label is LibraryFilterDownloaded or LibraryFilterTranslated ? 118 : 88, 32),
+                Margin = LoaderlyLanguage.IsArabic ? new Padding(6, 2, 0, 4) : new Padding(0, 2, 6, 4),
+                Font = LoaderlyTheme.BodyFont(8.8F),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            StyleLibraryFilterButton(button, label == selectedLibraryFilter);
+            button.Click += (_, _) => SetLibraryFilter(label);
+            libraryFilterButtons.Add(button);
+            filters.Controls.Add(button);
+        }
+
+        return toolbar;
+    }
+
+    private Control BuildLibraryTableHeader()
+    {
+        var shell = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Radius = LoaderlyTheme.ControlRadius,
+            BackColor = LoaderlyTheme.SurfaceMuted,
+            BorderColor = LoaderlyTheme.Border,
+            Padding = new Padding(10, 0, 10, 0),
+            Margin = new Padding(0, 0, 0, 8)
+        };
+
+        var columns = LibraryColumnLabels();
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 1,
+            ColumnCount = columns.Count,
+            BackColor = LoaderlyTheme.SurfaceMuted,
+            RightToLeft = LoaderlyLanguage.IsArabic ? RightToLeft.Yes : RightToLeft.No
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        shell.Controls.Add(header);
+
+        for (var index = 0; index < columns.Count; index++)
+        {
+            header.Controls.Add(new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = columns[index],
+                ForeColor = LoaderlyTheme.MutedText,
+                Font = LoaderlyTheme.BodyFont(8.4F),
+                AutoEllipsis = true,
+                TextAlign = index == 1 ? NearMiddleAlignment() : ContentAlignment.MiddleCenter
+            }, index, 0);
+        }
+
+        return shell;
+    }
+
     private Control BuildDetailsPanel()
     {
         var panel = new RoundedPanel
@@ -1084,20 +1519,21 @@ internal sealed class MainForm : Form
             Radius = LoaderlyTheme.PanelRadius,
             BackColor = LoaderlyTheme.Surface,
             BorderColor = LoaderlyTheme.Border,
-            Padding = new Padding(16),
+            Padding = new Padding(18),
             Margin = new Padding(0, 0, 0, 18)
         };
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 8,
+            RowCount = 9,
             ColumnCount = 1,
             BackColor = LoaderlyTheme.Surface
         };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsThumbnailRowHeight));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsTitleRowHeight + 10));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsMetaRowHeight + 2));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsPathRowHeight + 20));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
@@ -1134,12 +1570,14 @@ internal sealed class MainForm : Form
         detailsMeta.TextAlign = NearMiddleAlignment();
         layout.Controls.Add(detailsMeta, 0, 2);
 
+        layout.Controls.Add(BuildDetailsWorkflowStrip(), 0, 3);
+
         detailsPath.Dock = DockStyle.Fill;
         detailsPath.AutoEllipsis = true;
         detailsPath.Font = LoaderlyTheme.BodyFont(8.8F);
         detailsPath.ForeColor = LoaderlyTheme.MutedText;
         detailsPath.TextAlign = NearMiddleAlignment();
-        layout.Controls.Add(detailsPath, 0, 3);
+        layout.Controls.Add(detailsPath, 0, 4);
 
         var detailsActions = DetailsActionLabels();
         copyButton.Text = detailsActions[0];
@@ -1147,7 +1585,7 @@ internal sealed class MainForm : Form
         openFileButton.Text = detailsActions[1];
         StyleSecondaryButton(openFileButton);
         var row1 = ButtonRow(copyButton, openFileButton);
-        layout.Controls.Add(row1, 0, 5);
+        layout.Controls.Add(row1, 0, 6);
 
         revealButton.Text = detailsActions[2];
         StyleSecondaryButton(revealButton);
@@ -1157,7 +1595,7 @@ internal sealed class MainForm : Form
         watchTrimButton.HoverColor = LoaderlyTheme.TrimHover;
         watchTrimButton.ForeColor = LoaderlyTheme.TrimText;
         var row2 = ButtonRow(revealButton, watchTrimButton);
-        layout.Controls.Add(row2, 0, 6);
+        layout.Controls.Add(row2, 0, 7);
 
         sourceButton.Text = detailsActions[4];
         StyleSecondaryButton(sourceButton);
@@ -1167,8 +1605,43 @@ internal sealed class MainForm : Form
         removeButton.HoverColor = LoaderlyTheme.DangerHover;
         removeButton.ForeColor = LoaderlyTheme.Danger;
         var row3 = ButtonRow(sourceButton, removeButton);
-        layout.Controls.Add(row3, 0, 7);
+        layout.Controls.Add(row3, 0, 8);
         return panel;
+    }
+
+    private Control BuildDetailsWorkflowStrip()
+    {
+        var strip = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 1,
+            ColumnCount = 3,
+            BackColor = LoaderlyTheme.Surface,
+            Margin = new Padding(0, 0, 0, 6)
+        };
+        strip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+        strip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+        strip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
+
+        var labels = new[] { "Trim ready", "Subtitles", "Export" };
+        for (var index = 0; index < labels.Length; index++)
+        {
+            var badge = new ModernInfoBadge
+            {
+                Dock = DockStyle.Fill,
+                Radius = LoaderlyTheme.ControlRadius,
+                FillColor = index == 0 ? LoaderlyTheme.TrimSurface : LoaderlyTheme.SurfaceMuted,
+                BorderColor = index == 0 ? LoaderlyTheme.TrimHover : LoaderlyTheme.Border,
+                ForeColor = index == 0 ? LoaderlyTheme.TrimText : LoaderlyTheme.MutedText,
+                Font = LoaderlyTheme.BodyFont(8F),
+                Text = labels[index],
+                TextPadding = new Padding(8, 0, 8, 0),
+                Margin = new Padding(index == 0 ? 0 : 4, 2, index == labels.Length - 1 ? 0 : 4, 2)
+            };
+            strip.Controls.Add(badge, index, 0);
+        }
+
+        return strip;
     }
 
     private static IReadOnlyList<string> DetailsActionLabels()
@@ -1329,6 +1802,31 @@ internal sealed class MainForm : Form
         button.Font = LoaderlyTheme.BodyFont(9.5F);
     }
 
+    private static void StyleLibraryFilterButton(ModernButton button, bool selected)
+    {
+        button.Radius = LoaderlyTheme.ControlRadius;
+        button.FillColor = selected ? LoaderlyTheme.SelectedSurface : LoaderlyTheme.SurfaceMuted;
+        button.HoverColor = selected ? LoaderlyTheme.ControlHover : LoaderlyTheme.SelectedSurface;
+        button.PressedColor = LoaderlyTheme.ControlPressed;
+        button.BorderColor = selected ? LoaderlyTheme.SelectedBorder : LoaderlyTheme.Border;
+        button.ForeColor = selected ? LoaderlyTheme.Text : LoaderlyTheme.MutedText;
+    }
+
+    private void SetLibraryFilter(string filter)
+    {
+        selectedLibraryFilter = LibraryFilterLabels().Contains(filter) ? filter : LibraryFilterAll;
+        UpdateLibraryFilterButtons();
+        SafeRenderHistory(throttle: false);
+    }
+
+    private void UpdateLibraryFilterButtons()
+    {
+        foreach (var button in libraryFilterButtons)
+        {
+            StyleLibraryFilterButton(button, button.Text.Equals(selectedLibraryFilter, StringComparison.Ordinal));
+        }
+    }
+
     private static void StyleOptionCheckBox(CheckBox checkBox)
     {
         checkBox.Dock = DockStyle.Fill;
@@ -1360,10 +1858,12 @@ internal sealed class MainForm : Form
         sourceButton.Click += (_, _) => OpenSelectedSource();
         removeButton.Click += (_, _) => RemoveSelectedHistoryItem();
         moreButton.Click += (_, _) => ShowSelectedDetails();
+        homeButton.Click += (_, _) => FocusUrlTextBox();
         downloadsButton.Click += (_, _) => FocusUrlTextBox();
         libraryButton.Click += (_, _) => FocusSearchBox();
         trimNavButton.Click += (_, _) => OpenTrimForm();
         subtitleNavButton.Click += (_, _) => FocusSubtitleOptions();
+        aiToolsButton.Click += (_, _) => OpenTools();
         updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
         toolsButton.Click += (_, _) => OpenTools();
         settingsButton.Click += (_, _) => OpenSettings();
@@ -1988,19 +2488,58 @@ internal sealed class MainForm : Form
         LoaderlyLanguage.ApplyToControl(historyFlow);
         historyFlow.ResumeLayout();
         UpdateDetails();
+        UpdateDashboardMetrics();
     }
 
     private IEnumerable<DownloadItem> FilteredHistory(string query)
     {
+        var filtered = history.Where(MatchesLibraryFilter);
         if (query.Length == 0)
         {
-            return history;
+            return filtered;
         }
 
-        return history.Where(item =>
+        return filtered.Where(item =>
             item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
             item.SourceUrl.Contains(query, StringComparison.OrdinalIgnoreCase) ||
             item.FilePath.Contains(query, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool MatchesLibraryFilter(DownloadItem item)
+    {
+        return selectedLibraryFilter switch
+        {
+            LibraryFilterLocal => item.IsLocalFile,
+            LibraryFilterDownloaded => !item.IsLocalFile,
+            LibraryFilterEdited => HasSavedTrimState(item.FilePath),
+            LibraryFilterTranslated => HasTranslatedSubtitle(item.FilePath),
+            _ => true
+        };
+    }
+
+    private static bool HasTranslatedSubtitle(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var folder = Path.GetDirectoryName(filePath);
+            var name = Path.GetFileNameWithoutExtension(filePath);
+            if (string.IsNullOrWhiteSpace(folder) || string.IsNullOrWhiteSpace(name) || !Directory.Exists(folder))
+            {
+                return false;
+            }
+
+            return Directory.EnumerateFiles(folder, $"{name}*translated*.srt").Any() ||
+                   Directory.EnumerateFiles(folder, $"{name}*translated*.vtt").Any();
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private Control BuildDownloadTaskCard(DownloadQueueItem task)
@@ -2219,21 +2758,25 @@ internal sealed class MainForm : Form
             Radius = LoaderlyTheme.CardRadius,
             BackColor = selected ? LoaderlyTheme.SelectedSurface : LoaderlyTheme.SurfaceMuted,
             BorderColor = selected ? LoaderlyTheme.SelectedBorder : LoaderlyTheme.Border,
-            Padding = new Padding(8),
-            Margin = new Padding(0, 0, 0, 10),
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 12),
             Cursor = Cursors.Hand
         };
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 6,
             RowCount = 1,
             BackColor = card.BackColor,
             RightToLeft = RightToLeft.No
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, HistoryCardThumbnailColumnWidth));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, HistoryCardThumbnailColumnWidth + 2));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
         card.Controls.Add(layout);
 
         var thumbnailFrame = new RoundedPanel
@@ -2257,17 +2800,16 @@ internal sealed class MainForm : Form
         thumbnailFrame.Controls.Add(thumbnail);
         layout.Controls.Add(thumbnailFrame, 0, 0);
 
+        var hasSavedTrim = HasSavedTrimState(item.FilePath);
         var text = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 4,
+            RowCount = 2,
             ColumnCount = 1,
             BackColor = card.BackColor
         };
-        text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardTextTopSpacer));
-        text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardTitleRowHeight));
-        text.RowStyles.Add(new RowStyle(SizeType.Absolute, HistoryCardMetaRowHeight));
-        text.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        text.RowStyles.Add(new RowStyle(SizeType.Percent, 62));
+        text.RowStyles.Add(new RowStyle(SizeType.Percent, 38));
         layout.Controls.Add(text, 1, 0);
 
         text.Controls.Add(new Label
@@ -2276,22 +2818,41 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             AutoEllipsis = false,
             ForeColor = LoaderlyTheme.Text,
-            Font = LoaderlyTheme.BodyFont(10.6F),
-            TextAlign = HistoryTextAlign()
-        }, 0, 1);
+            Font = LoaderlyTheme.BodyFont(11F),
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.BottomRight : ContentAlignment.BottomLeft
+        }, 0, 0);
         text.Controls.Add(new Label
         {
-            Text = HistoryMetaLabel(item, HasSavedTrimState(item.FilePath)),
+            Text = HistoryFileLabel(item),
             Dock = DockStyle.Fill,
             AutoEllipsis = true,
             ForeColor = LoaderlyTheme.MutedText,
-            Font = LoaderlyTheme.BodyFont(9.2F),
-            TextAlign = HistoryTextAlign()
-        }, 0, 2);
+            Font = LoaderlyTheme.BodyFont(8.8F),
+            TextAlign = LoaderlyLanguage.IsArabic ? ContentAlignment.TopRight : ContentAlignment.TopLeft
+        }, 0, 1);
+
+        layout.Controls.Add(BuildHistoryColumnLabel("--"), 2, 0);
+        layout.Controls.Add(BuildHistoryColumnLabel(HistorySizeColumnLabel(item)), 3, 0);
+        layout.Controls.Add(BuildHistoryColumnLabel(HistoryStatusColumnLabel(item, hasSavedTrim), hasSavedTrim), 4, 0);
+        layout.Controls.Add(BuildHistoryColumnLabel(HistoryDateColumnLabel(item.CreatedAt)), 5, 0);
 
         AttachSelectHandler(card, item.Id);
 
         return card;
+    }
+
+    private Control BuildHistoryColumnLabel(string text, bool accent = false)
+    {
+        return new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = text,
+            AutoEllipsis = true,
+            ForeColor = accent ? LoaderlyTheme.Accent : LoaderlyTheme.MutedText,
+            Font = LoaderlyTheme.BodyFont(8.8F),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Margin = new Padding(4, 0, 4, 0)
+        };
     }
 
     private static ContentAlignment HistoryTextAlign()
@@ -2414,6 +2975,28 @@ internal sealed class MainForm : Form
     {
         savedItemsBadge.Text = LoaderlyLanguage.SavedItems(history.Count);
         savedItemsBadge.Invalidate();
+        if (!libraryCountLabel.IsDisposed)
+        {
+            libraryCountLabel.Text = LoaderlyLanguage.SavedItems(history.Count);
+        }
+    }
+
+    private void UpdateDashboardMetrics()
+    {
+        var activeDownloads = downloadQueue.Count(item => item.State is DownloadTaskState.Running);
+        var visibleQueue = downloadQueue.Count(item => item.State is not DownloadTaskState.Completed);
+        SetMetricText(dashboardActiveDownloadsValue, activeDownloads.ToString(CultureInfo.InvariantCulture));
+        SetMetricText(dashboardPasteLinksValue, "Ready");
+        SetMetricText(dashboardQueueValue, visibleQueue.ToString(CultureInfo.InvariantCulture));
+        SetMetricText(dashboardRecentMediaValue, history.Count.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static void SetMetricText(Label label, string text)
+    {
+        if (!label.IsDisposed)
+        {
+            label.Text = text;
+        }
     }
 
     private async Task EnsureThumbnailAsync(DownloadItem item)
@@ -2604,6 +3187,44 @@ internal sealed class MainForm : Form
         }
 
         return string.Join("  -  ", parts);
+    }
+
+    private static string HistorySizeColumnLabel(DownloadItem item)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(item.FilePath) && File.Exists(item.FilePath))
+            {
+                return FormatDownloadBytes(new FileInfo(item.FilePath).Length);
+            }
+        }
+        catch
+        {
+        }
+
+        return "--";
+    }
+
+    private static string HistoryStatusColumnLabel(DownloadItem item, bool hasSavedTrim)
+    {
+        if (HasTranslatedSubtitle(item.FilePath))
+        {
+            return LoaderlyLanguage.Text("Translated");
+        }
+
+        if (hasSavedTrim)
+        {
+            return LoaderlyLanguage.Text("Edited");
+        }
+
+        return item.IsLocalFile
+            ? LoaderlyLanguage.Text("Local")
+            : LoaderlyLanguage.Text("Downloaded");
+    }
+
+    private static string HistoryDateColumnLabel(DateTimeOffset createdAt)
+    {
+        return createdAt.LocalDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
     private static string FormatHistoryTimestamp(DateTimeOffset createdAt)
@@ -3102,6 +3723,7 @@ internal sealed class MainForm : Form
         progressBar.Visible = active;
         progressBar.IsIndeterminate = active;
         progressBar.Value = 0;
+        UpdateDashboardMetrics();
     }
 
     private void SafeRenderHistory(bool throttle = false)

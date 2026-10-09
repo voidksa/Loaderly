@@ -1,0 +1,27 @@
+title: "[Theme] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share a Loaderly theme. Copy its code from Preferences > General > Share or import a theme, or use the website designer.
+        Include a screenshot so others can see the result before importing it.
+  - type: textarea
+    id: preview
+    attributes:
+      label: Preview
+      description: Add a screenshot or a short recording of your design.
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Theme code
+      description: Paste the complete Loaderly theme code.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes and credits
+      description: Optional tips or credit to the original creator if this is a remix.

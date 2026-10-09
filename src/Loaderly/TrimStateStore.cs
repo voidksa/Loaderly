@@ -36,6 +36,7 @@ internal sealed class TrimStateStore
             state.Cuts.Count > 0 ||
             state.BlurRegions.Count > 0 ||
             state.ZoomRegions.Count > 0 ||
+            state.SpeedRegions.Count > 0 ||
             state.StartSeconds > 0.05 ||
             state.SourceDurationSeconds > 0 && state.EndSeconds < state.SourceDurationSeconds - 0.05);
     }
@@ -51,7 +52,9 @@ internal sealed class TrimStateStore
         int selectedBlurIndex = -1,
         TimeSpan? sourceDuration = null,
         IEnumerable<TrimZoomRegion>? zoomRegions = null,
-        int selectedZoomIndex = -1)
+        int selectedZoomIndex = -1,
+        IEnumerable<TrimSpeedRegion>? speedRegions = null,
+        int selectedSpeedIndex = -1)
     {
         if (end <= start)
         {
@@ -117,6 +120,15 @@ internal sealed class TrimStateStore
                 })
                 .ToList(),
             SelectedZoomIndex = selectedZoomIndex,
+            SpeedRegions = TrimSpeedRegion.NormalizeMany(speedRegions)
+                .Select(region => new TrimSpeedState
+                {
+                    StartSeconds = Math.Max(0, region.Start.TotalSeconds),
+                    EndSeconds = Math.Max(0, region.End.TotalSeconds),
+                    Rate = region.Rate
+                })
+                .ToList(),
+            SelectedSpeedIndex = selectedSpeedIndex,
             UpdatedAt = DateTimeOffset.Now
         };
 
@@ -179,6 +191,10 @@ internal sealed class TrimState
 
     public int SelectedZoomIndex { get; set; } = -1;
 
+    public List<TrimSpeedState> SpeedRegions { get; set; } = [];
+
+    public int SelectedSpeedIndex { get; set; } = -1;
+
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
@@ -226,4 +242,13 @@ internal sealed class TrimCutState
     public double EndSeconds { get; set; }
 
     public string TransitionAfter { get; set; } = nameof(TrimTransitionKind.None);
+}
+
+internal sealed class TrimSpeedState
+{
+    public double StartSeconds { get; set; }
+
+    public double EndSeconds { get; set; }
+
+    public double Rate { get; set; } = 2.0;
 }

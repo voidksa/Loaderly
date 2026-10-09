@@ -1,0 +1,46 @@
+# Build outputs
+bin/
+obj/
+dist/
+out/
+TestResults/
+coverage/
+*.trx
+node_modules/
+*.tsbuildinfo
+
+# Local publish and installer scratch files
+src/Loaderly.Setup/Payload/
+dist/
+*.zip
+
+# Local temp and Codex/browser scratch artifacts
+tmp/
+.codex-tmp/
+
+# Local IDE/user state
+.vs/
+*.user
+*.suo
+
+# Local environment/secrets
+.env
+.env.*
+!.env.example
+
+# Local UI checks and isolated tool installation fixtures
+/output/
+/docs/LOCAL-UI-REFRESH.md
+/docs/AI-PROVIDER-VERIFICATION.md
+/docs/IDENTITY-AUDIO-DOCS-WORKPLAN.md
+/assets/identity/*generation*.json
+/src/Loaderly.Electron/dist-installer/
+
+# Website is deployed separately to Cloudflare, never to the application repository
+/website/
+/assets/identity/documentation/
+
+# Private installer implementation, packaging and verification
+/src/Loaderly.Setup/
+/script/build_windows.ps1
+/tests/Loaderly.PrivateTests/

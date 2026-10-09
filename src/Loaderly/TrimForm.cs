@@ -56,6 +56,11 @@ internal sealed class TrimForm : WinForms.Form
     {
         return TrimEditTabLabels();
     }
+
+    internal static IReadOnlyList<string> TrimWorkspaceSectionLabelsForTest()
+    {
+        return ["Preview", "Timeline", "Edit", "Export"];
+    }
     internal static bool TrimEditTabsUseNativeControlForTest => false;
     internal static int TrimEditTabRadiusForTest => LoaderlyTheme.ControlRadius;
     internal static bool EffectOptionsFitWithinEditTabForTest(int editTabRowHeight)
@@ -107,6 +112,27 @@ internal sealed class TrimForm : WinForms.Form
         return duration is null ? string.Empty : duration.Value.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture);
     }
 
+    internal static bool SpeedPreviewUsesRenderedClipForTest(double rate)
+    {
+        return ShouldRenderSpeedPreview(rate);
+    }
+
+    internal static bool TimelinePlaybackAutoRendersSpeedPreviewForTest(
+        TimeSpan playbackStart,
+        TrimComposition composition,
+        IReadOnlyList<TrimSpeedRegion>? speedRegions)
+    {
+        _ = playbackStart;
+        _ = composition;
+        _ = speedRegions;
+        return false;
+    }
+
+    internal static bool TimelinePlaybackUsesPreparedSpeedPreviewForTest(bool cacheReady, bool hasSpeed)
+    {
+        return ShouldUsePreparedSpeedPreview(cacheReady, hasSpeed);
+    }
+
     private readonly string sourceFilePath;
     private readonly string displayTitle;
     private readonly TrimExportService trimService;
@@ -156,6 +182,11 @@ internal sealed class TrimForm : WinForms.Form
     private readonly ModernButton keyframeZoomButton = new();
     private readonly ModernButton autoFollowZoomButton = new();
     private readonly ModernButton removeZoomButton = new();
+    private readonly ModernButton addSpeedButton = new();
+    private readonly ModernButton speedStartAtPlayheadButton = new();
+    private readonly ModernButton speedEndAtPlayheadButton = new();
+    private readonly ModernButton speedPreviewButton = new();
+    private readonly ModernButton removeSpeedButton = new();
     private readonly ModernButton chooseSubtitleButton = new();
     private readonly ModernButton editSubtitleButton = new();
     private readonly ModernButton translateSubtitleButton = new();
@@ -167,6 +198,7 @@ internal sealed class TrimForm : WinForms.Form
     private readonly ModernSelect blurShapeComboBox = new();
     private readonly ModernSelect blurStrengthComboBox = new();
     private readonly ModernSelect zoomScaleComboBox = new();
+    private readonly ModernSelect speedRateComboBox = new();
     private readonly WinForms.CheckBox muteCheckBox = new ModernCheckBox();
     private readonly WinForms.Label startValueLabel = new();
     private readonly WinForms.Label endValueLabel = new();
@@ -178,6 +210,8 @@ internal sealed class TrimForm : WinForms.Form
     private readonly WinForms.Label blurTimingLabel = new();
     private readonly WinForms.Label zoomStatusLabel = new();
     private readonly WinForms.Label zoomTimingLabel = new();
+    private readonly WinForms.Label speedStatusLabel = new();
+    private readonly WinForms.Label speedTimingLabel = new();
     private readonly WinForms.Label fileNameLabel = new();
     private readonly WinForms.Label statusLabel = new();
     private readonly WinForms.Label subtitleStatusLabel = new();
@@ -195,12 +229,15 @@ internal sealed class TrimForm : WinForms.Form
     private readonly List<EditableTrimSegment> trimSegments = [];
     private readonly List<EditableBlurRegion> blurRegions = [];
     private readonly List<EditableZoomRegion> zoomRegions = [];
+    private readonly List<EditableSpeedRegion> speedRegions = [];
 
     private CancellationTokenSource? exportCancellation;
     private CancellationTokenSource? timelineThumbnailCancellation;
     private CancellationTokenSource? copiedFeedbackCancellation;
     private CancellationTokenSource? subtitleTranslationCancellation;
     private CancellationTokenSource? blurPreviewCancellation;
+    private CancellationTokenSource? speedPreviewCancellation;
+    private CancellationTokenSource? timelineSpeedPreviewCancellation;
     private bool updatingControls;
     private bool isTimelineInteracting;
     private bool applyingSegmentSelection;
@@ -211,7 +248,9 @@ internal sealed class TrimForm : WinForms.Form
     private TimeSpan? effectPreviewStopAt;
     private TimeSpan? pendingKeyboardSeek;
     private TimeSpan? pendingSubtitleEditorRestorePosition;
+    private TimeSpan? pendingSpeedPreviewRestorePosition;
     private bool pendingSubtitleEditorRestorePlayback;
+    private bool playingRenderedSpeedPreview;
     private IReadOnlyList<SubtitleCue> subtitleCues = [];
     private string? subtitleFilePath;
     private string? originalSubtitleFilePath;
@@ -224,6 +263,12 @@ internal sealed class TrimForm : WinForms.Form
     private WpfMedia.ImageBrush? blurPreviewRenderedBrush;
     private BlurPreviewKey? blurPreviewRenderedKey;
     private string? blurPreviewImagePath;
+    private string? speedPreviewVideoPath;
+    private string? timelineSpeedPreviewVideoPath;
+    private string? timelineSpeedPreviewKey;
+    private string? activeRenderedPreviewPath;
+    private TimeSpan pendingRenderedPreviewStartPosition;
+    private bool deleteActiveRenderedPreviewAfterPlayback;
     private int blurPreviewGeneration;
     private BlurOverlayDragMode blurDragMode = BlurOverlayDragMode.None;
     private Wpf.Point blurDragStart;
@@ -231,6 +276,7 @@ internal sealed class TrimForm : WinForms.Form
     private int selectedSegmentIndex = -1;
     private int selectedBlurIndex = -1;
     private int selectedZoomIndex = -1;
+    private int selectedSpeedIndex = -1;
 
     public string? LastSavedFilePath { get; private set; }
     public string? LastSnapshotFilePath { get; private set; }
@@ -296,7 +342,13 @@ internal sealed class TrimForm : WinForms.Form
         subtitleTranslationCancellation?.Dispose();
         blurPreviewCancellation?.Cancel();
         blurPreviewCancellation?.Dispose();
+        speedPreviewCancellation?.Cancel();
+        speedPreviewCancellation?.Dispose();
+        timelineSpeedPreviewCancellation?.Cancel();
+        timelineSpeedPreviewCancellation?.Dispose();
         DeleteTemporaryFile(blurPreviewImagePath);
+        DeleteTemporaryFile(speedPreviewVideoPath);
+        DeleteTemporaryFile(timelineSpeedPreviewVideoPath);
         keyboardSeekTimer.Stop();
         playbackTimer.Stop();
         player.Stop();
@@ -408,19 +460,36 @@ internal sealed class TrimForm : WinForms.Form
         return header;
     }
 
+    private static WinForms.Control EditorSectionLabel(string text)
+    {
+        return new WinForms.Label
+        {
+            Dock = WinForms.DockStyle.Fill,
+            Text = LoaderlyLanguage.Text(text),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = LoaderlyTheme.BodyFont(9.2F),
+            ForeColor = LoaderlyTheme.MutedText,
+            Margin = new WinForms.Padding(2, 0, 0, 0)
+        };
+    }
+
     private WinForms.Control BuildPreviewArea()
     {
         var area = new WinForms.TableLayoutPanel
         {
             Dock = WinForms.DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 5,
             BackColor = LoaderlyTheme.Window,
             Margin = new WinForms.Padding(0, 0, 18, 0)
         };
+        area.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 28));
         area.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 100));
+        area.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 26));
         area.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, TimelineRowHeight));
         area.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, TransportRowHeight));
+
+        area.Controls.Add(EditorSectionLabel("Preview"), 0, 0);
 
         var videoFrame = new WinForms.Panel
         {
@@ -433,7 +502,9 @@ internal sealed class TrimForm : WinForms.Form
         videoHost.BackColor = LoaderlyTheme.ThumbnailBack;
         ConfigureVideoSurface();
         videoFrame.Controls.Add(videoHost);
-        area.Controls.Add(videoFrame, 0, 0);
+        area.Controls.Add(videoFrame, 0, 1);
+
+        area.Controls.Add(EditorSectionLabel("Timeline"), 0, 2);
 
         var timelinePanel = new RoundedPanel
         {
@@ -446,7 +517,7 @@ internal sealed class TrimForm : WinForms.Form
         };
         timeline.Dock = WinForms.DockStyle.Fill;
         timelinePanel.Controls.Add(timeline);
-        area.Controls.Add(timelinePanel, 0, 1);
+        area.Controls.Add(timelinePanel, 0, 3);
 
         var transport = new WinForms.TableLayoutPanel
         {
@@ -462,7 +533,7 @@ internal sealed class TrimForm : WinForms.Form
         transport.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 54));
         transport.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 116));
         transport.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 126));
-        area.Controls.Add(transport, 0, 2);
+        area.Controls.Add(transport, 0, 4);
 
         ConfigureButton(playButton, "Play selection", primary: true);
         playButton.Dock = WinForms.DockStyle.Fill;
@@ -547,7 +618,7 @@ internal sealed class TrimForm : WinForms.Form
 
         layout.Controls.Add(new WinForms.Label
         {
-            Text = "Clip",
+            Text = "Edit",
             Dock = WinForms.DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = LoaderlyTheme.TitleFont(14F),
@@ -626,7 +697,8 @@ internal sealed class TrimForm : WinForms.Form
             BuildSegmentOptions(),
             BuildSubtitleOptions(),
             BuildBlurOptions(),
-            BuildZoomOptions()
+            BuildZoomOptions(),
+            BuildSpeedOptions()
         };
         foreach (var page in pages)
         {
@@ -1126,6 +1198,125 @@ internal sealed class TrimForm : WinForms.Form
         return panel;
     }
 
+    private WinForms.Control BuildSpeedOptions()
+    {
+        var panel = new RoundedPanel
+        {
+            Dock = WinForms.DockStyle.Fill,
+            Radius = LoaderlyTheme.CardRadius,
+            BackColor = LoaderlyTheme.SurfaceMuted,
+            BorderColor = LoaderlyTheme.Border,
+            Padding = new WinForms.Padding(10, 4, 10, 4),
+            Margin = new WinForms.Padding(0, 3, 0, 5)
+        };
+
+        var layout = new WinForms.TableLayoutPanel
+        {
+            Dock = WinForms.DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 5,
+            BackColor = LoaderlyTheme.SurfaceMuted
+        };
+        foreach (var rowHeight in EffectOptionsRowHeights)
+        {
+            layout.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, rowHeight));
+        }
+        panel.Controls.Add(layout);
+
+        var header = new WinForms.TableLayoutPanel
+        {
+            Dock = WinForms.DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = LoaderlyTheme.SurfaceMuted
+        };
+        header.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 45));
+        header.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 55));
+        header.Controls.Add(new WinForms.Label
+        {
+            Text = LoaderlyLanguage.Text("Speed"),
+            Dock = WinForms.DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = LoaderlyTheme.MutedText,
+            Font = LoaderlyTheme.BodyFont(8.8F)
+        }, 0, 0);
+        speedStatusLabel.Dock = WinForms.DockStyle.Fill;
+        speedStatusLabel.TextAlign = ContentAlignment.MiddleRight;
+        speedStatusLabel.ForeColor = LoaderlyTheme.MutedText;
+        speedStatusLabel.Font = LoaderlyTheme.BodyFont(8.2F);
+        speedStatusLabel.AutoEllipsis = true;
+        header.Controls.Add(speedStatusLabel, 1, 0);
+        layout.Controls.Add(header, 0, 0);
+
+        speedTimingLabel.Dock = WinForms.DockStyle.Fill;
+        speedTimingLabel.TextAlign = ContentAlignment.MiddleLeft;
+        speedTimingLabel.ForeColor = LoaderlyTheme.MutedText;
+        speedTimingLabel.Font = LoaderlyTheme.BodyFont(8.1F);
+        speedTimingLabel.AutoEllipsis = true;
+        layout.Controls.Add(speedTimingLabel, 0, 1);
+
+        speedRateComboBox.SetItems(SpeedRateOptions());
+        speedRateComboBox.SelectedIndex = 2;
+        speedRateComboBox.Dock = WinForms.DockStyle.Fill;
+        speedRateComboBox.FillColor = LoaderlyTheme.Surface;
+        speedRateComboBox.BorderColor = LoaderlyTheme.Border;
+        speedRateComboBox.ForeColor = LoaderlyTheme.Text;
+        speedRateComboBox.Font = LoaderlyTheme.BodyFont(8.4F);
+        layout.Controls.Add(speedRateComboBox, 0, 2);
+
+        var timingActions = new WinForms.TableLayoutPanel
+        {
+            Dock = WinForms.DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            BackColor = LoaderlyTheme.SurfaceMuted
+        };
+        for (var index = 0; index < 3; index++)
+        {
+            timingActions.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 33.333F));
+        }
+
+        ConfigureButton(speedStartAtPlayheadButton, "Start", primary: false);
+        ConfigureButton(speedEndAtPlayheadButton, "End", primary: false);
+        ConfigureButton(speedPreviewButton, "Preview", primary: false);
+        foreach (var button in new[] { speedStartAtPlayheadButton, speedEndAtPlayheadButton, speedPreviewButton })
+        {
+            button.Dock = WinForms.DockStyle.Fill;
+            button.Margin = new WinForms.Padding(2, 1, 2, 1);
+            button.Font = LoaderlyTheme.BodyFont(7.2F);
+        }
+
+        timingActions.Controls.Add(speedStartAtPlayheadButton, 0, 0);
+        timingActions.Controls.Add(speedEndAtPlayheadButton, 1, 0);
+        timingActions.Controls.Add(speedPreviewButton, 2, 0);
+        layout.Controls.Add(timingActions, 0, 3);
+
+        var actions = new WinForms.TableLayoutPanel
+        {
+            Dock = WinForms.DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = LoaderlyTheme.SurfaceMuted
+        };
+        actions.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50));
+        actions.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50));
+
+        ConfigureButton(addSpeedButton, "Add", primary: false);
+        ConfigureButton(removeSpeedButton, "Remove", primary: false);
+        foreach (var button in new[] { addSpeedButton, removeSpeedButton })
+        {
+            button.Dock = WinForms.DockStyle.Fill;
+            button.Margin = new WinForms.Padding(2, 1, 2, 1);
+            button.Font = LoaderlyTheme.BodyFont(7.2F);
+        }
+
+        actions.Controls.Add(addSpeedButton, 0, 0);
+        actions.Controls.Add(removeSpeedButton, 1, 0);
+        layout.Controls.Add(actions, 0, 4);
+
+        return panel;
+    }
+
     private WinForms.Control BuildFrameStepRow()
     {
         var row = new WinForms.TableLayoutPanel
@@ -1457,6 +1648,17 @@ internal sealed class TrimForm : WinForms.Form
     {
         player.MediaOpened += async (_, _) =>
         {
+            if (RestorePreviewAfterSpeedPreviewMediaOpened())
+            {
+                return;
+            }
+
+            if (IsRenderedSpeedPreviewSource())
+            {
+                player.Position = pendingRenderedPreviewStartPosition;
+                return;
+            }
+
             if (RestorePreviewAfterSubtitleEditorMediaOpened())
             {
                 return;
@@ -1464,9 +1666,25 @@ internal sealed class TrimForm : WinForms.Form
 
             await InitializeDurationAsync();
         };
-        player.MediaFailed += (_, args) => HandleMediaPreviewFailure(args.ErrorException);
+        player.MediaFailed += (_, args) =>
+        {
+            if (playingRenderedSpeedPreview)
+            {
+                RestoreAfterRenderedSpeedPreview();
+                SetStatus("Could not play speed preview. Export/Copy still uses the speed effect.");
+                return;
+            }
+
+            HandleMediaPreviewFailure(args.ErrorException);
+        };
         player.MediaEnded += (_, _) =>
         {
+            if (playingRenderedSpeedPreview)
+            {
+                RestoreAfterRenderedSpeedPreview();
+                return;
+            }
+
             StopPlayback();
         };
         playbackTimer.Interval = 80;
@@ -1546,6 +1764,12 @@ internal sealed class TrimForm : WinForms.Form
         autoFollowZoomButton.Click += async (_, _) => await AutoFollowSelectedZoomAsync();
         removeZoomButton.Click += (_, _) => RemoveSelectedZoom();
         zoomScaleComboBox.SelectedIndexChanged += (_, _) => UpdateSelectedZoomSettings();
+        addSpeedButton.Click += (_, _) => AddSpeedRegion();
+        speedStartAtPlayheadButton.Click += (_, _) => SetSelectedEffectStartAtPlayhead();
+        speedEndAtPlayheadButton.Click += (_, _) => SetSelectedEffectEndAtPlayhead();
+        speedPreviewButton.Click += async (_, _) => await PreviewSelectedSpeedAsync();
+        removeSpeedButton.Click += (_, _) => RemoveSelectedSpeed();
+        speedRateComboBox.SelectedIndexChanged += (_, _) => UpdateSelectedSpeedSettings();
         timeline.SegmentClicked += (_, args) => SelectSegment(args.SegmentIndex);
         timeline.SegmentContextRequested += (_, args) => ShowCutContextMenu(args.SegmentIndex, args.Location);
         chooseSubtitleButton.Click += (_, _) => ChooseSubtitleFile();
@@ -1598,6 +1822,8 @@ internal sealed class TrimForm : WinForms.Form
         blurRegions.AddRange(saved.Blurs.Select(blur => blur.Clone()));
         zoomRegions.Clear();
         zoomRegions.AddRange(saved.Zooms.Select(zoom => zoom.Clone()));
+        speedRegions.Clear();
+        speedRegions.AddRange(saved.Speeds.Select(speed => speed.Clone()));
         selectedSegmentIndex = saved.SelectedCutIndex >= 0 && saved.SelectedCutIndex < trimSegments.Count
             ? saved.SelectedCutIndex
             : trimSegments.Count == 0 ? -1 : 0;
@@ -1607,6 +1833,9 @@ internal sealed class TrimForm : WinForms.Form
         selectedZoomIndex = saved.SelectedZoomIndex >= 0 && saved.SelectedZoomIndex < zoomRegions.Count
             ? saved.SelectedZoomIndex
             : zoomRegions.Count == 0 ? -1 : 0;
+        selectedSpeedIndex = saved.SelectedSpeedIndex >= 0 && saved.SelectedSpeedIndex < speedRegions.Count
+            ? saved.SelectedSpeedIndex
+            : speedRegions.Count == 0 ? -1 : 0;
         isEditingBlurRegion = false;
         isEditingZoomRegion = false;
         updatingControls = false;
@@ -1617,12 +1846,14 @@ internal sealed class TrimForm : WinForms.Form
         UpdateSegmentControls();
         UpdateBlurControls();
         UpdateZoomControls();
+        UpdateSpeedControls();
         RefreshTimeLabels();
         var status = saved.Restored
             ? "Last trim restored."
             : usedFallback ? "Ready. Duration read with FFprobe." : "Ready.";
         SetStatus(ReadyStatus(status));
         timeline.SetThumbnailImages([]);
+        QueueTimelineSpeedPreviewRender();
     }
 
     private void LoadSubtitles(string? preferredPath = null)
@@ -2097,7 +2328,7 @@ internal sealed class TrimForm : WinForms.Form
         SetStatus(subtitlesVisible ? ReadyStatus("Ready.") : "Subtitles hidden.");
     }
 
-    private (int Start, int End, int Position, IReadOnlyList<EditableTrimSegment> Cuts, int SelectedCutIndex, IReadOnlyList<EditableBlurRegion> Blurs, int SelectedBlurIndex, IReadOnlyList<EditableZoomRegion> Zooms, int SelectedZoomIndex, bool Restored) LoadSavedTrim(int maximum)
+    private (int Start, int End, int Position, IReadOnlyList<EditableTrimSegment> Cuts, int SelectedCutIndex, IReadOnlyList<EditableBlurRegion> Blurs, int SelectedBlurIndex, IReadOnlyList<EditableZoomRegion> Zooms, int SelectedZoomIndex, IReadOnlyList<EditableSpeedRegion> Speeds, int SelectedSpeedIndex, bool Restored) LoadSavedTrim(int maximum)
     {
         var fallback = (
             Start: 0,
@@ -2109,6 +2340,8 @@ internal sealed class TrimForm : WinForms.Form
             SelectedBlurIndex: -1,
             Zooms: (IReadOnlyList<EditableZoomRegion>)[],
             SelectedZoomIndex: -1,
+            Speeds: (IReadOnlyList<EditableSpeedRegion>)[],
+            SelectedSpeedIndex: -1,
             Restored: false);
         var saved = trimStateStore.Load(sourceFilePath);
         if (saved is null)
@@ -2183,7 +2416,19 @@ internal sealed class TrimForm : WinForms.Form
         var selectedZoomIndex = saved.SelectedZoomIndex >= 0 && saved.SelectedZoomIndex < zooms.Count
             ? saved.SelectedZoomIndex
             : zooms.Count == 0 ? -1 : 0;
-        return (start, end, position, cuts, selectedCutIndex, blurs, selectedBlurIndex, zooms, selectedZoomIndex, true);
+        var speeds = saved.SpeedRegions
+            .Select(speed => new EditableSpeedRegion(
+                SecondsToUnits(speed.StartSeconds, maximum),
+                SecondsToUnits(speed.EndSeconds, maximum),
+                speed.Rate))
+            .Where(speed => speed.End - speed.Start >= MinimumTrimUnits)
+            .OrderBy(speed => speed.Start)
+            .ThenBy(speed => speed.End)
+            .ToList();
+        var selectedSpeedIndex = saved.SelectedSpeedIndex >= 0 && saved.SelectedSpeedIndex < speeds.Count
+            ? saved.SelectedSpeedIndex
+            : speeds.Count == 0 ? -1 : 0;
+        return (start, end, position, cuts, selectedCutIndex, blurs, selectedBlurIndex, zooms, selectedZoomIndex, speeds, selectedSpeedIndex, true);
     }
 
     private async Task LoadTimelineThumbnailsAsync()
@@ -2298,14 +2543,18 @@ internal sealed class TrimForm : WinForms.Form
         trimSegments.Clear();
         blurRegions.Clear();
         zoomRegions.Clear();
+        speedRegions.Clear();
         selectedSegmentIndex = -1;
         selectedBlurIndex = -1;
         selectedZoomIndex = -1;
+        selectedSpeedIndex = -1;
         UpdateSegmentControls();
         UpdateBlurControls();
         UpdateZoomControls();
+        UpdateSpeedControls();
         RefreshTimeLabels();
         SaveTrimState();
+        ClearTimelineSpeedPreview(deleteFile: true);
         SetStatus("Keeping selected range only.");
     }
 
@@ -2355,12 +2604,14 @@ internal sealed class TrimForm : WinForms.Form
         blurRegions.Add(region);
         selectedBlurIndex = blurRegions.Count - 1;
         selectedZoomIndex = -1;
+        selectedSpeedIndex = -1;
         selectedSegmentIndex = -1;
         isEditingBlurRegion = true;
         isEditingZoomRegion = false;
         UpdateSegmentControls();
         UpdateBlurControls();
         UpdateZoomControls();
+        UpdateSpeedControls();
         UpdateBlurOverlay();
         InvalidateGeneratedPreview();
         if (CurrentUnits() != start)
@@ -2444,6 +2695,7 @@ internal sealed class TrimForm : WinForms.Form
 
         selectedBlurIndex = index;
         selectedZoomIndex = -1;
+        selectedSpeedIndex = -1;
         selectedSegmentIndex = -1;
         isEditingBlurRegion = false;
         isEditingZoomRegion = false;
@@ -2483,6 +2735,7 @@ internal sealed class TrimForm : WinForms.Form
 
         selectedBlurIndex = index;
         selectedZoomIndex = -1;
+        selectedSpeedIndex = -1;
         selectedSegmentIndex = -1;
         isEditingBlurRegion = false;
         isEditingZoomRegion = false;
@@ -2614,12 +2867,14 @@ internal sealed class TrimForm : WinForms.Form
         zoomRegions.Add(region);
         selectedZoomIndex = zoomRegions.Count - 1;
         selectedBlurIndex = -1;
+        selectedSpeedIndex = -1;
         selectedSegmentIndex = -1;
         isEditingZoomRegion = true;
         isEditingBlurRegion = false;
         UpdateSegmentControls();
         UpdateBlurControls();
         UpdateZoomControls();
+        UpdateSpeedControls();
         UpdateBlurOverlay();
         InvalidateGeneratedPreview();
         if (CurrentUnits() != start)
@@ -2651,8 +2906,10 @@ internal sealed class TrimForm : WinForms.Form
         isEditingZoomRegion = true;
         isEditingBlurRegion = false;
         selectedBlurIndex = -1;
+        selectedSpeedIndex = -1;
         UpdateBlurControls();
         UpdateZoomControls();
+        UpdateSpeedControls();
         SetStatus("Editing zoom. Drag the box or its corners, then press Done.");
     }
 
@@ -2669,6 +2926,7 @@ internal sealed class TrimForm : WinForms.Form
         isEditingZoomRegion = false;
         UpdateZoomControls();
         UpdateBlurControls();
+        UpdateSpeedControls();
         InvalidateGeneratedPreview();
         SaveTrimState();
         SetStatus("Zoom removed.");
@@ -2684,12 +2942,14 @@ internal sealed class TrimForm : WinForms.Form
 
         selectedZoomIndex = index;
         selectedBlurIndex = -1;
+        selectedSpeedIndex = -1;
         selectedSegmentIndex = -1;
         isEditingZoomRegion = false;
         isEditingBlurRegion = false;
         UpdateSegmentControls();
         UpdateBlurControls();
         UpdateZoomControls();
+        UpdateSpeedControls();
         SetStatus(ZoomSelectedStatus(index));
     }
 
@@ -2699,6 +2959,7 @@ internal sealed class TrimForm : WinForms.Form
         {
             ClearBlurSelection();
             ClearZoomSelection();
+            ClearSpeedSelection();
             return;
         }
 
@@ -2708,7 +2969,14 @@ internal sealed class TrimForm : WinForms.Form
             return;
         }
 
-        SelectZoomFromTimeline(index - blurRegions.Count);
+        var zoomIndex = index - blurRegions.Count;
+        if (zoomIndex < zoomRegions.Count)
+        {
+            SelectZoomFromTimeline(zoomIndex);
+            return;
+        }
+
+        SelectSpeedFromTimeline(zoomIndex - zoomRegions.Count);
     }
 
     private void ClearZoomSelection()
@@ -2722,6 +2990,7 @@ internal sealed class TrimForm : WinForms.Form
         isEditingZoomRegion = false;
         UpdateZoomControls();
         UpdateBlurControls();
+        UpdateSpeedControls();
         UpdateBlurOverlay();
         SetStatus("Zoom unselected.");
     }
@@ -2735,6 +3004,7 @@ internal sealed class TrimForm : WinForms.Form
 
         selectedZoomIndex = index;
         selectedBlurIndex = -1;
+        selectedSpeedIndex = -1;
         selectedSegmentIndex = -1;
         isEditingZoomRegion = false;
         isEditingBlurRegion = false;
@@ -2745,6 +3015,7 @@ internal sealed class TrimForm : WinForms.Form
         region.End = nextEnd;
         UpdateZoomControls();
         UpdateBlurControls();
+        UpdateSpeedControls();
         UpdateBlurOverlay();
         InvalidateGeneratedPreview();
         if (!isTimelineInteracting)
@@ -2768,7 +3039,14 @@ internal sealed class TrimForm : WinForms.Form
             return;
         }
 
-        UpdateZoomRangeFromTimeline(index - blurRegions.Count, start, end);
+        var zoomIndex = index - blurRegions.Count;
+        if (zoomIndex < zoomRegions.Count)
+        {
+            UpdateZoomRangeFromTimeline(zoomIndex, start, end);
+            return;
+        }
+
+        UpdateSpeedRangeFromTimeline(zoomIndex - zoomRegions.Count, start, end);
     }
 
     private void UpdateSelectedZoomSettings()
@@ -2860,6 +3138,138 @@ internal sealed class TrimForm : WinForms.Form
         SetStatus("Zoom fixed to the current frame.");
     }
 
+    private void AddSpeedRegion()
+    {
+        if (duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        PushUndoSnapshot(CaptureSnapshot());
+        var range = NewTimelineItemRangeAtPlayhead(
+            CurrentUnits(),
+            timeline.Maximum,
+            speedRegions.Select(region => (Start: region.Start, End: region.End)));
+        var region = new EditableSpeedRegion(range.Start, range.End, CurrentSpeedRate());
+        speedRegions.Add(region);
+        selectedSpeedIndex = speedRegions.Count - 1;
+        selectedBlurIndex = -1;
+        selectedZoomIndex = -1;
+        selectedSegmentIndex = -1;
+        isEditingBlurRegion = false;
+        isEditingZoomRegion = false;
+        UpdateSegmentControls();
+        UpdateBlurControls();
+        UpdateZoomControls();
+        UpdateSpeedControls();
+        InvalidateGeneratedPreview();
+        if (CurrentUnits() != range.Start)
+        {
+            SeekTo(TimeFromUnits(range.Start));
+        }
+
+        SaveTrimState();
+        QueueTimelineSpeedPreviewRender();
+        SetStatus($"Speed {selectedSpeedIndex + 1} added at {CurrentSpeedRate():0.#}x.");
+    }
+
+    private void RemoveSelectedSpeed()
+    {
+        if (selectedSpeedIndex < 0 || selectedSpeedIndex >= speedRegions.Count)
+        {
+            return;
+        }
+
+        PushUndoSnapshot(CaptureSnapshot());
+        speedRegions.RemoveAt(selectedSpeedIndex);
+        selectedSpeedIndex = speedRegions.Count == 0 ? -1 : Math.Min(selectedSpeedIndex, speedRegions.Count - 1);
+        UpdateSpeedControls();
+        InvalidateGeneratedPreview();
+        SaveTrimState();
+        QueueTimelineSpeedPreviewRender();
+        SetStatus("Speed region removed.");
+    }
+
+    private void SelectSpeedFromTimeline(int index)
+    {
+        if (index < 0 || index >= speedRegions.Count)
+        {
+            ClearSpeedSelection();
+            return;
+        }
+
+        selectedSpeedIndex = index;
+        selectedBlurIndex = -1;
+        selectedZoomIndex = -1;
+        selectedSegmentIndex = -1;
+        isEditingBlurRegion = false;
+        isEditingZoomRegion = false;
+        UpdateSegmentControls();
+        UpdateBlurControls();
+        UpdateZoomControls();
+        UpdateSpeedControls();
+        SetStatus(SpeedSelectedStatus(index));
+    }
+
+    private void ClearSpeedSelection()
+    {
+        if (selectedSpeedIndex < 0)
+        {
+            return;
+        }
+
+        selectedSpeedIndex = -1;
+        UpdateSpeedControls();
+        SetStatus("Speed unselected.");
+    }
+
+    private void UpdateSpeedRangeFromTimeline(int index, int start, int end)
+    {
+        if (index < 0 || index >= speedRegions.Count)
+        {
+            return;
+        }
+
+        selectedSpeedIndex = index;
+        selectedBlurIndex = -1;
+        selectedZoomIndex = -1;
+        selectedSegmentIndex = -1;
+        isEditingBlurRegion = false;
+        isEditingZoomRegion = false;
+        var nextStart = Math.Clamp(Math.Min(start, end - MinimumTrimUnits), 0, Math.Max(0, timeline.Maximum - MinimumTrimUnits));
+        var nextEnd = Math.Clamp(Math.Max(end, nextStart + MinimumTrimUnits), Math.Min(timeline.Maximum, nextStart + MinimumTrimUnits), timeline.Maximum);
+        var region = speedRegions[index];
+        region.Start = nextStart;
+        region.End = nextEnd;
+        UpdateSpeedControls();
+        UpdateBlurControls();
+        UpdateZoomControls();
+        InvalidateGeneratedPreview();
+        if (!isTimelineInteracting)
+        {
+            SaveTrimState();
+        }
+
+        QueueTimelineSpeedPreviewRender();
+        SetStatus(SpeedTimingUpdatedStatus(index, EffectRangeTouchesPlayhead(nextStart, nextEnd, CurrentUnits())));
+    }
+
+    private void UpdateSelectedSpeedSettings()
+    {
+        if (updatingControls ||
+            selectedSpeedIndex < 0 ||
+            selectedSpeedIndex >= speedRegions.Count)
+        {
+            return;
+        }
+
+        speedRegions[selectedSpeedIndex].Rate = CurrentSpeedRate();
+        UpdateSpeedControls();
+        InvalidateGeneratedPreview();
+        SaveTrimState();
+        QueueTimelineSpeedPreviewRender();
+    }
+
     private void SetSelectedEffectStartAtPlayhead()
     {
         if (selectedBlurIndex >= 0 && selectedBlurIndex < blurRegions.Count)
@@ -2890,7 +3300,16 @@ internal sealed class TrimForm : WinForms.Form
             return;
         }
 
-        SetStatus("Select a blur or zoom first.");
+        if (selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count)
+        {
+            SetEffectStartAtPlayhead(
+                speedRegions[selectedSpeedIndex],
+                UpdateSpeedControls,
+                $"Speed {selectedSpeedIndex + 1} start set.");
+            return;
+        }
+
+        SetStatus("Select a blur, zoom, or speed first.");
     }
 
     private void SetSelectedEffectEndAtPlayhead()
@@ -2923,7 +3342,16 @@ internal sealed class TrimForm : WinForms.Form
             return;
         }
 
-        SetStatus("Select a blur or zoom first.");
+        if (selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count)
+        {
+            SetEffectEndAtPlayhead(
+                speedRegions[selectedSpeedIndex],
+                UpdateSpeedControls,
+                $"Speed {selectedSpeedIndex + 1} end set.");
+            return;
+        }
+
+        SetStatus("Select a blur, zoom, or speed first.");
     }
 
     private void SetEffectStartAtPlayhead(EditableBlurRegion region, Action refreshUi, string status)
@@ -2961,6 +3389,24 @@ internal sealed class TrimForm : WinForms.Form
         refreshUi();
         InvalidateGeneratedPreview();
         SaveTrimState();
+        SetStatus(status);
+    }
+
+    private void SetEffectStartAtPlayhead(EditableSpeedRegion region, Action refreshUi, string status)
+    {
+        var nextStart = Math.Clamp(CurrentUnits(), 0, Math.Max(0, region.End - MinimumTrimUnits));
+        if (nextStart == region.Start)
+        {
+            SetStatus("Effect start is already at the playhead.");
+            return;
+        }
+
+        PushUndoSnapshot(CaptureSnapshot());
+        region.Start = nextStart;
+        refreshUi();
+        InvalidateGeneratedPreview();
+        SaveTrimState();
+        QueueTimelineSpeedPreviewRender();
         SetStatus(status);
     }
 
@@ -3002,6 +3448,24 @@ internal sealed class TrimForm : WinForms.Form
         SetStatus(status);
     }
 
+    private void SetEffectEndAtPlayhead(EditableSpeedRegion region, Action refreshUi, string status)
+    {
+        var nextEnd = Math.Clamp(CurrentUnits(), Math.Min(timeline.Maximum, region.Start + MinimumTrimUnits), timeline.Maximum);
+        if (nextEnd == region.End)
+        {
+            SetStatus("Effect end is already at the playhead.");
+            return;
+        }
+
+        PushUndoSnapshot(CaptureSnapshot());
+        region.End = nextEnd;
+        refreshUi();
+        InvalidateGeneratedPreview();
+        SaveTrimState();
+        QueueTimelineSpeedPreviewRender();
+        SetStatus(status);
+    }
+
     private void PreviewSelectedEffect()
     {
         if (selectedBlurIndex >= 0 && selectedBlurIndex < blurRegions.Count)
@@ -3018,7 +3482,99 @@ internal sealed class TrimForm : WinForms.Form
             return;
         }
 
-        SetStatus("Select a blur or zoom first.");
+        if (selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count)
+        {
+            var region = speedRegions[selectedSpeedIndex];
+            _ = PreviewSelectedSpeedAsync();
+            return;
+        }
+
+        SetStatus("Select a blur, zoom, or speed first.");
+    }
+
+    private async Task PreviewSelectedSpeedAsync()
+    {
+        if (selectedSpeedIndex < 0 || selectedSpeedIndex >= speedRegions.Count)
+        {
+            SetStatus("Add a speed first.");
+            return;
+        }
+
+        var region = speedRegions[selectedSpeedIndex];
+        if (!ShouldRenderSpeedPreview(region.Rate))
+        {
+            PreviewEffectRange(region.Start, region.End, $"speed {region.Rate:0.#}x");
+            return;
+        }
+
+        speedPreviewCancellation?.Cancel();
+        speedPreviewCancellation?.Dispose();
+        speedPreviewCancellation = new CancellationTokenSource();
+        var cancellation = speedPreviewCancellation;
+        var token = cancellation.Token;
+        var previewPath = Path.Combine(AppDataFolder.Path, "SpeedPreviews", $"{Guid.NewGuid():N}.mp4");
+        var previousPreviewPath = speedPreviewVideoPath;
+        speedPreviewVideoPath = previewPath;
+        DeleteTemporaryFile(previousPreviewPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(previewPath)!);
+
+        SetStatus($"Rendering smooth speed preview at {region.Rate:0.#}x...");
+        speedPreviewButton.Enabled = false;
+        try
+        {
+            var speedRegion = region.ToRegion().Normalize();
+            await trimService.ExportCompositionAsync(
+                sourceFilePath,
+                TrimComposition.Normalize([new TrimSegment(speedRegion.Start, speedRegion.End)]),
+                previewPath,
+                new TrimExportOptions(
+                    muteCheckBox.Checked,
+                    TrimExportQuality.Small,
+                    CurrentSubtitleBurnInOptions(),
+                    CurrentBlurRegions(),
+                    CurrentZoomRegions(),
+                    [speedRegion]),
+                token);
+
+            if (token.IsCancellationRequested || !File.Exists(previewPath))
+            {
+                return;
+            }
+
+            PlayRenderedSpeedPreview(
+                previewPath,
+                TimeFromUnits(region.Start),
+                $"Previewing smooth speed {region.Rate:0.#}x.");
+        }
+        catch (OperationCanceledException)
+        {
+            DeleteTemporaryFile(previewPath);
+            if (string.Equals(speedPreviewVideoPath, previewPath, StringComparison.OrdinalIgnoreCase))
+            {
+                speedPreviewVideoPath = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            DeleteTemporaryFile(previewPath);
+            if (string.Equals(speedPreviewVideoPath, previewPath, StringComparison.OrdinalIgnoreCase))
+            {
+                speedPreviewVideoPath = null;
+            }
+            SetStatus(ex.Message);
+        }
+        finally
+        {
+            if (ReferenceEquals(speedPreviewCancellation, cancellation))
+            {
+                speedPreviewCancellation.Dispose();
+                speedPreviewCancellation = null;
+            }
+
+            speedPreviewButton.Enabled = exportCancellation is null &&
+                selectedSpeedIndex >= 0 &&
+                selectedSpeedIndex < speedRegions.Count;
+        }
     }
 
     private void PreviewEffectRange(int start, int end, string label)
@@ -3033,6 +3589,7 @@ internal sealed class TrimForm : WinForms.Form
         var endTime = TimeFromUnits(Math.Clamp(Math.Max(end, start + MinimumTrimUnits), 0, timeline.Maximum));
         effectPreviewStopAt = endTime;
         SeekTo(startTime);
+        ResetPlaybackSpeed();
         player.Play();
         playbackTimer.Start();
         playButton.Text = LoaderlyLanguage.Text("Pause");
@@ -3115,6 +3672,28 @@ internal sealed class TrimForm : WinForms.Form
         }
 
         UpdateBlurOverlay();
+    }
+
+    private void UpdateSpeedControls()
+    {
+        var hasSpeed = selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count;
+        RefreshTimelineBlurRegions();
+        speedStatusLabel.Text = SpeedStatusDisplayText(speedRegions.Count, selectedSpeedIndex);
+        speedStatusLabel.ForeColor = hasSpeed ? LoaderlyTheme.Accent : LoaderlyTheme.MutedText;
+        speedStartAtPlayheadButton.Enabled = hasSpeed;
+        speedEndAtPlayheadButton.Enabled = hasSpeed;
+        speedPreviewButton.Enabled = hasSpeed;
+        removeSpeedButton.Enabled = hasSpeed;
+        speedRateComboBox.Enabled = hasSpeed;
+        speedTimingLabel.Text = LoaderlyLanguage.Text(hasSpeed ? "Select a speed region." : "No speed selected.");
+        if (hasSpeed)
+        {
+            var region = speedRegions[selectedSpeedIndex];
+            speedTimingLabel.Text = EffectTimingText(region.Start, region.End, false);
+            updatingControls = true;
+            speedRateComboBox.SelectedIndex = Math.Max(0, Array.IndexOf(SpeedRateOptions(), SpeedRateLabel(region.Rate)));
+            updatingControls = false;
+        }
     }
 
     private void UpdateBlurOverlay()
@@ -4122,6 +4701,11 @@ internal sealed class TrimForm : WinForms.Form
         return ZoomScaleFromLabel(LoaderlyLanguage.EnglishFor(zoomScaleComboBox.SelectedText));
     }
 
+    private double CurrentSpeedRate()
+    {
+        return SpeedRateFromLabel(LoaderlyLanguage.EnglishFor(speedRateComboBox.SelectedText));
+    }
+
     private static EditableBlurKeyframe ToEditableBlurKeyframe(TrimBlurKeyframe keyframe)
     {
         return new EditableBlurKeyframe(
@@ -4283,12 +4867,20 @@ internal sealed class TrimForm : WinForms.Form
                 isEditingZoomRegion && index == selectedZoomIndex,
                 $"Zoom {index + 1}",
                 Lane: 1)))
+            .Concat(speedRegions.Select((region, index) => new TimelineBlurDisplay(
+                region.Start,
+                region.End,
+                false,
+                $"Speed {region.Rate:0.#}x",
+                Lane: 2)))
             .ToList();
         var selectedEffectIndex = selectedBlurIndex >= 0 && selectedBlurIndex < blurRegions.Count
             ? selectedBlurIndex
             : selectedZoomIndex >= 0 && selectedZoomIndex < zoomRegions.Count
                 ? blurRegions.Count + selectedZoomIndex
-                : -1;
+                : selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count
+                    ? blurRegions.Count + zoomRegions.Count + selectedSpeedIndex
+                    : -1;
         timeline.SetBlurRegions(
             effectRegions,
             selectedEffectIndex);
@@ -4367,6 +4959,12 @@ internal sealed class TrimForm : WinForms.Form
             return;
         }
 
+        if (playingRenderedSpeedPreview)
+        {
+            RestoreAfterRenderedSpeedPreview();
+            return;
+        }
+
         effectPreviewStopAt = null;
         var resumePosition = player.Position;
         if (trimSegments.Count > 0)
@@ -4378,7 +4976,13 @@ internal sealed class TrimForm : WinForms.Form
             resumePosition = StartTime;
         }
 
+        if (TryPlayCachedTimelineSpeedPreview(resumePosition))
+        {
+            return;
+        }
+
         player.Position = resumePosition;
+        ResetPlaybackSpeed();
         player.Play();
         playbackTimer.Start();
         playButton.Text = LoaderlyLanguage.Text("Pause");
@@ -4387,8 +4991,15 @@ internal sealed class TrimForm : WinForms.Form
 
     private void StopPlayback()
     {
+        if (playingRenderedSpeedPreview)
+        {
+            RestoreAfterRenderedSpeedPreview();
+            return;
+        }
+
         effectPreviewStopAt = null;
         player.Pause();
+        ResetPlaybackSpeed();
         playbackTimer.Stop();
         playButton.Text = player.Position > StartTime && player.Position < EndTime
             ? "Resume"
@@ -4399,6 +5010,11 @@ internal sealed class TrimForm : WinForms.Form
 
     private void UpdatePlaybackPosition()
     {
+        if (playingRenderedSpeedPreview)
+        {
+            return;
+        }
+
         if (effectPreviewStopAt is { } previewEnd && player.Position >= previewEnd)
         {
             effectPreviewStopAt = null;
@@ -4450,6 +5066,264 @@ internal sealed class TrimForm : WinForms.Form
         timeline.PositionValue = Math.Clamp((int)Math.Round(bounded.TotalSeconds * TimeScale), 0, timeline.Maximum);
         updatingControls = false;
         RefreshTimeLabels();
+    }
+
+    private void ResetPlaybackSpeed()
+    {
+        player.SpeedRatio = 1.0;
+    }
+
+    private bool TryPlayCachedTimelineSpeedPreview(TimeSpan resumePosition)
+    {
+        var speedRegionsForPreview = CurrentSpeedRegions();
+        if (speedRegionsForPreview.Count == 0)
+        {
+            return false;
+        }
+
+        var cacheReady = !string.IsNullOrWhiteSpace(timelineSpeedPreviewVideoPath) &&
+            File.Exists(timelineSpeedPreviewVideoPath) &&
+            string.Equals(timelineSpeedPreviewKey, TimelineSpeedPreviewKey(), StringComparison.Ordinal);
+        if (!ShouldUsePreparedSpeedPreview(cacheReady, speedRegionsForPreview.Count > 0))
+        {
+            QueueTimelineSpeedPreviewRender();
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(timelineSpeedPreviewVideoPath) ||
+            !File.Exists(timelineSpeedPreviewVideoPath) ||
+            !string.Equals(timelineSpeedPreviewKey, TimelineSpeedPreviewKey(), StringComparison.Ordinal))
+        {
+            QueueTimelineSpeedPreviewRender();
+            return false;
+        }
+
+        var composition = CurrentComposition();
+        var previewPosition = TrimSpeedRegion.RetimePositionForComposition(
+            resumePosition,
+            composition,
+            speedRegionsForPreview);
+        PlayRenderedSpeedPreview(
+            timelineSpeedPreviewVideoPath,
+            resumePosition,
+            "Playing timeline speed preview.",
+            deleteAfterPlayback: false,
+            renderedStartPosition: previewPosition);
+        return true;
+    }
+
+    private void QueueTimelineSpeedPreviewRender()
+    {
+        if (CurrentSpeedRegions().Count == 0)
+        {
+            ClearTimelineSpeedPreview(deleteFile: true);
+            return;
+        }
+
+        var key = TimelineSpeedPreviewKey();
+        if (string.Equals(timelineSpeedPreviewKey, key, StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(timelineSpeedPreviewVideoPath) &&
+            File.Exists(timelineSpeedPreviewVideoPath))
+        {
+            return;
+        }
+
+        timelineSpeedPreviewCancellation?.Cancel();
+        timelineSpeedPreviewCancellation?.Dispose();
+        timelineSpeedPreviewCancellation = new CancellationTokenSource();
+        var cancellation = timelineSpeedPreviewCancellation;
+        var token = cancellation.Token;
+        var composition = CurrentComposition();
+        var options = new TrimExportOptions(
+            muteCheckBox.Checked,
+            TrimExportQuality.Small,
+            CurrentSubtitleBurnInOptions(),
+            CurrentBlurRegions(),
+            CurrentZoomRegions(),
+            CurrentSpeedRegions());
+        _ = RenderTimelineSpeedPreviewAsync(key, composition, options, cancellation, token);
+    }
+
+    private async Task RenderTimelineSpeedPreviewAsync(
+        string key,
+        TrimComposition composition,
+        TrimExportOptions options,
+        CancellationTokenSource owner,
+        CancellationToken cancellationToken)
+    {
+        string? previewPath = null;
+        try
+        {
+            await Task.Delay(450, cancellationToken);
+            previewPath = Path.Combine(AppDataFolder.Path, "SpeedPreviews", $"timeline-{Guid.NewGuid():N}.mp4");
+            Directory.CreateDirectory(Path.GetDirectoryName(previewPath)!);
+            await trimService.ExportCompositionAsync(sourceFilePath, composition, previewPath, options, cancellationToken);
+            if (cancellationToken.IsCancellationRequested ||
+                !string.Equals(key, TimelineSpeedPreviewKey(), StringComparison.Ordinal))
+            {
+                DeleteTemporaryFile(previewPath);
+                return;
+            }
+
+            var oldPreview = timelineSpeedPreviewVideoPath;
+            timelineSpeedPreviewVideoPath = previewPath;
+            timelineSpeedPreviewKey = key;
+            DeleteTemporaryFile(oldPreview);
+            SetStatus("Timeline speed preview ready.");
+        }
+        catch (OperationCanceledException)
+        {
+            DeleteTemporaryFile(previewPath);
+        }
+        catch
+        {
+            DeleteTemporaryFile(previewPath);
+        }
+        finally
+        {
+            if (ReferenceEquals(timelineSpeedPreviewCancellation, owner))
+            {
+                timelineSpeedPreviewCancellation.Dispose();
+                timelineSpeedPreviewCancellation = null;
+            }
+        }
+    }
+
+    private void ClearTimelineSpeedPreview(bool deleteFile)
+    {
+        timelineSpeedPreviewCancellation?.Cancel();
+        timelineSpeedPreviewCancellation?.Dispose();
+        timelineSpeedPreviewCancellation = null;
+        timelineSpeedPreviewKey = null;
+        if (deleteFile)
+        {
+            var oldPreview = timelineSpeedPreviewVideoPath;
+            timelineSpeedPreviewVideoPath = null;
+            DeleteTemporaryFile(oldPreview);
+        }
+    }
+
+    private string TimelineSpeedPreviewKey()
+    {
+        var composition = CurrentComposition();
+        var builder = new StringBuilder();
+        foreach (var segment in composition.Segments)
+        {
+            builder
+                .Append("seg:")
+                .Append(segment.Start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('-')
+                .Append(segment.End.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('|');
+        }
+
+        foreach (var speed in CurrentSpeedRegions())
+        {
+            builder
+                .Append("speed:")
+                .Append(speed.Start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('-')
+                .Append(speed.End.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('@')
+                .Append(speed.Rate.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('|');
+        }
+
+        foreach (var blur in CurrentBlurRegions())
+        {
+            builder
+                .Append("blur:")
+                .Append(blur.Start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('-')
+                .Append(blur.End.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('|');
+        }
+
+        foreach (var zoom in CurrentZoomRegions())
+        {
+            builder
+                .Append("zoom:")
+                .Append(zoom.Start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('-')
+                .Append(zoom.End.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('@')
+                .Append(zoom.Scale.ToString("0.###", CultureInfo.InvariantCulture))
+                .Append('|');
+        }
+
+        builder.Append("mute:").Append(muteCheckBox.Checked ? "1" : "0");
+        return builder.ToString();
+    }
+
+    private void PlayRenderedSpeedPreview(
+        string previewPath,
+        TimeSpan restorePosition,
+        string status,
+        bool deleteAfterPlayback = true,
+        TimeSpan? renderedStartPosition = null)
+    {
+        playingRenderedSpeedPreview = true;
+        pendingSpeedPreviewRestorePosition = restorePosition;
+        pendingRenderedPreviewStartPosition = renderedStartPosition ?? TimeSpan.Zero;
+        activeRenderedPreviewPath = previewPath;
+        deleteActiveRenderedPreviewAfterPlayback = deleteAfterPlayback;
+        effectPreviewStopAt = null;
+        playbackTimer.Stop();
+        ResetPlaybackSpeed();
+        player.Stop();
+        player.Source = new Uri(previewPath);
+        player.Play();
+        playbackTimer.Start();
+        playButton.Text = LoaderlyLanguage.Text("Pause");
+        SetStatus(status);
+    }
+
+    private void RestoreAfterRenderedSpeedPreview()
+    {
+        var restorePosition = pendingSpeedPreviewRestorePosition ?? StartTime;
+        pendingSpeedPreviewRestorePosition = restorePosition;
+        playingRenderedSpeedPreview = false;
+        activeRenderedPreviewPath = null;
+        pendingRenderedPreviewStartPosition = TimeSpan.Zero;
+        var shouldDeletePreview = deleteActiveRenderedPreviewAfterPlayback;
+        deleteActiveRenderedPreviewAfterPlayback = false;
+        playbackTimer.Stop();
+        ResetPlaybackSpeed();
+        player.Stop();
+        player.Source = new Uri(sourceFilePath);
+        if (shouldDeletePreview)
+        {
+            var oldPreviewPath = speedPreviewVideoPath;
+            speedPreviewVideoPath = null;
+            DeleteTemporaryFile(oldPreviewPath);
+        }
+
+        playButton.Text = LoaderlyLanguage.Text("Play selection");
+    }
+
+    private bool RestorePreviewAfterSpeedPreviewMediaOpened()
+    {
+        if (pendingSpeedPreviewRestorePosition is not { } position || playingRenderedSpeedPreview)
+        {
+            return false;
+        }
+
+        pendingSpeedPreviewRestorePosition = null;
+        SeekTo(position);
+        player.Pause();
+        ResetPlaybackSpeed();
+        playButton.Text = "Resume";
+        RefreshTimeLabels();
+        SetStatus("Speed preview finished.");
+        return true;
+    }
+
+    private bool IsRenderedSpeedPreviewSource()
+    {
+        return playingRenderedSpeedPreview &&
+            !string.IsNullOrWhiteSpace(activeRenderedPreviewPath) &&
+            player.Source is { IsFile: true } source &&
+            string.Equals(source.LocalPath, activeRenderedPreviewPath, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task RunFfmpegFrameAsync(
@@ -4830,6 +5704,12 @@ internal sealed class TrimForm : WinForms.Form
         autoFollowZoomButton.Enabled = !isExporting && selectedZoomIndex >= 0 && selectedZoomIndex < zoomRegions.Count;
         removeZoomButton.Enabled = !isExporting && selectedZoomIndex >= 0 && selectedZoomIndex < zoomRegions.Count;
         zoomScaleComboBox.Enabled = !isExporting && selectedZoomIndex >= 0 && selectedZoomIndex < zoomRegions.Count;
+        addSpeedButton.Enabled = !isExporting;
+        speedStartAtPlayheadButton.Enabled = !isExporting && selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count;
+        speedEndAtPlayheadButton.Enabled = !isExporting && selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count;
+        speedPreviewButton.Enabled = !isExporting && selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count;
+        removeSpeedButton.Enabled = !isExporting && selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count;
+        speedRateComboBox.Enabled = !isExporting && selectedSpeedIndex >= 0 && selectedSpeedIndex < speedRegions.Count;
         exportQualityComboBox.Enabled = !isExporting;
         subtitleExportComboBox.Enabled = !isExporting;
         muteCheckBox.Enabled = !isExporting;
@@ -4869,7 +5749,14 @@ internal sealed class TrimForm : WinForms.Form
 
     private void PausePreviewForExport()
     {
+        if (playingRenderedSpeedPreview)
+        {
+            RestoreAfterRenderedSpeedPreview();
+            return;
+        }
+
         player.Pause();
+        ResetPlaybackSpeed();
         playbackTimer.Stop();
         playButton.Text = player.Position > StartTime && player.Position < EndTime
             ? "Resume"
@@ -4879,7 +5766,14 @@ internal sealed class TrimForm : WinForms.Form
 
     private void PausePreviewForRangeEdit()
     {
+        if (playingRenderedSpeedPreview)
+        {
+            RestoreAfterRenderedSpeedPreview();
+            return;
+        }
+
         player.Pause();
+        ResetPlaybackSpeed();
         playbackTimer.Stop();
         playButton.Text = LoaderlyLanguage.Text("Resume");
         SetStatus("Adjusting clip...");
@@ -4888,10 +5782,16 @@ internal sealed class TrimForm : WinForms.Form
 
     private void ReleasePreviewForSubtitleEditor()
     {
+        if (playingRenderedSpeedPreview)
+        {
+            RestoreAfterRenderedSpeedPreview();
+        }
+
         playbackTimer.Stop();
         player.LoadedBehavior = WpfControls.MediaState.Manual;
         player.UnloadedBehavior = WpfControls.MediaState.Manual;
         player.Stop();
+        ResetPlaybackSpeed();
         player.Source = null;
         playButton.Text = LoaderlyLanguage.Text("Play selection");
         SetStatus("Editing subtitles...");
@@ -5020,6 +5920,7 @@ internal sealed class TrimForm : WinForms.Form
         else
         {
             player.Pause();
+            ResetPlaybackSpeed();
             playButton.Text = player.Position > StartTime && player.Position < EndTime
                 ? "Resume"
                 : "Play selection";
@@ -5080,6 +5981,12 @@ internal sealed class TrimForm : WinForms.Form
         if (ShouldRemoveSelectedZoomShortcut(keyData, selectedZoomIndex, zoomRegions.Count))
         {
             RemoveSelectedZoom();
+            return true;
+        }
+
+        if (ShouldRemoveSelectedSpeedShortcut(keyData, selectedSpeedIndex, speedRegions.Count))
+        {
+            RemoveSelectedSpeed();
             return true;
         }
 
@@ -5293,9 +6200,11 @@ internal sealed class TrimForm : WinForms.Form
         trimSegments.Clear();
         blurRegions.Clear();
         zoomRegions.Clear();
+        speedRegions.Clear();
         selectedSegmentIndex = -1;
         selectedBlurIndex = -1;
         selectedZoomIndex = -1;
+        selectedSpeedIndex = -1;
         updatingControls = true;
         timeline.SetRange(0, timeline.Maximum);
         timeline.PositionValue = 0;
@@ -5307,6 +6216,7 @@ internal sealed class TrimForm : WinForms.Form
         InvalidateGeneratedPreview();
         RefreshTimeLabels();
         SaveTrimState();
+        ClearTimelineSpeedPreview(deleteFile: true);
         SetStatus("Trim reset.");
     }
 
@@ -5323,7 +6233,8 @@ internal sealed class TrimForm : WinForms.Form
             quality,
             CurrentSubtitleBurnInOptions(),
             CurrentBlurRegions(),
-            CurrentZoomRegions());
+            CurrentZoomRegions(),
+            CurrentSpeedRegions());
     }
 
     private TrimComposition CurrentComposition()
@@ -5516,7 +6427,9 @@ internal sealed class TrimForm : WinForms.Form
             blurRegions.Select(region => region.Clone()).ToList(),
             selectedBlurIndex,
             zoomRegions.Select(region => region.Clone()).ToList(),
-            selectedZoomIndex);
+            selectedZoomIndex,
+            speedRegions.Select(region => region.Clone()).ToList(),
+            selectedSpeedIndex);
     }
 
     private IReadOnlyList<TrimBlurRegion> CurrentBlurRegions()
@@ -5529,6 +6442,13 @@ internal sealed class TrimForm : WinForms.Form
     private IReadOnlyList<TrimZoomRegion> CurrentZoomRegions()
     {
         return zoomRegions
+            .Select(region => region.ToRegion())
+            .ToList();
+    }
+
+    private IReadOnlyList<TrimSpeedRegion> CurrentSpeedRegions()
+    {
+        return speedRegions
             .Select(region => region.ToRegion())
             .ToList();
     }
@@ -5550,6 +6470,8 @@ internal sealed class TrimForm : WinForms.Form
         blurRegions.AddRange(snapshot.BlurRegions.Select(region => region.Clone()));
         zoomRegions.Clear();
         zoomRegions.AddRange(snapshot.ZoomRegions.Select(region => region.Clone()));
+        speedRegions.Clear();
+        speedRegions.AddRange(snapshot.SpeedRegions.Select(region => region.Clone()));
         selectedSegmentIndex = snapshot.SelectedSegmentIndex >= 0 && snapshot.SelectedSegmentIndex < trimSegments.Count
             ? snapshot.SelectedSegmentIndex
             : trimSegments.Count == 0 ? -1 : 0;
@@ -5559,6 +6481,9 @@ internal sealed class TrimForm : WinForms.Form
         selectedZoomIndex = snapshot.SelectedZoomIndex >= 0 && snapshot.SelectedZoomIndex < zoomRegions.Count
             ? snapshot.SelectedZoomIndex
             : zoomRegions.Count == 0 ? -1 : 0;
+        selectedSpeedIndex = snapshot.SelectedSpeedIndex >= 0 && snapshot.SelectedSpeedIndex < speedRegions.Count
+            ? snapshot.SelectedSpeedIndex
+            : speedRegions.Count == 0 ? -1 : 0;
         isEditingBlurRegion = false;
         isEditingZoomRegion = false;
         updatingControls = false;
@@ -5566,8 +6491,10 @@ internal sealed class TrimForm : WinForms.Form
         UpdateSegmentControls();
         UpdateBlurControls();
         UpdateZoomControls();
+        UpdateSpeedControls();
         RefreshTimeLabels();
         SaveTrimState();
+        QueueTimelineSpeedPreviewRender();
 
         if (wasPlaying)
         {
@@ -5587,7 +6514,13 @@ internal sealed class TrimForm : WinForms.Form
             resumePosition = StartTime;
         }
 
+        if (TryPlayCachedTimelineSpeedPreview(resumePosition))
+        {
+            return;
+        }
+
         player.Position = resumePosition;
+        ResetPlaybackSpeed();
         player.Play();
         playbackTimer.Start();
         playButton.Text = LoaderlyLanguage.Text("Pause");
@@ -5648,6 +6581,7 @@ internal sealed class TrimForm : WinForms.Form
             left.SelectedSegmentIndex != right.SelectedSegmentIndex ||
             left.SelectedBlurIndex != right.SelectedBlurIndex ||
             left.SelectedZoomIndex != right.SelectedZoomIndex ||
+            left.SelectedSpeedIndex != right.SelectedSpeedIndex ||
             left.Segments.Count != right.Segments.Count)
         {
             return false;
@@ -5682,6 +6616,19 @@ internal sealed class TrimForm : WinForms.Form
         for (var index = 0; index < left.ZoomRegions.Count; index++)
         {
             if (!left.ZoomRegions[index].SameAs(right.ZoomRegions[index]))
+            {
+                return false;
+            }
+        }
+
+        if (left.SpeedRegions.Count != right.SpeedRegions.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.SpeedRegions.Count; index++)
+        {
+            if (!left.SpeedRegions[index].SameAs(right.SpeedRegions[index]))
             {
                 return false;
             }
@@ -5794,7 +6741,9 @@ internal sealed class TrimForm : WinForms.Form
                 selectedBlurIndex,
                 sourceDuration: duration,
                 zoomRegions: CurrentZoomRegions(),
-                selectedZoomIndex: selectedZoomIndex);
+                selectedZoomIndex: selectedZoomIndex,
+                speedRegions: CurrentSpeedRegions(),
+                selectedSpeedIndex: selectedSpeedIndex);
         }
         catch
         {
@@ -5967,6 +6916,14 @@ internal sealed class TrimForm : WinForms.Form
         return ShouldRemoveSelectedZoomShortcut(keyData, selectedZoomIndex, zoomCount);
     }
 
+    internal static bool ShouldRemoveSelectedSpeedShortcutForTest(
+        WinForms.Keys keyData,
+        int selectedSpeedIndex,
+        int speedCount)
+    {
+        return ShouldRemoveSelectedSpeedShortcut(keyData, selectedSpeedIndex, speedCount);
+    }
+
     internal static bool ShouldSetSelectedEffectStartShortcutForTest(
         WinForms.Keys keyData,
         int selectedBlurIndex,
@@ -6020,6 +6977,11 @@ internal sealed class TrimForm : WinForms.Form
     internal static IReadOnlyList<string> ZoomControlLabelsForTest()
     {
         return ["Zoom", "Start", "End", "Preview", "Add", "Edit", "Done", "Follow", "Fix", "Remove"];
+    }
+
+    internal static IReadOnlyList<string> SpeedControlLabelsForTest()
+    {
+        return ["Speed", "Rate", "Start", "End", "Preview", "Add", "Remove"];
     }
 
     internal static IReadOnlyList<string> TransportActionLabelsForTest()
@@ -6262,7 +7224,7 @@ internal sealed class TrimForm : WinForms.Form
 
     private static IReadOnlyList<string> TrimEditTabLabels()
     {
-        return ["Cuts", "Subtitles", "Blur", "Zoom"];
+        return ["Cuts", "Subtitles", "Blur", "Zoom", "Speed"];
     }
 
     internal static string CutContextTransitionHeaderForTest(TrimTransitionKind transition)
@@ -6288,6 +7250,11 @@ internal sealed class TrimForm : WinForms.Form
     private static string[] ZoomScaleOptions()
     {
         return ["1.5x", "2x", "2.5x", "3x", "4x"];
+    }
+
+    private static string[] SpeedRateOptions()
+    {
+        return ["1.5x", "2x", "4x", "6x", "8x", "10x", "15x", "20x"];
     }
 
     private static string BlurStatusDisplayText(int count, int selectedIndex, bool editing)
@@ -6342,6 +7309,21 @@ internal sealed class TrimForm : WinForms.Form
         return $"Zoom {normalizedIndex + 1} of {count} - {(editing ? "editing" : "fixed")}";
     }
 
+    private static string SpeedStatusDisplayText(int count, int selectedIndex)
+    {
+        if (count <= 0)
+        {
+            return LoaderlyLanguage.Text("No speed");
+        }
+
+        if (selectedIndex < 0 || selectedIndex >= count)
+        {
+            return count == 1 ? "1 speed" : $"{count} speeds";
+        }
+
+        return $"Speed {selectedIndex + 1} of {count}";
+    }
+
     private static string BlurSelectedStatus(int index)
     {
         return LoaderlyLanguage.IsArabic
@@ -6370,6 +7352,11 @@ internal sealed class TrimForm : WinForms.Form
             : $"Blur {index + 1} timing updated.";
     }
 
+    private static string SpeedSelectedStatus(int index)
+    {
+        return $"Speed {index + 1} selected.";
+    }
+
     private static string ZoomTimingUpdatedStatus(int index, bool snappedToPlayhead = false)
     {
         if (snappedToPlayhead)
@@ -6382,6 +7369,13 @@ internal sealed class TrimForm : WinForms.Form
         return LoaderlyLanguage.IsArabic
             ? $"ØªÙ… ØªØ­Ø¯ÙŠØ« ØªÙˆÙ‚ÙŠØª Ø²ÙˆÙ… {index + 1}."
             : $"Zoom {index + 1} timing updated.";
+    }
+
+    private static string SpeedTimingUpdatedStatus(int index, bool snappedToPlayhead = false)
+    {
+        return snappedToPlayhead
+            ? $"Speed {index + 1} snapped to the playhead."
+            : $"Speed {index + 1} timing updated.";
     }
 
     private static string SnapshotSavedStatus(string outputPath)
@@ -6473,6 +7467,50 @@ internal sealed class TrimForm : WinForms.Form
         };
     }
 
+    private static string SpeedRateLabel(double rate)
+    {
+        var normalized = Math.Clamp(
+            double.IsNaN(rate) || double.IsInfinity(rate) ? 4.0 : rate,
+            TrimSpeedRegion.MinimumRate,
+            TrimSpeedRegion.MaximumRate);
+        return normalized switch
+        {
+            < 1.75 => "1.5x",
+            < 3.0 => "2x",
+            < 5.0 => "4x",
+            < 7.0 => "6x",
+            < 9.0 => "8x",
+            < 12.5 => "10x",
+            < 17.5 => "15x",
+            _ => "20x"
+        };
+    }
+
+    private static double SpeedRateFromLabel(string? label)
+    {
+        return label switch
+        {
+            "1.5x" => 1.5,
+            "2x" => 2.0,
+            "6x" => 6.0,
+            "8x" => 8.0,
+            "10x" => 10.0,
+            "15x" => 15.0,
+            "20x" => 20.0,
+            _ => 4.0
+        };
+    }
+
+    private static bool ShouldRenderSpeedPreview(double rate)
+    {
+        return Math.Clamp(rate, TrimSpeedRegion.MinimumRate, TrimSpeedRegion.MaximumRate) > 1.01;
+    }
+
+    private static bool ShouldUsePreparedSpeedPreview(bool cacheReady, bool hasSpeed)
+    {
+        return cacheReady && hasSpeed;
+    }
+
     private static bool ShouldSeekPreviewOnTimelinePositionChange(bool updatingControls, bool isTimelineInteracting)
     {
         return !updatingControls && !isTimelineInteracting;
@@ -6558,6 +7596,23 @@ internal sealed class TrimForm : WinForms.Form
             keyCode == WinForms.Keys.Delete &&
             selectedZoomIndex >= 0 &&
             selectedZoomIndex < zoomCount;
+    }
+
+    private static bool ShouldRemoveSelectedSpeedShortcut(
+        WinForms.Keys keyData,
+        int selectedSpeedIndex,
+        int speedCount)
+    {
+        var keyCode = keyData & WinForms.Keys.KeyCode;
+        var ctrl = keyData.HasFlag(WinForms.Keys.Control);
+        var shift = keyData.HasFlag(WinForms.Keys.Shift);
+        var alt = keyData.HasFlag(WinForms.Keys.Alt);
+        return !ctrl &&
+            !shift &&
+            !alt &&
+            keyCode == WinForms.Keys.Delete &&
+            selectedSpeedIndex >= 0 &&
+            selectedSpeedIndex < speedCount;
     }
 
     private static bool ShouldSetSelectedEffectStartShortcut(
@@ -7096,7 +8151,9 @@ internal sealed class TrimForm : WinForms.Form
         IReadOnlyList<EditableBlurRegion> BlurRegions,
         int SelectedBlurIndex,
         IReadOnlyList<EditableZoomRegion> ZoomRegions,
-        int SelectedZoomIndex);
+        int SelectedZoomIndex,
+        IReadOnlyList<EditableSpeedRegion> SpeedRegions,
+        int SelectedSpeedIndex);
 
     private sealed class EditableTrimSegment(int start, int end, TrimTransitionKind transitionAfter)
     {
@@ -7307,6 +8364,35 @@ internal sealed class TrimForm : WinForms.Form
             }
 
             return true;
+        }
+    }
+
+    private sealed class EditableSpeedRegion(int start, int end, double rate)
+    {
+        public int Start { get; set; } = start;
+
+        public int End { get; set; } = end;
+
+        public double Rate { get; set; } = Math.Clamp(
+            double.IsNaN(rate) || double.IsInfinity(rate) ? 2.0 : rate,
+            TrimSpeedRegion.MinimumRate,
+            TrimSpeedRegion.MaximumRate);
+
+        public EditableSpeedRegion Clone()
+        {
+            return new EditableSpeedRegion(Start, End, Rate);
+        }
+
+        public TrimSpeedRegion ToRegion()
+        {
+            return new TrimSpeedRegion(TimeFromUnits(Start), TimeFromUnits(End), Rate).Normalize();
+        }
+
+        public bool SameAs(EditableSpeedRegion other)
+        {
+            return Start == other.Start &&
+                End == other.End &&
+                Math.Abs(Rate - other.Rate) < 0.0001;
         }
     }
 

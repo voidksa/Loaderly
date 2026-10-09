@@ -1,0 +1,301 @@
+export {};
+
+type LoaderlySubtitleCue = {
+  readonly startSeconds: number;
+  readonly endSeconds: number;
+  readonly text: string;
+};
+
+declare global {
+  interface Window {
+    readonly loaderly?: {
+      readonly appName: string;
+      readonly discoverModels: (connection:import('../shared/app-preferences/aiProviders').AiConnection) => Promise<{ok:boolean;models?:string[];message?:string}>;
+      readonly translateSubtitles: (input:import('../shared/app-preferences/aiProviders').TranslationInput) => Promise<{ok:boolean;cues?:LoaderlySubtitleCue[];message?:string}>;
+      readonly cancelTranslation: () => Promise<{ok:boolean}>;
+      readonly extractAudio: (path:string) => ReturnType<NonNullable<Window['loaderly']>['openMediaFile']>;
+      readonly platform: NodeJS.Platform;
+      readonly arch: NodeJS.Architecture;
+      readonly onNavigate: (
+        callback: (route: 'workspace' | 'downloads' | 'editor' | 'settings' | 'export') => void
+      ) => () => void;
+      readonly copyQuickItem: (payload: {
+        readonly label: string;
+        readonly mediaTitle: string;
+        readonly rangeLabel: string;
+      }) => Promise<{ readonly ok: boolean }>;
+      readonly copyText: (text: string) => Promise<{ readonly ok: boolean }>;
+      readonly prepareMediaPreview: (path: string, options?: { readonly forceTranscode?: boolean }) => Promise<
+        | { readonly canceled: true }
+        | {
+            readonly canceled: false;
+            readonly path: string;
+            readonly fileUrl: string;
+            readonly thumbnailUrl?: string;
+            readonly name: string;
+            readonly sizeBytes: number;
+            readonly durationSeconds?: number;
+            readonly subtitlePath?: string;
+          }
+      >;
+      readonly pickMediaFile: () => Promise<
+        | { readonly canceled: true }
+        | {
+          readonly canceled: false;
+          readonly path: string;
+          readonly fileUrl: string;
+          readonly thumbnailUrl?: string;
+          readonly name: string;
+          readonly sizeBytes: number;
+          readonly durationSeconds?: number;
+          readonly subtitlePath?: string;
+        }
+      >;
+      readonly openMediaFile: (path: string) => Promise<
+        | { readonly canceled: true }
+        | {
+            readonly canceled: false;
+            readonly path: string;
+            readonly fileUrl: string;
+            readonly thumbnailUrl?: string;
+            readonly name: string;
+            readonly sizeBytes: number;
+            readonly durationSeconds?: number;
+            readonly subtitlePath?: string;
+          }
+      >;
+      readonly showItemInFolder: (path: string) => Promise<{ readonly ok: boolean }>;
+      readonly pickDownloadDirectory: () => Promise<{ readonly canceled: true } | { readonly canceled: false; readonly path: string }>;
+      readonly pickSubtitleFile: () => Promise<
+        | { readonly canceled: true }
+        | {
+            readonly canceled: false;
+            readonly path: string;
+            readonly name: string;
+            readonly cues: readonly LoaderlySubtitleCue[];
+          }
+      >;
+      readonly loadSubtitleFile: (path: string) => Promise<
+        | { readonly canceled: true }
+        | {
+            readonly canceled: false;
+            readonly path: string;
+            readonly name: string;
+            readonly cues: readonly LoaderlySubtitleCue[];
+          }
+      >;
+      readonly filePathForDrop: (file: File) => string;
+      readonly downloadUrl: (payload: {
+        readonly url: string;
+        readonly quality: 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
+        readonly downloadDirectory?: string;
+        readonly groupDownloadsByPlatform?: boolean;
+        readonly writeSubtitles?: boolean;
+        readonly subtitleLanguages?: string;
+      }) => Promise<{
+        readonly ok: boolean;
+        readonly path?: string;
+        readonly fileUrl?: string;
+        readonly thumbnailUrl?: string;
+        readonly name?: string;
+        readonly sizeBytes?: number;
+        readonly durationSeconds?: number;
+        readonly subtitlePath?: string;
+        readonly message?: string;
+      }>;
+      readonly copyMediaOutput: (payload: {
+        readonly sourcePath: string;
+        readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
+        readonly audio?: import('../shared/editor-project/audioProcessing').AudioSettings;
+        readonly label: string;
+        readonly startSeconds: number;
+        readonly endSeconds: number;
+        readonly frameSeconds: number;
+        readonly cutOutRanges?: readonly {
+          readonly startSeconds: number;
+          readonly endSeconds: number;
+        }[];
+        readonly textOverlays?: readonly {
+          readonly text: string;
+          readonly x: number;
+          readonly y: number;
+          readonly startSeconds: number;
+          readonly endSeconds: number;
+          readonly fontSize: number;
+          readonly fontFamily?: string;
+          readonly color?: string;
+        }[];
+        readonly subtitlePath?: string;
+        readonly subtitleCues?: readonly LoaderlySubtitleCue[];
+        readonly effects?: {
+        readonly blur?: {
+          readonly strength: number;
+          readonly shape?: 'rectangle' | 'ellipse' | 'face' | 'rounded';
+          readonly style?: 'normal' | 'light' | 'strong' | 'pixelated';
+          readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+          };
+        readonly blurs?: readonly {
+          readonly strength: number;
+          readonly shape?: 'rectangle' | 'ellipse' | 'face' | 'rounded';
+          readonly style?: 'normal' | 'light' | 'strong' | 'pixelated';
+          readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+          }[];
+          readonly zoom?: {
+            readonly scale: number;
+            readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+          };
+          readonly zooms?: readonly {
+            readonly scale: number;
+            readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+            readonly easeIn?: number;
+            readonly easeOut?: number;
+          }[];
+        readonly speed?: {
+          readonly rate: number;
+          readonly mode?: 'normal' | 'preserve-pitch' | 'warm' | 'bright' | 'radio';
+          readonly startSeconds?: number;
+          readonly endSeconds?: number;
+          };
+        };
+      }) => Promise<{
+        readonly ok: boolean;
+        readonly path?: string;
+        readonly message?: string;
+      }>;
+      readonly saveMediaOutput: (payload: {
+        readonly sourcePath: string;
+        readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
+        readonly audio?: import('../shared/editor-project/audioProcessing').AudioSettings;
+        readonly label: string;
+        readonly startSeconds: number;
+        readonly endSeconds: number;
+        readonly frameSeconds: number;
+        readonly cutOutRanges?: readonly {
+          readonly startSeconds: number;
+          readonly endSeconds: number;
+        }[];
+        readonly textOverlays?: readonly {
+          readonly text: string;
+          readonly x: number;
+          readonly y: number;
+          readonly startSeconds: number;
+          readonly endSeconds: number;
+          readonly fontSize: number;
+          readonly color?: string;
+          readonly fontFamily?: string;
+        }[];
+        readonly subtitlePath?: string;
+        readonly subtitleCues?: readonly LoaderlySubtitleCue[];
+        readonly effects?: {
+        readonly blur?: {
+          readonly strength: number;
+          readonly shape?: 'rectangle' | 'ellipse' | 'face' | 'rounded';
+          readonly style?: 'normal' | 'light' | 'strong' | 'pixelated';
+          readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+          };
+        readonly blurs?: readonly {
+          readonly strength: number;
+          readonly shape?: 'rectangle' | 'ellipse' | 'face' | 'rounded';
+          readonly style?: 'normal' | 'light' | 'strong' | 'pixelated';
+          readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+          }[];
+          readonly zoom?: {
+            readonly scale: number;
+            readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+          };
+          readonly zooms?: readonly {
+            readonly scale: number;
+            readonly x: number;
+            readonly y: number;
+            readonly width: number;
+            readonly height: number;
+            readonly startSeconds?: number;
+            readonly endSeconds?: number;
+            readonly easeIn?: number;
+            readonly easeOut?: number;
+          }[];
+        readonly speed?: {
+          readonly rate: number;
+          readonly mode?: 'normal' | 'preserve-pitch' | 'warm' | 'bright' | 'radio';
+          readonly startSeconds?: number;
+          readonly endSeconds?: number;
+          };
+        };
+      }) => Promise<{
+        readonly ok: boolean;
+        readonly path?: string;
+        readonly message?: string;
+      }>;
+      readonly checkTools: () => Promise<
+        readonly {
+          readonly name: string;
+          readonly available: boolean;
+          readonly path?: string;
+          readonly version?: string;
+          readonly message?: string;
+          readonly updateSupported?: boolean;
+          readonly latestVersion?: string;
+          readonly updateAvailable?: boolean;
+          readonly checkError?: string;
+        }[]
+      >;
+      readonly updateTool: (toolName: string) => Promise<{
+        readonly ok: boolean;
+        readonly name: string;
+        readonly message?: string;
+        readonly status?: {
+          readonly name: string;
+          readonly available: boolean;
+          readonly path?: string;
+          readonly version?: string;
+          readonly message?: string;
+          readonly updateSupported?: boolean;
+          readonly latestVersion?: string;
+          readonly updateAvailable?: boolean;
+          readonly checkError?: string;
+        };
+      }>;
+      readonly setTitlebarTheme: (themeMode: 'light' | 'dark', locale?: 'en' | 'ar', appearance?: unknown) => Promise<{ readonly ok: boolean }>;
+      readonly trayAction: (action: 'open' | 'downloads' | 'editor' | 'settings' | 'exit') => Promise<{ readonly ok: boolean }>;
+      readonly windowControl: (action: 'minimize' | 'toggleMaximize' | 'close') => Promise<{
+        readonly ok: boolean;
+        readonly maximized?: boolean;
+      }>;
+    };
+  }
+}

@@ -11,7 +11,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Loaderly\Loaderly.csproj" />
-    <ProjectReference Include="..\..\src\Loaderly.Setup\Loaderly.Setup.csproj" />
   </ItemGroup>
 
 </Project>

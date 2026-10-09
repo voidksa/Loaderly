@@ -7,6 +7,11 @@ Push-Location $Root
 try {
     $trackedFiles = git ls-files
     $blockedGlobs = @(
+        "website/*",
+        "src/Loaderly.Setup/*",
+        "script/build_windows.ps1",
+        "tests/Loaderly.PrivateTests/*",
+        "assets/identity/documentation/*",
         "dist/*",
         "src/*/bin/*",
         "src/*/obj/*",

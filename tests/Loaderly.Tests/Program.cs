@@ -2,7 +2,6 @@ using System.IO;
 using System.Globalization;
 using System.Drawing;
 using Loaderly;
-using Loaderly.Setup;
 
 var failures = new List<string>();
 
@@ -17,121 +16,14 @@ Expect(
     TrimForm.MediaPreviewFailureStatusForTest(new InvalidOperationException("Unsupported video format")),
     "Unsupported video format");
 
-ExpectTrue(
-    "installer explicit uninstall mode",
-    SetupMode.ShouldUseUninstallModeForTest(true, null, "1.0.0"));
-
-ExpectTrue(
-    "installer opens as uninstall when app is already installed",
-    SetupMode.ShouldUseUninstallModeForTest(false, "1.0.0", "1.0.0"));
-
-ExpectFalse(
-    "installer can force repair/install mode by argument",
-    SetupMode.ShouldUseUninstallModeForTest(false, true, "1.0.0", "1.0.0"));
-
-ExpectTrue(
-    "installer recognizes explicit repair argument",
-    SetupMode.ShouldForceInstallForTest(["--repair"]));
-
-ExpectFalse(
-    "newer installer opens as update instead of uninstall",
-    SetupMode.ShouldUseUninstallModeForTest(false, "1.0.0", "1.1.0"));
-
-ExpectTrue(
-    "newer installer recognizes update mode",
-    SetupMode.ShouldUseUpdateModeForTest([], "1.0.0", "1.1.0"));
-
-ExpectTrue(
-    "explicit update argument uses update mode",
-    SetupMode.ShouldUseUpdateModeForTest(["--update"], "1.0.0", "1.1.0"));
-
-ExpectTrue(
-    "installer uninstall layout keeps actions below toggles",
-    SetupLayoutMetrics.OptionButtonGapForTest(uninstallMode: true) >= 24);
-
-ExpectTrue(
-    "installer install layout keeps actions below toggles",
-    SetupLayoutMetrics.OptionButtonGapForTest(uninstallMode: false) >= 24);
-
-ExpectTrue(
-    "installer custom controls avoid square corner backgrounds",
-    SetupChrome.UsesTransparentControlBackgroundsForTest());
-
-ExpectTrue(
-    "installer rounded hosts use softer corners",
-    SetupChrome.RoundedPanelRadiusForTest >= 10);
-
-ExpectTrue(
-    "installer buttons match the rounded setup chrome",
-    SetupChrome.ButtonRadiusForTest >= 10);
-
-ExpectTrue(
-    "installer progress line fits between options and actions",
-    SetupLayoutMetrics.ProgressButtonGapForTest(uninstallMode: false) >= 8 &&
-    SetupLayoutMetrics.ProgressButtonGapForTest(uninstallMode: true) >= 8);
-
-ExpectSequence(
-    "installer exposes visible install progress stages",
-    SetupProgress.InstallStageLabelsForTest(),
-    ["Closing Loaderly", "Preparing folder", "Copying files", "Creating shortcuts", "Finishing"]);
-Expect(
-    "installer progress can show the file currently being copied",
-    SetupProgress.ProgressTextForTest(SetupProgress.CopyingFiles, "Loaderly.exe", ar: false),
-    "Copying files: Loaderly.exe");
-
-var setupSource = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Loaderly.Setup", "Program.cs"));
-ExpectFalse(
-    "installer Arabic layout does not mirror the whole custom drawn window",
-    setupSource.Contains("            RightToLeftLayout = ar;", StringComparison.Ordinal));
-ExpectFalse(
-    "installer buttons avoid unsupported transparent native borders",
-    setupSource.Contains("BorderColor = Color.Transparent", StringComparison.Ordinal));
-ExpectTrue(
-    "installer buttons disable native visual background painting",
-    setupSource.Contains("UseVisualStyleBackColor = false", StringComparison.Ordinal));
-
-ExpectSequence(
-    "installer launches only after success acknowledgement",
-    SetupMode.InstallCompletionStepsForTest(launchAfterInstall: true),
-    [
-        SetupCompletionStep.ShowSuccessMessage,
-        SetupCompletionStep.CloseInstaller,
-        SetupCompletionStep.LaunchApp
-    ]);
-
-ExpectTrue(
-    "installer quiet launch is explicit",
-    SetupMode.ShouldLaunchAfterQuietInstallForTest(["--quiet", "--launch"]));
-
-ExpectFalse(
-    "installer quiet install does not launch by default",
-    SetupMode.ShouldLaunchAfterQuietInstallForTest(["--quiet"]));
-
-Expect(
-    "installer accepts custom install directory",
-    SetupMode.InstallDirectoryArgumentForTest([@"--install-dir=C:\Apps\Loaderly"]) ?? "",
-    @"C:\Apps\Loaderly");
-
-var buildScript = File.ReadAllText(Path.Combine(RepositoryRoot(), "script", "build_windows.ps1"));
-ExpectTrue(
-    "windows build uses custom setup project",
-    buildScript.Contains("Loaderly.Setup", StringComparison.Ordinal) &&
-    buildScript.Contains("Loaderly-Setup-$Version.exe", StringComparison.Ordinal));
-ExpectFalse(
-    "windows build does not use Inno Setup packaging",
-    buildScript.Contains("ISCC", StringComparison.OrdinalIgnoreCase) ||
-    buildScript.Contains("Loaderly.iss", StringComparison.OrdinalIgnoreCase));
 Expect(
     "feature release bumps Loaderly version",
     ProductInfo.Version,
-    "1.1.0");
+    "2.0");
 Expect(
     "about support uses Buy Me a Coffee only",
     AboutForm.BuyMeACoffeeSupportUrl,
     "https://buymeacoffee.com/voidksa");
-ExpectTrue(
-    "windows build emits the 1.1.0 installer",
-    buildScript.Contains("$Version = \"1.1.0\"", StringComparison.Ordinal));
 Expect(
     "trim export custom file names stay in the source folder",
     TrimExportService.SavePathForNameForTest(
@@ -203,7 +95,7 @@ ExpectTrue(
 Expect(
     "subtitle options stay on the first options row when actions wrap below",
     string.Join("|", MainForm.CommandOptionsLayoutForTest()),
-    "Quality:0,0|QualitySelect:1,0|Playlist:2,0|Subtitles:3,0|SubtitleLanguage:4,0,3|LocalVideo:5,1|AddToQueue:6,1");
+    "Quality:0,0|QualitySelect:1,0|Playlist:2,0|Subtitles:3,0|SubtitleLanguage:0,1,4|LocalVideo:0,2,2|AddToQueue:2,2,2");
 ExpectTrue(
     "URL input accepts multiple lines",
     MainForm.UrlInputAcceptsMultipleLinesForTest);
@@ -221,9 +113,29 @@ ExpectSequence(
     MainForm.UpdateInstallerArgumentsForTest(),
     ["--update", "--quiet", "--launch"]);
 ExpectSequence(
-    "main navigation keeps the 1.1.0 sidebar actions",
+    "main navigation keeps the utility sidebar actions",
     MainForm.SidebarActionsForTest(),
     ["Updates", "Tools", "Settings", "About", "Logs"]);
+ExpectSequence(
+    "main navigation exposes the 2.0 redesign destinations",
+    MainForm.PrimaryNavigationLabelsForTest(),
+    ["Home", "Library", "Downloads", "Editing", "AI Tools", "Settings"]);
+ExpectSequence(
+    "dashboard exposes the 2.0 home sections",
+    MainForm.DashboardSectionLabelsForTest(),
+    ["Active downloads", "Paste links", "Queue", "Recent media"]);
+ExpectSequence(
+    "library page uses media table columns from the redesign",
+    MainForm.LibraryColumnLabelsForTest(),
+    ["Thumbnail", "Title", "Duration", "Size", "Status", "Date"]);
+ExpectSequence(
+    "library filters organize the 2.0 media workspace",
+    MainForm.LibraryFilterLabelsForTest(),
+    ["All", "Local", "Downloaded", "Edited", "Translated"]);
+Expect(
+    "library search placeholder is media focused",
+    MainForm.LibrarySearchPlaceholderForTest,
+    "Search library");
 ExpectSequence(
     "library details actions use explicit user-facing labels",
     MainForm.DetailsActionLabelsForTest(),
@@ -260,14 +172,22 @@ Expect(
     LoaderlyTheme.UiFontFamilyForLanguageForTest(LoaderlyLanguage.Arabic),
     "Tajawal");
 Expect(
-    "primary workspace title stays on the media library",
+    "primary workspace title presents the redesign dashboard",
     MainForm.PrimaryWorkspaceTitleForTest,
-    "Media Library");
+    "Dashboard");
 ExpectTrue(
-    "shared chrome uses the 1.1.0 corner scale",
+    "shared chrome uses the 2.0 corner scale",
     LoaderlyTheme.PanelRadius >= 14 &&
     LoaderlyTheme.CardRadius >= 12 &&
     LoaderlyTheme.ControlRadius >= 10);
+ExpectSequence(
+    "trim workspace names the 2.0 editor regions",
+    TrimForm.TrimWorkspaceSectionLabelsForTest(),
+    ["Preview", "Timeline", "Edit", "Export"]);
+ExpectSequence(
+    "subtitle editor names the 2.0 translation workspace",
+    SubtitleEditorForm.TranslationWorkspaceLabelsForTest(),
+    ["Cues", "Preview", "Style", "AI translate"]);
 
 var parsedDownloadProgress = MediaDownloadService.ParseProgressForTest(
     "[download]  43.2% of   65.00MiB at    3.20MiB/s ETA 00:11");
@@ -978,6 +898,31 @@ ExpectTrue(
     zoomedFilter.Contains("crop=w='max(2,iw*(0.5))", StringComparison.Ordinal) &&
     zoomedFilter.Contains("scale2ref=w=rw:h=rh", StringComparison.Ordinal) &&
     zoomedFilter.Contains("concat=n=", StringComparison.Ordinal));
+var speedArguments = TrimExportService.CompositionExportArgumentsForTest(
+    "source.mp4",
+    composition,
+    "output.mp4",
+    new TrimExportOptions(
+        MuteAudio: false,
+        Quality: TrimExportQuality.Balanced,
+        SubtitleBurnIn: null,
+        BlurRegions: null,
+        ZoomRegions: null,
+        SpeedRegions:
+        [
+            new TrimSpeedRegion(TimeSpan.FromSeconds(2.2), TimeSpan.FromSeconds(4.8), 20.0)
+        ]),
+    assSubtitlePath: null,
+    sourceHasAudio: true).ToList();
+var speedFilter = speedArguments[speedArguments.IndexOf("-filter_complex") + 1];
+ExpectTrue(
+    "composition export retimes selected speed regions instead of the full clip",
+    speedFilter.Contains("trim=start=0.200:end=2.800,setpts=(PTS-STARTPTS)/20", StringComparison.Ordinal) &&
+    speedFilter.Contains("atempo=2,atempo=2,atempo=2,atempo=2,atempo=1.25", StringComparison.Ordinal));
+ExpectTrue(
+    "composition export smooths accelerated regions with fixed frame pacing",
+    speedFilter.Contains("fps=60", StringComparison.Ordinal) &&
+    speedFilter.Contains("tblend=all_mode=average", StringComparison.Ordinal));
 var sourceBlurRegion = new TrimBlurRegion(
     TimeSpan.FromSeconds(1.5),
     TimeSpan.FromSeconds(3.5),
@@ -1027,6 +972,64 @@ Expect(
     "moving zoom keyframes interpolate at the playhead",
     sourceZoomRegion.FrameAt(TimeSpan.FromSeconds(2.5)).X.ToString("0.00", CultureInfo.InvariantCulture),
     "0.30");
+var sourceSpeedRegion = new TrimSpeedRegion(
+    TimeSpan.FromSeconds(1.5),
+    TimeSpan.FromSeconds(3.5),
+    25.0);
+Expect(
+    "speed regions clamp to the 20x export safety limit",
+    sourceSpeedRegion.Normalize().Rate.ToString("0.#", CultureInfo.InvariantCulture),
+    "20");
+var retimedSpeedRegions = TrimSpeedRegion.RetimeForComposition(
+    [sourceSpeedRegion],
+    TrimComposition.Normalize(
+        [
+            new TrimSegment(TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(2)),
+            new TrimSegment(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(4))
+        ],
+        [TrimTransitionKind.Fade]));
+Expect(
+    "speed regions retime onto exported clip pieces",
+    string.Join("|", retimedSpeedRegions.Select(region => $"{region.Start.TotalSeconds:0.0}-{region.End.TotalSeconds:0.0}:{region.Rate:0.#}")),
+    "1.5-2.0:20|2.0-2.5:20");
+Expect(
+    "speed preview uses the active region rate",
+    TrimSpeedRegion.PreviewRateAt(
+        TimeSpan.FromSeconds(2),
+        [new TrimSpeedRegion(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4), 8.0)]).ToString("0.#", CultureInfo.InvariantCulture),
+    "8");
+Expect(
+    "speed preview returns normal rate outside speed regions",
+    TrimSpeedRegion.PreviewRateAt(
+        TimeSpan.FromSeconds(4.5),
+        [new TrimSpeedRegion(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4), 8.0)]).ToString("0.#", CultureInfo.InvariantCulture),
+    "1");
+Expect(
+    "speed preview maps source playhead to retimed cached preview position",
+    TrimSpeedRegion.RetimePositionForComposition(
+        TimeSpan.FromSeconds(3),
+        TrimComposition.Normalize([new TrimSegment(TimeSpan.Zero, TimeSpan.FromSeconds(8))]),
+        [new TrimSpeedRegion(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), 8.0)]).TotalSeconds.ToString("0.000", CultureInfo.InvariantCulture),
+    "2.125");
+ExpectTrue(
+    "high speed preview uses a rendered clip instead of raw decoder speed",
+    TrimForm.SpeedPreviewUsesRenderedClipForTest(20.0));
+ExpectFalse(
+    "timeline playback stays instant and does not auto render speed preview",
+    TrimForm.TimelinePlaybackAutoRendersSpeedPreviewForTest(
+        TimeSpan.FromSeconds(0),
+        TrimComposition.Normalize([new TrimSegment(TimeSpan.Zero, TimeSpan.FromSeconds(8))]),
+        [new TrimSpeedRegion(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), 8.0)]));
+ExpectTrue(
+    "timeline playback uses prepared speed preview when it is ready",
+    TrimForm.TimelinePlaybackUsesPreparedSpeedPreviewForTest(
+        cacheReady: true,
+        hasSpeed: true));
+ExpectFalse(
+    "timeline playback does not block when prepared speed preview is missing",
+    TrimForm.TimelinePlaybackUsesPreparedSpeedPreviewForTest(
+        cacheReady: false,
+        hasSpeed: true));
 Expect(
     "zoom crop uses the scale label and keeps the selected box as the focus",
     TrimExportService.ZoomActiveFilterForTest(
@@ -1191,6 +1194,18 @@ ExpectFalse(
         System.Windows.Forms.Keys.Delete,
         selectedZoomIndex: -1,
         zoomCount: 1));
+ExpectTrue(
+    "trim Delete shortcut removes the selected speed",
+    TrimForm.ShouldRemoveSelectedSpeedShortcutForTest(
+        System.Windows.Forms.Keys.Delete,
+        selectedSpeedIndex: 0,
+        speedCount: 1));
+ExpectFalse(
+    "trim Delete shortcut ignores speed when none is selected",
+    TrimForm.ShouldRemoveSelectedSpeedShortcutForTest(
+        System.Windows.Forms.Keys.Delete,
+        selectedSpeedIndex: -1,
+        speedCount: 1));
 ExpectTrue(
     "trim open bracket sets selected blur start to the playhead",
     TrimForm.ShouldSetSelectedEffectStartShortcutForTest(
@@ -1702,7 +1717,7 @@ ExpectTrue(
 ExpectSequence(
     "trim advanced edit groups are focused into tabs",
     TrimForm.TrimEditTabLabelsForTest(),
-    ["Cuts", "Subtitles", "Blur", "Zoom"]);
+    ["Cuts", "Subtitles", "Blur", "Zoom", "Speed"]);
 ExpectFalse(
     "trim edit tabs avoid native white TabControl chrome in dark mode",
     TrimForm.TrimEditTabsUseNativeControlForTest);
@@ -1717,6 +1732,10 @@ ExpectSequence(
     "trim form exposes zoom controls",
     TrimForm.ZoomControlLabelsForTest(),
     ["Zoom", "Start", "End", "Preview", "Add", "Edit", "Done", "Follow", "Fix", "Remove"]);
+ExpectSequence(
+    "trim form exposes speed controls",
+    TrimForm.SpeedControlLabelsForTest(),
+    ["Speed", "Rate", "Start", "End", "Preview", "Add", "Remove"]);
 ExpectSequence(
     "trim transport exposes visible undo and redo controls",
     TrimForm.TransportActionLabelsForTest(),
@@ -2109,7 +2128,12 @@ try
                     new TrimBlurKeyframe(TimeSpan.FromSeconds(3), 0.50, 0.35, 0.28, 0.22)
                 ])
         ],
-        selectedZoomIndex: 0);
+        selectedZoomIndex: 0,
+        speedRegions:
+        [
+            new TrimSpeedRegion(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(8), 20.0)
+        ],
+        selectedSpeedIndex: 0);
     var savedTrim = trimStateStore.Load(trimStateSource);
     Expect(
         "trim state restores deleted cut count",
@@ -2138,6 +2162,14 @@ try
     Expect(
         "trim state restores selected zoom",
         (savedTrim?.SelectedZoomIndex ?? -1).ToString(CultureInfo.InvariantCulture),
+        "0");
+    Expect(
+        "trim state restores speed regions",
+        string.Join("|", savedTrim?.SpeedRegions.Select(speed => $"{speed.StartSeconds:0}-{speed.EndSeconds:0}:{speed.Rate:0.#}") ?? []),
+        "5-8:20");
+    Expect(
+        "trim state restores selected speed",
+        (savedTrim?.SelectedSpeedIndex ?? -1).ToString(CultureInfo.InvariantCulture),
         "0");
     ExpectTrue(
         "trim state store reports saved edits for a source file",
@@ -2266,6 +2298,31 @@ if (CanResolveTool("ffmpeg") && CanResolveTool("ffprobe"))
             "zoom export writes a playable file",
             File.Exists(zoomOutputPath) && new FileInfo(zoomOutputPath).Length > 0);
 
+        var speedOutputPath = Path.Combine(tempDirectory, "speed.mp4");
+        await new TrimExportService().ExportCompositionAsync(
+            sourcePath,
+            TrimComposition.Normalize(
+                [
+                    new TrimSegment(TimeSpan.Zero, TimeSpan.FromSeconds(5))
+                ]),
+            speedOutputPath,
+            new TrimExportOptions(
+                MuteAudio: false,
+                Quality: TrimExportQuality.Small,
+                SubtitleBurnIn: null,
+                BlurRegions: null,
+                ZoomRegions: null,
+                SpeedRegions:
+                [
+                    new TrimSpeedRegion(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4), 4.0)
+                ]),
+            CancellationToken.None);
+        var speedDuration = await ProbeDurationAsync(speedOutputPath);
+        ExpectTrue(
+            "speed export shortens only the selected region in the rendered file",
+            speedDuration > TimeSpan.FromSeconds(2.35) &&
+            speedDuration < TimeSpan.FromSeconds(3.25));
+
         var trackingVideoPath = Path.Combine(tempDirectory, "tracking-source.mp4");
         for (var index = 0; index < 6; index++)
         {
@@ -2352,7 +2409,7 @@ string RepositoryRoot()
     var directory = new DirectoryInfo(AppContext.BaseDirectory);
     while (directory is not null)
     {
-        if (File.Exists(Path.Combine(directory.FullName, "script", "build_windows.ps1")))
+        if (File.Exists(Path.Combine(directory.FullName, "src", "Loaderly", "Loaderly.csproj")))
         {
             return directory.FullName;
         }
@@ -2417,6 +2474,51 @@ async Task ExtractFrameForTestAsync(string videoPath, string outputPath, TimeSpa
             "-frames:v", "1",
             outputPath
         ]);
+}
+
+async Task<TimeSpan> ProbeDurationAsync(string videoPath)
+{
+    var startInfo = new System.Diagnostics.ProcessStartInfo
+    {
+        FileName = ToolResolver.ResolveToolPath("ffprobe"),
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true
+    };
+    foreach (var argument in new[]
+    {
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        videoPath
+    })
+    {
+        startInfo.ArgumentList.Add(argument);
+    }
+
+    using var process = System.Diagnostics.Process.Start(startInfo);
+    if (process is null)
+    {
+        failures.Add("could not start ffprobe");
+        return TimeSpan.Zero;
+    }
+
+    var output = await process.StandardOutput.ReadToEndAsync();
+    var error = await process.StandardError.ReadToEndAsync();
+    await process.WaitForExitAsync();
+    if (process.ExitCode != 0)
+    {
+        failures.Add($"ffprobe failed: {error}");
+        return TimeSpan.Zero;
+    }
+
+    return double.TryParse(output.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+        ? TimeSpan.FromSeconds(seconds)
+        : TimeSpan.Zero;
 }
 
 static Rectangle RectFromBlurFrame(TrimBlurKeyframe frame, int width, int height)

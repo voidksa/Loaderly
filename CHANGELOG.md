@@ -1,6 +1,44 @@
 # Changelog
 
-All notable Loaderly release changes are tracked here so the README can stay focused on setup and usage.
+Features, improvements and fixes in each Loaderly release.
+
+## 2.0 - 2026-10-10
+
+A redesigned Loaderly for downloading, editing and personalizing video and audio in one Windows workspace.
+
+### New
+
+- A new app icon and a clearer workspace with Library, Downloads and Editor.
+- English and Arabic interfaces, including right-to-left layouts, with light and dark appearances.
+- A download queue for single links, batches and supported playlists, with quality choices, progress and retry actions.
+- Local video and audio imports, library search and filters, and easier file actions.
+- Video editing with cut-out sections, blur and tracking, zoom, text overlays, and canvas presets for different aspect ratios.
+- Speed changes from 0.25× to 8×, with a slider, exact numeric input and quick presets. Keep the pitch, let it follow the speed, or choose Warm, Bright and Radio sound.
+- Extract audio from a video and continue editing it. Adjust volume, fades, bass and treble, mute or mix to mono, then export MP3.
+- Repeat playback for previewing audio without restarting it manually.
+- A customizable audio visualizer with mirrored bars, bars, waves, rings and dots. Adjust colors, background, size, position, detail, glow and movement.
+- Draw entirely new visualizer shapes in the website designer. Start with Diamond, Heart, Orbit or Ribbon, move and add points, preview with your own audio, then copy the code or download a look that opens directly in Loaderly.
+- Community looks for sharing app themes and audio visualizers with a screenshot and an importable code.
+- Optional visualizer titles and labels, a clean view for screen recording, and independent look sharing through a code or file. MP3 export remains audio-only.
+- Subtitle editing and AI translation using your own supported provider account, with provider and model choices.
+- Six appearance presets with separate light and dark colors, spacing and corner controls, and a color editor with HEX and RGB input, paste and copy.
+- Share app themes through a code or file, import a look, and reset custom colors when needed.
+- A dedicated Tools page with install and update actions, version information and clearer failure messages.
+- Bilingual documentation with real app screenshots, search, keyboard shortcut cards and a theme builder.
+
+### Improved and fixed
+
+- Select stays active when inspecting an existing timeline item. Adding another effect is a separate, explicit action.
+- Improved keyboard playback, seeking, undo, redo, effect copy and paste, and duplication across the audio and video editors.
+- Restored a stable playback control row with the seek bar, repeat control and fullscreen button.
+- Improved expanded previews, right-to-left layouts, timeline dragging and resizing.
+- Clearer output choices, saved editing sessions and feedback during preview and export.
+- Better spacing in preferences and dropdown menus, with color controls that stay within the window.
+- A more compact tray menu with a fully visible Exit action.
+- Removed the extra rectangular focus border inside the download URL field.
+- Updated the Windows installer while preserving existing user media and settings during updates.
+
+Explore the [English documentation](https://loaderly-docs.voidksa.workers.dev/docs/) or [Arabic documentation](https://loaderly-docs.voidksa.workers.dev/ar/docs/).
 
 ## 1.1.0 - 2026-05-23
 

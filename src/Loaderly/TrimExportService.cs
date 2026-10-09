@@ -20,7 +20,8 @@ internal sealed record TrimExportOptions(
     TrimExportQuality Quality,
     SubtitleBurnInOptions? SubtitleBurnIn = null,
     IReadOnlyList<TrimBlurRegion>? BlurRegions = null,
-    IReadOnlyList<TrimZoomRegion>? ZoomRegions = null);
+    IReadOnlyList<TrimZoomRegion>? ZoomRegions = null,
+    IReadOnlyList<TrimSpeedRegion>? SpeedRegions = null);
 
 internal sealed class TrimExportService
 {
@@ -168,7 +169,8 @@ internal sealed class TrimExportService
 
         if (composition.Segments.Count == 1 &&
             TrimBlurRegion.NormalizeMany(options.BlurRegions).Count == 0 &&
-            TrimZoomRegion.NormalizeMany(options.ZoomRegions).Count == 0)
+            TrimZoomRegion.NormalizeMany(options.ZoomRegions).Count == 0 &&
+            TrimSpeedRegion.NormalizeMany(options.SpeedRegions).Count == 0)
         {
             var segment = composition.Segments[0];
             return await ExportTrimAsync(
@@ -488,7 +490,13 @@ internal sealed class TrimExportService
         yield return "-i";
         yield return sourceFilePath;
         yield return "-filter_complex";
-        yield return BuildCompositionFilter(composition, assSubtitlePath, includeAudio, options.BlurRegions, options.ZoomRegions);
+        yield return BuildCompositionFilter(
+            composition,
+            assSubtitlePath,
+            includeAudio,
+            options.BlurRegions,
+            options.ZoomRegions,
+            options.SpeedRegions);
         yield return "-map";
         yield return "[v]";
         if (includeAudio)
@@ -523,7 +531,8 @@ internal sealed class TrimExportService
         string? assSubtitlePath,
         bool includeAudio,
         IReadOnlyList<TrimBlurRegion>? blurRegions,
-        IReadOnlyList<TrimZoomRegion>? zoomRegions)
+        IReadOnlyList<TrimZoomRegion>? zoomRegions,
+        IReadOnlyList<TrimSpeedRegion>? speedRegions)
     {
         var filters = new List<string>();
         var pieces = new List<(string Video, string? Audio)>();
@@ -607,7 +616,9 @@ internal sealed class TrimExportService
 
         var hasBlur = TrimBlurRegion.NormalizeMany(blurRegions).Count > 0;
         var hasZoom = TrimZoomRegion.NormalizeMany(zoomRegions).Count > 0;
-        var concatVideoLabel = string.IsNullOrWhiteSpace(assSubtitlePath) && !hasBlur && !hasZoom ? "v" : "cv";
+        var hasSpeed = TrimSpeedRegion.NormalizeMany(speedRegions).Count > 0;
+        var concatVideoLabel = string.IsNullOrWhiteSpace(assSubtitlePath) && !hasBlur && !hasZoom && !hasSpeed ? "v" : "cv";
+        var concatAudioLabel = includeAudio && hasSpeed ? "ca" : "a";
         concatInputs
             .Append("concat=n=")
             .Append(pieces.Count.ToString(CultureInfo.InvariantCulture))
@@ -618,11 +629,12 @@ internal sealed class TrimExportService
             .Append(']');
         if (includeAudio)
         {
-            concatInputs.Append("[a]");
+            concatInputs.Append('[').Append(concatAudioLabel).Append(']');
         }
 
         filters.Add(concatInputs.ToString());
         var currentVideoLabel = concatVideoLabel;
+        var currentAudioLabel = includeAudio ? concatAudioLabel : null;
         if (hasBlur)
         {
             currentVideoLabel = AddBlurFilters(filters, currentVideoLabel, composition, blurRegions);
@@ -635,7 +647,14 @@ internal sealed class TrimExportService
 
         if (!string.IsNullOrWhiteSpace(assSubtitlePath))
         {
-            filters.Add($"[{currentVideoLabel}]ass='{EscapeFilterPath(assSubtitlePath)}'[v]");
+            var subtitleOutputLabel = hasSpeed ? "sv" : "v";
+            filters.Add($"[{currentVideoLabel}]ass='{EscapeFilterPath(assSubtitlePath)}'[{subtitleOutputLabel}]");
+            currentVideoLabel = subtitleOutputLabel;
+        }
+
+        if (hasSpeed)
+        {
+            AddSpeedFilters(filters, currentVideoLabel, currentAudioLabel, composition, speedRegions);
         }
         else if (!currentVideoLabel.Equals("v", StringComparison.Ordinal))
         {
@@ -643,6 +662,203 @@ internal sealed class TrimExportService
         }
 
         return string.Join(';', filters);
+    }
+
+    private static void AddSpeedFilters(
+        ICollection<string> filters,
+        string videoInputLabel,
+        string? audioInputLabel,
+        TrimComposition composition,
+        IReadOnlyList<TrimSpeedRegion>? speedRegions)
+    {
+        var retimedRegions = TrimSpeedRegion.RetimeForComposition(speedRegions, composition);
+        var pieces = SpeedPieces(composition.Duration, retimedRegions);
+        filters.Add(SpeedVideoFilter(videoInputLabel, "v", pieces));
+        if (!string.IsNullOrWhiteSpace(audioInputLabel))
+        {
+            filters.Add(SpeedAudioFilter(audioInputLabel, "a", pieces));
+        }
+    }
+
+    private static IReadOnlyList<(TimeSpan Start, TimeSpan End, double Rate)> SpeedPieces(
+        TimeSpan duration,
+        IReadOnlyList<TrimSpeedRegion> regions)
+    {
+        var pieces = new List<(TimeSpan Start, TimeSpan End, double Rate)>();
+        var cursor = TimeSpan.Zero;
+        foreach (var region in regions)
+        {
+            var start = region.Start < TimeSpan.Zero ? TimeSpan.Zero : region.Start;
+            var end = region.End > duration ? duration : region.End;
+            if (end <= start)
+            {
+                continue;
+            }
+
+            if (start > cursor)
+            {
+                pieces.Add((cursor, start, 1.0));
+            }
+
+            pieces.Add((start, end, region.Rate));
+            cursor = end > cursor ? end : cursor;
+        }
+
+        if (cursor < duration)
+        {
+            pieces.Add((cursor, duration, 1.0));
+        }
+
+        return pieces.Where(piece => piece.End > piece.Start).ToList();
+    }
+
+    private static string SpeedVideoFilter(
+        string inputLabel,
+        string outputLabel,
+        IReadOnlyList<(TimeSpan Start, TimeSpan End, double Rate)> pieces)
+    {
+        if (pieces.Count == 1)
+        {
+            var piece = pieces[0];
+            return $"[{inputLabel}]trim=start={FormatTime(piece.Start)}:end={FormatTime(piece.End)},{SpeedVideoPostFilters(piece.Rate)}[{outputLabel}]";
+        }
+
+        var splitLabels = pieces.Select((_, index) => $"speedv{index}src").ToList();
+        var outputLabels = pieces.Select((_, index) => $"speedv{index}out").ToList();
+        var builder = new StringBuilder();
+        builder
+            .Append('[').Append(inputLabel).Append("]split=")
+            .Append(pieces.Count.ToString(CultureInfo.InvariantCulture))
+            .Append(string.Concat(splitLabels.Select(label => $"[{label}]")));
+        for (var index = 0; index < pieces.Count; index++)
+        {
+            var piece = pieces[index];
+            builder
+                .Append(";[")
+                .Append(splitLabels[index])
+                .Append("]trim=start=")
+                .Append(FormatTime(piece.Start))
+                .Append(":end=")
+                .Append(FormatTime(piece.End))
+                .Append(',')
+                .Append(SpeedVideoPostFilters(piece.Rate))
+                .Append('[')
+                .Append(outputLabels[index])
+                .Append(']');
+        }
+
+        builder
+            .Append(';')
+            .Append(string.Concat(outputLabels.Select(label => $"[{label}]")))
+            .Append("concat=n=")
+            .Append(pieces.Count.ToString(CultureInfo.InvariantCulture))
+            .Append(":v=1:a=0[")
+            .Append(outputLabel)
+            .Append(']');
+        return builder.ToString();
+    }
+
+    private static string SpeedAudioFilter(
+        string inputLabel,
+        string outputLabel,
+        IReadOnlyList<(TimeSpan Start, TimeSpan End, double Rate)> pieces)
+    {
+        if (pieces.Count == 1)
+        {
+            var piece = pieces[0];
+            var atempo = AtempoFilterChain(piece.Rate);
+            var filters = $"atrim=start={FormatTime(piece.Start)}:end={FormatTime(piece.End)},asetpts=PTS-STARTPTS";
+            if (!string.IsNullOrWhiteSpace(atempo))
+            {
+                filters += $",{atempo}";
+            }
+
+            return $"[{inputLabel}]{filters}[{outputLabel}]";
+        }
+
+        var splitLabels = pieces.Select((_, index) => $"speeda{index}src").ToList();
+        var outputLabels = pieces.Select((_, index) => $"speeda{index}out").ToList();
+        var builder = new StringBuilder();
+        builder
+            .Append('[').Append(inputLabel).Append("]asplit=")
+            .Append(pieces.Count.ToString(CultureInfo.InvariantCulture))
+            .Append(string.Concat(splitLabels.Select(label => $"[{label}]")));
+        for (var index = 0; index < pieces.Count; index++)
+        {
+            var piece = pieces[index];
+            builder
+                .Append(";[")
+                .Append(splitLabels[index])
+                .Append("]atrim=start=")
+                .Append(FormatTime(piece.Start))
+                .Append(":end=")
+                .Append(FormatTime(piece.End))
+                .Append(",asetpts=PTS-STARTPTS");
+            var atempo = AtempoFilterChain(piece.Rate);
+            if (!string.IsNullOrWhiteSpace(atempo))
+            {
+                builder.Append(',').Append(atempo);
+            }
+
+            builder
+                .Append('[')
+                .Append(outputLabels[index])
+                .Append(']');
+        }
+
+        builder
+            .Append(';')
+            .Append(string.Concat(outputLabels.Select(label => $"[{label}]")))
+            .Append("concat=n=")
+            .Append(pieces.Count.ToString(CultureInfo.InvariantCulture))
+            .Append(":v=0:a=1[")
+            .Append(outputLabel)
+            .Append(']');
+        return builder.ToString();
+    }
+
+    private static string VideoSetPts(double rate)
+    {
+        var normalized = Math.Clamp(rate, TrimSpeedRegion.MinimumRate, TrimSpeedRegion.MaximumRate);
+        return normalized <= 1.01
+            ? "PTS-STARTPTS"
+            : $"(PTS-STARTPTS)/{normalized.ToString("0.######", CultureInfo.InvariantCulture)}";
+    }
+
+    private static string SpeedVideoPostFilters(double rate)
+    {
+        var normalized = Math.Clamp(rate, TrimSpeedRegion.MinimumRate, TrimSpeedRegion.MaximumRate);
+        var filters = new List<string>
+        {
+            $"setpts={VideoSetPts(normalized)}",
+            "fps=60"
+        };
+        if (normalized > 1.01)
+        {
+            filters.Add("tblend=all_mode=average");
+        }
+
+        filters.Add("setpts=PTS-STARTPTS");
+        return string.Join(',', filters);
+    }
+
+    private static string AtempoFilterChain(double rate)
+    {
+        var remaining = Math.Clamp(rate, TrimSpeedRegion.MinimumRate, TrimSpeedRegion.MaximumRate);
+        if (remaining <= 1.01)
+        {
+            return string.Empty;
+        }
+
+        var filters = new List<string>();
+        while (remaining > 2.0001)
+        {
+            filters.Add("atempo=2");
+            remaining /= 2;
+        }
+
+        filters.Add($"atempo={remaining.ToString("0.######", CultureInfo.InvariantCulture)}");
+        return string.Join(',', filters);
     }
 
     private static string AddBlurFilters(
