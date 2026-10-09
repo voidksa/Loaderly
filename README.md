@@ -63,9 +63,9 @@ Download the Windows installer from the latest release:
 
 Run the installer and open Loaderly from the Start menu. Windows 10 or newer is recommended.
 
-## Early Access
+## Support
 
-Public releases are published on GitHub. If you want access to exclusive early builds before the public release, you can join the Loaderly membership on [Buy Me a Coffee](https://buymeacoffee.com/voidksa).
+If you'd like to help me keep building and maintaining Loaderly, you can [support my work through Creators](https://creators.sa/en/voidksa). Support is entirely optional. No expectations.
 
 ## Media Player Requirement
 
