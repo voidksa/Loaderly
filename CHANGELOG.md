@@ -4,11 +4,11 @@ Features, improvements and fixes in each Loaderly release.
 
 ## 2.0 - 2026-10-10
 
-A redesigned Loaderly for downloading, editing and personalizing video and audio in one Windows workspace.
+Loaderly 2.0 introduces a **new visual identity and a completely redesigned app interface** for downloading, editing and personalizing video and audio in one Windows workspace.
 
 ### New
 
-- A new app icon and a clearer workspace with Library, Downloads and Editor.
+- A new visual identity, with a new app icon and a complete interface redesign across the Library, Downloads, video and audio editors, menus and preferences.
 - English and Arabic interfaces, including right-to-left layouts, with light and dark appearances.
 - A download queue for single links, batches and supported playlists, with quality choices, progress and retry actions.
 - Local video and audio imports, library search and filters, and easier file actions.

@@ -11,11 +11,11 @@
 
 ![The Loaderly video editor](docs/images/loaderly-editor-en.png)
 
-Bring in a link or a local file, refine your clip and export it from one workspace. Loaderly combines a download queue, a media library, video and audio editing, and subtitles in an interface that works in English and Arabic.
+Loaderly 2.0 introduces a **new visual identity and a completely redesigned app interface**. Bring in a link or a local file, refine your clip and export it from one workspace. Loaderly combines a download queue, a media library, video and audio editing, and subtitles in an interface that works in English and Arabic.
 
 ## What's new in 2.0
 
-- **A new workspace:** a refreshed app icon, a clearer Library and Downloads view, and an editor built around your media.
+- **New visual identity and complete interface redesign:** a new app icon and a unified design across the Library, Downloads, video and audio editors, menus and preferences.
 - **Video editing:** remove sections, blur and track an area, zoom, add text, change speed, and reframe for different screen sizes.
 - **Audio editing:** extract sound from a video or open an audio file, adjust volume, fades, bass and treble, then save as MP3.
 - **Speed and sound:** enter an exact rate, use the slider or pick a preset. Preserve the pitch, let it follow the speed, or try Warm, Bright and Radio sound.
