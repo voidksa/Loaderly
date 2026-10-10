@@ -7924,7 +7924,7 @@ export function App() {
             >
             {selectedMedia.fileUrl ? selectedMedia.mediaKind === 'audio' ? (
               <div className="preview-audio audio-scene" style={{background:visualizerSettings.backgroundGradient ? `linear-gradient(145deg,${visualizerSettings.background},${visualizerSettings.backgroundEnd})` : visualizerSettings.background}}>
-                <div className="audio-visual-content" style={{width:`${visualizerSettings.width}%`,height:`${visualizerSettings.height}%`,top:`${Math.max(visualizerSettings.height/2,Math.min(100-visualizerSettings.height/2,visualizerSettings.positionY))}%`,color:visualizerSettings.textColor}}>
+                <div className="audio-visual-content" style={{left:`${Math.max(visualizerSettings.width/2,Math.min(100-visualizerSettings.width/2,visualizerSettings.positionX))}%`,width:`${visualizerSettings.width}%`,height:`${visualizerSettings.height}%`,top:`${Math.max(visualizerSettings.height/2,Math.min(100-visualizerSettings.height/2,visualizerSettings.positionY))}%`,color:visualizerSettings.textColor}}>
                   <AudioVisualizer analyser={audioAnalyser} playing={isPlaying} settings={visualizerSettings}/>
                   {visualizerSettings.showTitle ? <strong style={{fontSize:visualizerSettings.textSize}}>{visualizerSettings.title || displayMediaTitle(selectedMedia)}</strong> : null}
                   {visualizerSettings.showSubtitle && visualizerSettings.subtitle ? <small>{visualizerSettings.subtitle}</small> : null}

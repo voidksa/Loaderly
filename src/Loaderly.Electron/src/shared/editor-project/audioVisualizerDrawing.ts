@@ -1,7 +1,7 @@
-import type { AudioVisualizerSettings, VisualizerShape } from './audioVisualizer';
+import {shapeContours, type AudioVisualizerSettings, type VisualizerShape, type VisualizerContour} from './audioVisualizer';
 type Point = [number,number];
-const cache = new WeakMap<VisualizerShape,Point[]>();
-export function shapeCurve(shape:VisualizerShape):Point[] {
+const cache = new WeakMap<VisualizerContour,Point[]>();
+export function shapeCurve(shape:VisualizerContour):Point[] {
   const previous=cache.get(shape);if(previous)return previous;
   const points=shape.points, result:Point[]=[];
   const at=(i:number)=>points[shape.closed?(i+points.length)%points.length:Math.max(0,Math.min(points.length-1,i))];
@@ -26,30 +26,43 @@ export function sampleShape(shape:VisualizerShape,count:number):{point:Point;nor
     result.push({point:[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],normal:span?[(b[1]-a[1])/span,-(b[0]-a[0])/span]:[0,-1]});
   }return result;
 }
-const samples=new WeakMap<VisualizerShape,Map<number,ReturnType<typeof sampleShape>>>();
+const samples=new WeakMap<VisualizerShape,Map<number,ReturnType<typeof sampleShape>[]>>();
+export function sampleContours(shape:VisualizerShape,count:number) {
+  const contours=shapeContours(shape),aspect=shape.aspect??1;
+  const lengths=contours.map(p=>{const c=shapeCurve(p);return c.slice(1).reduce((sum,b,i)=>sum+Math.hypot((b[0]-c[i][0])*aspect,b[1]-c[i][1]),0);});
+  const total=lengths.reduce((a,b)=>a+b,0)||1,budget=Math.max(0,count-contours.length*3);
+  return contours.map((p,i)=>sampleShape({...p,mirror:shape.mirror,aspect},Math.max(3,Math.floor(budget*lengths[i]/total)+3)));
+}
 export function fitShape(shape:VisualizerShape,width:number,height:number) {
-  const curve=shapeCurve(shape),aspect=shape.aspect??1;
+  const curve=shapeContours(shape).flatMap(shapeCurve),aspect=shape.aspect??1;
   const xs=curve.map(p=>p[0]*aspect),ys=curve.map(p=>p[1]);
   const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
   const reach=Math.min(width,height)*.22*(shape.amplitude??.5),padding=reach+4;
   const scale=Math.max(.01,Math.min(Math.max(1,width-2*padding)/Math.max(.001,maxX-minX),Math.max(1,height-2*padding)/Math.max(.001,maxY-minY)));
   return {scale,x:(width-(maxX-minX)*scale)/2-minX*scale,y:(height-(maxY-minY)*scale)/2-minY*scale,reach};
 }
-export function drawVisualizer(ctx:CanvasRenderingContext2D,width:number,height:number,s:AudioVisualizerSettings,spectrum:Uint8Array,waveform:Uint8Array) {
+export function drawVisualizer(ctx:CanvasRenderingContext2D,width:number,height:number,s:AudioVisualizerSettings,spectrum:Uint8Array,waveform:Uint8Array,fitOverride?:ReturnType<typeof fitShape>) {
   const gradient=ctx.createLinearGradient(0,0,width,height);gradient.addColorStop(0,s.color);gradient.addColorStop(1,s.secondColor);
   ctx.fillStyle=ctx.strokeStyle=s.gradient?gradient:s.color;ctx.globalAlpha=s.opacity;ctx.shadowBlur=s.glow;ctx.shadowColor=s.color;
   const magnitude=(i:number)=>Math.min(1,(spectrum[Math.min(spectrum.length-1,Math.floor((i/s.count)**2*768))]||0)/255*s.sensitivity);
   if(s.style==='path'){
     let entries=samples.get(s.shape);if(!entries){entries=new Map();samples.set(s.shape,entries);}
-    let points=entries.get(s.count);if(!points){points=sampleShape(s.shape,s.count);entries.set(s.count,points);}
-    const fit=fitShape(s.shape,width,height);
-    let length=0;for(let i=1;i<points.length;i++)length+=Math.hypot(points[i].point[0]-points[i-1].point[0],points[i].point[1]-points[i-1].point[1])*fit.scale;
-    const spacing=length/Math.max(1,points.length-1);
-    ctx.lineWidth=Math.max(.6,Math.min(10,spacing-Math.min(s.gap,spacing*.85)));ctx.lineCap=s.roundness>0?'round':'butt';
-    for(let i=0;i<points.length;i++){
-      const {point:p,normal:n}=points[i],x=fit.x+p[0]*fit.scale,y=fit.y+p[1]*fit.scale,h=Math.max(1.5,magnitude(i)*fit.reach),back=s.shape.mirror?h:0;
-      ctx.beginPath();ctx.moveTo(x-n[0]*back,y-n[1]*back);ctx.lineTo(x+n[0]*h,y+n[1]*h);ctx.stroke();
-    }
+    let contours=entries.get(s.count);if(!contours){contours=sampleContours(s.shape,s.count);entries.set(s.count,contours);}
+    const fit=fitOverride??fitShape(s.shape,width,height);
+    let index=0;
+    contours.forEach((points,part)=>{
+      let length=0;for(let i=1;i<points.length;i++)length+=Math.hypot(points[i].point[0]-points[i-1].point[0],points[i].point[1]-points[i-1].point[1])*fit.scale;
+      const spacing=length/Math.max(1,points.length-1),stroke=s.shape.stroke??'bars';
+      ctx.lineWidth=s.shape.thickness??Math.max(.6,Math.min(10,spacing-Math.min(s.gap,spacing*.85)));ctx.lineCap=s.roundness>0?'round':'butt';ctx.lineJoin='round';
+      if(stroke==='line')ctx.beginPath();
+      for(let i=0;i<points.length;i++,index++){
+        const {point:p,normal:n}=points[i],x=fit.x+p[0]*fit.scale,y=fit.y+p[1]*fit.scale,h=magnitude(index)*fit.reach,back=s.shape.mirror?h:0;
+        if(stroke==='line'){const dx=x+n[0]*h*.35,dy=y+n[1]*h*.35;if(i)ctx.lineTo(dx,dy);else ctx.moveTo(dx,dy);}
+        else if(stroke==='dots'){ctx.beginPath();ctx.arc(x+n[0]*h*.35,y+n[1]*h*.35,Math.max(.5,ctx.lineWidth/2),0,Math.PI*2);ctx.fill();}
+        else{ctx.beginPath();ctx.moveTo(x-n[0]*back,y-n[1]*back);ctx.lineTo(x+n[0]*Math.max(.5,h),y+n[1]*Math.max(.5,h));ctx.stroke();}
+      }
+      if(stroke==='line'){if(shapeContours(s.shape)[part].closed)ctx.closePath();ctx.stroke();}
+    });
   }else if(s.style==='wave'){
     ctx.beginPath();ctx.lineWidth=Math.max(1.5,s.roundness/2);ctx.lineCap='round';ctx.lineJoin='round';
     const points=s.count*4;

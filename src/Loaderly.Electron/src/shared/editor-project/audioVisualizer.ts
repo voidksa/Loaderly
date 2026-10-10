@@ -1,5 +1,9 @@
 export const visualizerStyles = ['mirror', 'bars', 'wave', 'ring', 'dots', 'path'] as const;
-export type VisualizerShape = { points: [number, number][]; closed: boolean; smooth: boolean; mirror: boolean; aspect?:number; amplitude?:number };
+export type VisualizerContour = { points: [number, number][]; closed: boolean; smooth: boolean };
+export type VisualizerTypography = { text:string; font:'modern'|'classic'|'mono'|'custom'; weight:number; spacing:number; slant:number; stretch:number };
+export type VisualizerShape = VisualizerContour & { mirror: boolean; aspect?:number; amplitude?:number; paths?:VisualizerContour[]; stroke?:'bars'|'dots'|'line'; thickness?:number; typography?:VisualizerTypography };
+export const visualizerCodeLimit = 320000;
+export function shapeContours(shape:VisualizerShape):VisualizerContour[] { return shape.paths?.length ? shape.paths : [shape]; }
 export const defaultVisualizerShape: VisualizerShape = {points:[[.5,.12],[.88,.5],[.5,.88],[.12,.5]],closed:true,smooth:false,mirror:false,aspect:1,amplitude:.5};
 export function normalizeVisualizerShape(value: unknown): VisualizerShape {
   const v = value && typeof value === 'object' ? value as Record<string, unknown> : {};
@@ -10,14 +14,27 @@ export function normalizeVisualizerShape(value: unknown): VisualizerShape {
       points.push(next);
     }
   }
-  return { points:points.length>=2?points:defaultVisualizerShape.points.map(p=>[...p]), closed:typeof v.closed==='boolean'?v.closed:true, smooth:typeof v.smooth==='boolean'?v.smooth:false, mirror:typeof v.mirror==='boolean'?v.mirror:false,
-    aspect:typeof v.aspect==='number'&&Number.isFinite(v.aspect)?Math.max(.25,Math.min(4,v.aspect)):1,
+  const paths:VisualizerContour[]=[];let remaining=4096;
+  if(Array.isArray(v.paths))for(const item of v.paths.slice(0,96)){
+    if(!item||typeof item!=='object'||!Array.isArray(item.points)||remaining<2)continue;
+    const valid=item.points.slice(0,Math.min(256,remaining)).filter((p:unknown)=>Array.isArray(p)&&p.length===2&&p.every(n=>typeof n==='number'&&Number.isFinite(n))).map((p:number[])=>p.map(n=>Math.round(Math.max(0,Math.min(1,n))*10000)/10000) as [number,number]);
+    if(valid.length>=2){paths.push({points:valid,closed:item.closed===true,smooth:item.smooth===true});remaining-=valid.length;}
+  }
+  const bounded=(x:unknown,min:number,max:number,fallback:number)=>typeof x==='number'&&Number.isFinite(x)?Math.max(min,Math.min(max,x)):fallback;
+  const shape:VisualizerShape = { points:points.length>=2?points:defaultVisualizerShape.points.map(p=>[...p]), closed:typeof v.closed==='boolean'?v.closed:true, smooth:typeof v.smooth==='boolean'?v.smooth:false, mirror:typeof v.mirror==='boolean'?v.mirror:false,
+    aspect:bounded(v.aspect,paths.length ? .05 : .25,paths.length ? 24 : 4,1),
     amplitude:typeof v.amplitude==='number'&&Number.isFinite(v.amplitude)?Math.max(0,Math.min(1,v.amplitude)):.5 };
+  if(paths.length)shape.paths=paths;
+  if(['bars','dots','line'].includes(v.stroke as string))shape.stroke=v.stroke as VisualizerShape['stroke'];
+  if(typeof v.thickness==='number')shape.thickness=bounded(v.thickness,.5,8,2);
+  const type=v.typography as Record<string,unknown>|undefined;
+  if(type&&typeof type==='object'&&typeof type.text==='string')shape.typography={text:type.text.slice(0,40).replace(/[\u0000-\u001f]/g,''),font:['modern','classic','mono','custom'].includes(type.font as string)?type.font as VisualizerTypography['font']:'modern',weight:bounded(type.weight,300,900,700),spacing:bounded(type.spacing,-2,20,0),slant:bounded(type.slant,-20,20,0),stretch:bounded(type.stretch,60,150,100)};
+  return shape;
 }
 export type AudioVisualizerSettings = {
   style: typeof visualizerStyles[number]; color: string; secondColor: string; gradient: boolean;
   background: string; backgroundEnd: string; backgroundGradient: boolean;
-  width: number; height: number; positionY: number; count: number; gap: number; roundness: number;
+  width: number; height: number; positionX: number; positionY: number; count: number; gap: number; roundness: number;
   sensitivity: number; smoothing: number; glow: number; opacity: number;
   showTitle: boolean; showSubtitle: boolean; showBadges: boolean; title: string; subtitle: string;
   textColor: string; textSize: number;
@@ -26,7 +43,7 @@ export type AudioVisualizerSettings = {
 export const defaultVisualizer: AudioVisualizerSettings = {
   style:'mirror', color:'#c4cbd3', secondColor:'#ffffff', gradient:false,
   background:'#151515', backgroundEnd:'#242424', backgroundGradient:false,
-  width:78, height:44, positionY:50, count:80, gap:4, roundness:3,
+  width:78, height:44, positionX:50, positionY:50, count:80, gap:4, roundness:3,
   sensitivity:1, smoothing:.8, glow:0, opacity:1,
   showTitle:true, showSubtitle:false, showBadges:false, title:'', subtitle:'', textColor:'#eef1f5', textSize:16,
   shape:defaultVisualizerShape
@@ -41,20 +58,21 @@ export function normalizeVisualizer(value:unknown):AudioVisualizerSettings {
     style:visualizerStyles.includes(v.style as AudioVisualizerSettings['style']) ? v.style as AudioVisualizerSettings['style'] : 'mirror',
     color:color(v.color,defaultVisualizer.color),secondColor:color(v.secondColor,defaultVisualizer.secondColor),gradient:flag('gradient'),
     background:color(v.background,defaultVisualizer.background),backgroundEnd:color(v.backgroundEnd,defaultVisualizer.backgroundEnd),backgroundGradient:flag('backgroundGradient'),
-    width:n('width',20,100),height:n('height',15,80),positionY:n('positionY',10,90),count:Math.round(n('count',16,160)),gap:n('gap',0,12),roundness:n('roundness',0,12),
+    width:n('width',20,100),height:n('height',15,80),positionX:n('positionX',10,90),positionY:n('positionY',10,90),count:Math.round(n('count',16,Array.isArray((v.shape as VisualizerShape)?.paths)?1200:160)),gap:n('gap',0,12),roundness:n('roundness',0,12),
     sensitivity:n('sensitivity',.25,3),smoothing:n('smoothing',0,.95),glow:n('glow',0,30),opacity:n('opacity',.15,1),
     showTitle:flag('showTitle'),showSubtitle:flag('showSubtitle'),showBadges:flag('showBadges'),title:text('title'),subtitle:text('subtitle'),
     textColor:color(v.textColor,defaultVisualizer.textColor),textSize:n('textSize',10,48),shape:normalizeVisualizerShape(v.shape)
   };
 }
 export function encodeVisualizer(value:AudioVisualizerSettings) {
-  return JSON.stringify({format:'loaderly-visualizer',version:2,settings:normalizeVisualizer(value)},null,2);
+  const settings=normalizeVisualizer(value),shape=settings.shape;
+  return JSON.stringify({format:'loaderly-visualizer',version:shape.paths||shape.stroke||shape.thickness||shape.typography||settings.positionX!==50?3:2,settings},null,2);
 }
 export function decodeVisualizer(code:string):AudioVisualizerSettings | undefined {
-  if (code.length > 16000) return;
+  if (code.length > visualizerCodeLimit) return;
   try {
     const value=JSON.parse(code);
-    if(value?.format !== 'loaderly-visualizer' || ![1,2].includes(value.version) || !value.settings || typeof value.settings !== 'object' || Array.isArray(value.settings)) return;
+    if(value?.format !== 'loaderly-visualizer' || ![1,2,3].includes(value.version) || !value.settings || typeof value.settings !== 'object' || Array.isArray(value.settings)) return;
     return normalizeVisualizer(value.settings);
   } catch { return; }
 }

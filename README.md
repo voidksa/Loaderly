@@ -19,7 +19,7 @@ Loaderly 2.0 introduces a **new visual identity and a completely redesigned app 
 - **Video editing:** remove sections, blur and track an area, zoom, add text, change speed, and reframe for different screen sizes.
 - **Audio editing:** extract sound from a video or open an audio file, adjust volume, fades, bass and treble, then save as MP3.
 - **Speed and sound:** enter an exact rate, use the slider or pick a preset. Preserve the pitch, let it follow the speed, or try Warm, Bright and Radio sound.
-- **Your own visualizer:** choose bars, a wave, a ring or dots, or draw a custom shape in the [online designer](https://loaderly-docs.voidksa.workers.dev/docs/audio-visualizer/#visualizer-builder). Customize colors and movement, hide labels for screen recording, and share the look with its own code.
+- **Your own visualizer:** choose bars, a wave, a ring or dots, or draw a custom shape in the [online designer](https://loaderly-docs.voidksa.workers.dev/docs/audio-visualizer/#visualizer-builder). Turn letters or words into an outline, bars or dots using different fonts, including your own. Move and edit points in the large preview, customize colors and movement, and share the look with its own code.
 - **Subtitles:** review and edit subtitles, then translate them with your own supported AI provider account.
 - **Personalization:** six themes, separate light and dark palettes, color codes you can paste and copy, spacing and corner controls, and shareable theme files.
 
