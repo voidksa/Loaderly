@@ -18,6 +18,7 @@ Loaderly 2.0 introduces a **new visual identity and a completely redesigned app 
 - Repeat playback for previewing audio without restarting it manually.
 - A customizable audio visualizer with mirrored bars, bars, waves, rings and dots. Adjust colors, background, size, position, detail, glow and movement.
 - Draw entirely new visualizer shapes in the website designer. Start with Diamond, Heart, Orbit or Ribbon, move and add points, preview with your own audio, then copy the code or download a look that opens directly in Loaderly.
+- Start a visualizer with a horizontal or vertical line or an editable A–Z letter. Use optional grid snapping, straight alignment, rotation, undo and redo with any keyboard language.
 - Community looks for sharing app themes and audio visualizers with a screenshot and an importable code.
 - Optional visualizer titles and labels, a clean view for screen recording, and independent look sharing through a code or file. MP3 export remains audio-only.
 - Subtitle editing and AI translation using your own supported provider account, with provider and model choices.
@@ -25,6 +26,7 @@ Loaderly 2.0 introduces a **new visual identity and a completely redesigned app 
 - Share app themes through a code or file, import a look, and reset custom colors when needed.
 - A dedicated Tools page with install and update actions, version information and clearer failure messages.
 - Bilingual documentation with real app screenshots, search, keyboard shortcut cards and a theme builder.
+- Open help and documentation from the app sidebar or About page. The audio and video editors link directly to their guides in your interface language.
 
 ### Improved and fixed
 

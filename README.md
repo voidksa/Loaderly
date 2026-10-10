@@ -25,6 +25,8 @@ Loaderly 2.0 introduces a **new visual identity and a completely redesigned app 
 
 See the [full 2.0 changelog](CHANGELOG.md#20---2026-10-10) or follow the [getting started guide](https://loaderly-docs.voidksa.workers.dev/docs/getting-started/).
 
+Need help in the app? Choose **Help & guides** in the sidebar, or **Help** in the audio or video editor, to open the guide in your interface language.
+
 ## Downloads and library
 
 Paste a single link, several links or a supported playlist. Choose a quality, follow the queue and retry a failed download. Open downloaded files or import your own video and audio into the library.

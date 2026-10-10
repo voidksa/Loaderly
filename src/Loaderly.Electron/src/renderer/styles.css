@@ -5947,6 +5947,9 @@ textarea:focus-visible,
 .product-nav__item.active::after, .product-nav__utility.active::after { display: none; }
 .support-link { margin-top: 8px; color: var(--muted); }
 .support-link svg { color: var(--accent); }
+.documentation-link span { white-space: normal; line-height: 1.4; text-align: start; }
+.documentation-link svg { flex-shrink: 0; }
+.documentation-link:focus-visible, .editor-guide-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .workspace { padding: 24px 28px; gap: 20px; }
 .route-page { gap: 22px; }
 .card-panel.route-hero { grid-template-columns: minmax(0, 1fr) auto; background: transparent; padding: 0; border: 0; border-radius: 0; gap: 12px; }

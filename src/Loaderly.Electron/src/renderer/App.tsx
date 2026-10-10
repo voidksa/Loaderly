@@ -36,6 +36,7 @@ import {
   ArrowLeft,
   AlertTriangle,
   AudioLines,
+  BookOpen,
   Captions,
   Check,
   Clipboard,
@@ -1125,6 +1126,7 @@ export function App() {
     | undefined
   >(undefined);
   const [preferences, setPreferences] = useState<AppPreferences>(initialPreferences);
+  const documentationUrl = `https://loaderly-docs.voidksa.workers.dev/${preferences.locale === 'ar' ? 'ar/' : ''}docs/`;
   const [activeNav, setActiveNav] = useState<NavigationKey>('library');
   const [mediaRows, setMediaRows] = useState<readonly MediaRow[]>(initialMediaRows);
   const [selectedMediaId, setSelectedMediaId] = useState<number | undefined>(undefined);
@@ -7870,6 +7872,10 @@ export function App() {
             <span aria-live="polite" className={`autosave-status autosave-status--${autosaveState}`} role="status">{autosaveLabel()}</span>
           </div>
           <div className="panel-actions">
+            <a className="button secondary editor-guide-link" href={`${documentationUrl}${isAudioEditor ? 'audio' : 'editor'}/`} target="_blank" rel="noopener noreferrer" title={uiText(preferences.locale, 'Open the editor guide', 'فتح دليل المحرر')}>
+              <BookOpen aria-hidden="true" size={15} />
+              {uiText(preferences.locale, 'Help', 'مساعدة')}
+            </a>
             <button className="button secondary editor-history-button" disabled={editorUndoStack.length === 0} onClick={undoEditorAction} type="button">
               <Undo2 aria-hidden="true" size={15} />
               {uiText(preferences.locale, 'Undo', 'تراجع')}
@@ -9233,7 +9239,7 @@ export function App() {
             <span>{t('platform')}</span>
             <strong>{platformDisplayLabel(window.loaderly?.platform, window.loaderly?.arch)}</strong>
           </div>
-          <p className="loaderly-copyright">© 2026 VOIDKSA · <a className="text-link" href="https://github.com/voidksa/Loaderly" target="_blank" rel="noreferrer">GitHub / voidksa</a></p>
+          <p className="loaderly-copyright"><a className="text-link" href={documentationUrl} target="_blank" rel="noopener noreferrer">{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</a> · © 2026 VOIDKSA · <a className="text-link" href="https://github.com/voidksa/Loaderly" target="_blank" rel="noreferrer">GitHub / voidksa</a></p>
             <div className="setting-section-heading">
               <RefreshCcw aria-hidden="true" size={17} />
               <span>
@@ -9381,6 +9387,9 @@ export function App() {
             </button>
             <a className="product-nav__utility" href="https://github.com/voidksa/Loaderly/discussions" target="_blank" rel="noopener noreferrer" title={uiText(preferences.locale, 'Discover and share themes and audio visualizers', 'اكتشف ثيمات البرنامج وأشكال الطيف وشارك تصميمك')}>
               <Users aria-hidden="true" size={15}/><span>{uiText(preferences.locale, 'Community looks', 'مظاهر المجتمع')}</span>
+            </a>
+            <a className="product-nav__utility documentation-link" href={documentationUrl} target="_blank" rel="noopener noreferrer" title={uiText(preferences.locale, 'Open documentation and troubleshooting', 'فتح أدلة الاستخدام وحل المشكلات')}>
+              <BookOpen aria-hidden="true" size={15} /><span>{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</span>
             </a>
             <a className="product-nav__utility support-link" href={preferences.locale === 'ar' ? 'https://creators.sa/ar/voidksa' : 'https://creators.sa/en/voidksa'} target="_blank" rel="noopener noreferrer">
               <Heart aria-hidden="true" size={15} /><span>{uiText(preferences.locale, 'Support Loaderly', 'دعم البرنامج')}</span>
