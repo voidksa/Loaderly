@@ -12,22 +12,27 @@
     "build": "tsc --noEmit && electron-vite build",
     "preview": "electron-vite preview",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "prepare:desktop-tools": "tsx scripts/prepare-desktop-tools.ts"
   },
   "dependencies": {
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/yauzl": "^2.10.3",
     "@vitejs/plugin-react": "^4.6.0",
     "electron": "^42.4.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "playwright-core": "^1.56.1",
     "rcedit": "^5.0.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.8.0",
     "vite": "^7.0.0",
     "vitest": "^3.2.0"
@@ -67,6 +72,90 @@
       "runAfterFinish": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
-    }
-  }
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "notarize": false,
+      "minimumSystemVersion": "12.0",
+      "category": "public.app-category.video",
+      "icon": "../../assets/identity/loaderly-512.png",
+      "artifactName": "Loaderly-${version}-mac-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "build/tools",
+          "to": "tools"
+        },
+        {
+          "from": "../../assets/identity/loaderly-512.png",
+          "to": "assets/identity/loaderly-512.png"
+        },
+        {
+          "from": "public/fonts/NotoSansArabic.ttf",
+          "to": "fonts/NotoSansArabic.ttf"
+        },
+        {
+          "from": "../../LICENSE.md",
+          "to": "LICENSE.md"
+        },
+        {
+          "from": "../../NOTICE",
+          "to": "NOTICE"
+        },
+        {
+          "from": "../../docs/DESKTOP-PREVIEW.md",
+          "to": "START-HERE.md"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "icon": "../../assets/identity/loaderly-512.png",
+      "artifactName": "Loaderly-${version}-linux-${arch}.${ext}",
+      "maintainer": "VOIDKSA <voidksa@users.noreply.github.com>",
+      "extraResources": [
+        {
+          "from": "build/tools",
+          "to": "tools"
+        },
+        {
+          "from": "../../assets/identity/loaderly-512.png",
+          "to": "assets/identity/loaderly-512.png"
+        },
+        {
+          "from": "public/fonts/NotoSansArabic.ttf",
+          "to": "fonts/NotoSansArabic.ttf"
+        },
+        {
+          "from": "../../LICENSE.md",
+          "to": "LICENSE.md"
+        },
+        {
+          "from": "../../NOTICE",
+          "to": "NOTICE"
+        },
+        {
+          "from": "../../docs/DESKTOP-PREVIEW.md",
+          "to": "START-HERE.md"
+        }
+      ]
+    },
+    "publish": null
+  },
+  "description": "Download, organize and edit video and audio with Loaderly.",
+  "author": {
+    "name": "VOIDKSA",
+    "url": "https://github.com/voidksa"
+  },
+  "homepage": "https://loaderly-docs.voidksa.workers.dev",
+  "license": "SEE LICENSE IN LICENSE.md"
 }

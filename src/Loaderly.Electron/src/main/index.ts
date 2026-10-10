@@ -5,6 +5,8 @@ import type { AiConnection, TranslationInput } from '../shared/app-preferences/a
 import { audioFilterChain, type AudioSettings } from '../shared/editor-project/audioProcessing';
 import { blurAmount, pixelBlockSize, blurShapeAlpha } from '../shared/editor-project/blurRendering';
 import { ToolManager } from './toolManager';
+import { textFontCandidates, toolCandidates } from './desktopPlatform';
+import { pathToFileURL } from 'node:url';
 import type { ToolName, ToolStatus } from '../shared/tool-manager/toolStatus';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 import { execFile } from 'node:child_process';
@@ -32,7 +34,6 @@ import { mediaContentTypeForPath, mediaFileResponsePlan, mediaCorsHeaders } from
 import { retimeSubtitleCuesForOutput, subtitleCuesForStillFrame } from '../shared/editor-project/editorSubtitles';
 import {
   defaultEditorTextFontFamily,
-  editorTextFontOptionFor,
   prepareEditorTextForExport,
   type EditorTextFontFamily
 } from '../shared/editor-project/editorTextOverlay';
@@ -1773,8 +1774,8 @@ async function hasAudioStream(sourcePath: string): Promise<boolean> {
 }
 
 function drawTextFontOption(fontFamily: EditorTextFontFamily | undefined): string {
-  const option = editorTextFontOptionFor(fontFamily ?? defaultEditorTextFontFamily);
-  const fontPath = option.windowsFontPaths.find((candidate) => existsSync(candidate));
+  const fallback = [join(process.resourcesPath, 'fonts/NotoSansArabic.ttf'), join(__dirname, '../renderer/fonts/NotoSansArabic.ttf')].find(existsSync) ?? '';
+  const fontPath = textFontCandidates(fontFamily ?? defaultEditorTextFontFamily, process.platform, fallback).find(candidate => candidate && existsSync(candidate));
 
   return fontPath ? `fontfile=${escapeFilterPath(fontPath)}` : '';
 }
@@ -1811,6 +1812,13 @@ function escapeFilterPath(value: string): string {
 }
 
 async function copyFilesToClipboard(paths: readonly string[]): Promise<void> {
+  if (process.platform === 'darwin' && paths.length === 1) {
+    const value = Buffer.from(pathToFileURL(paths[0]).href);
+    clipboard.writeBuffer('public.file-url', value);
+    if (!clipboard.readBuffer('public.file-url').equals(value)) throw new Error('Could not copy the file. Save to device instead.');
+    return;
+  }
+  if (process.platform !== 'win32') throw new Error('Clipboard file copy is not available on this platform. Save to device instead.');
   const escapedPaths = paths.map((path) => path.replaceAll("'", "''"));
   const script = [
     'Add-Type -AssemblyName System.Windows.Forms',
@@ -2290,10 +2298,11 @@ function escapeHtml(value: string): string {
 }
 
 function resolveAppIconPath(): string | undefined {
+  const file = process.platform === 'win32' ? 'loaderly.ico' : 'identity/loaderly-512.png';
   const candidates = [
-    join(process.cwd(), '../../assets/loaderly.ico'),
-    join(__dirname, '../../../../assets/loaderly.ico'),
-    join(process.resourcesPath ?? '', 'assets/loaderly.ico')
+    join(process.cwd(), '../../assets', file),
+    join(__dirname, '../../../../assets', file),
+    join(process.resourcesPath ?? '', 'assets', file)
   ];
 
   return candidates.find((candidate) => existsSync(candidate));
@@ -2308,31 +2317,7 @@ function resolveToolPath(toolName: string): string | undefined {
 }
 
 function resolveBundledToolPath(toolName: string): string | undefined {
-  const executableNames = toolName.endsWith('.exe') ? [toolName] : [`${toolName}.exe`, toolName];
-  const candidateDirectories = [
-    join(dirname(process.execPath), 'tools/windows'),
-    join(dirname(process.execPath), 'tools/windows/ffmpeg/bin'),
-    join(process.resourcesPath, 'tools/windows'),
-    join(process.cwd(), '../../tools/windows'),
-    join(process.cwd(), '../../tools/windows/ffmpeg/bin'),
-    join(__dirname, '../../../../tools/windows'),
-    join(__dirname, '../../../../tools/windows/ffmpeg/bin'),
-    join(__dirname, '../../../../dist/windows/tools/windows'),
-    join(__dirname, '../../../../dist/windows/tools/windows/ffmpeg/bin'),
-    ...(process.env.PATH ?? '').split(';').filter((entry) => entry.trim().length > 0)
-  ];
-
-  for (const directory of candidateDirectories) {
-    for (const executableName of executableNames) {
-      const candidate = join(directory, executableName);
-
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  }
-
-  return undefined;
+  return toolCandidates(toolName, process.platform, process.resourcesPath, process.execPath, join(__dirname, '../../../..'), process.env.PATH ?? '').find(existsSync);
 }
 
 const auxiliaryFontCache = new Map<string, string>();
@@ -2502,6 +2487,8 @@ function createMainWindow(): BrowserWindow {
       return;
     }
 
+    // Linux desktops do not always provide a tray. Never strand a hidden app.
+    if (process.platform === 'linux') { isQuitting = true; app.quit(); return; }
     event.preventDefault();
     mainWindow.hide();
   });
@@ -2915,6 +2902,7 @@ function runTrayAction(action: TrayAction) {
 }
 
 function createTray() {
+  if (process.platform === 'linux') return;
   if (trayRef) {
     return;
   }
@@ -2988,7 +2976,10 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showMainWindow('workspace'));
 
   app.whenReady().then(async () => {
-    Menu.setApplicationMenu(null);
+    Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate([
+      { role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
+      { role: 'help', submenu: [{ label: 'Loaderly Documentation', click: () => { void shell.openExternal('https://loaderly-docs.voidksa.workers.dev/docs/'); } }] }
+    ]) : null);
     registerMediaProtocol();
 
     if (await runExportValidationFromEnvironment()) {

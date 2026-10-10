@@ -15,6 +15,7 @@ declare global {
       readonly cancelTranslation: () => Promise<{ok:boolean}>;
       readonly extractAudio: (path:string) => ReturnType<NonNullable<Window['loaderly']>['openMediaFile']>;
       readonly platform: NodeJS.Platform;
+      readonly supportsClipboardFiles: boolean;
       readonly arch: NodeJS.Architecture;
       readonly onNavigate: (
         callback: (route: 'workspace' | 'downloads' | 'editor' | 'settings' | 'export') => void

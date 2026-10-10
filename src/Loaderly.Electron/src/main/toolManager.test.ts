@@ -28,16 +28,16 @@ describe('managed tool installation', () => {
   });
   it('installs a missing tool and resolves the verified managed executable', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('api.github.com') ? Response.json(release()) : new Response(payload)));
-    const manager = new ToolManager(root, () => undefined);
+    const manager = new ToolManager(root, () => undefined, { platform: 'win32', arch: 'x64' });
     expect(await manager.install('yt-dlp')).toMatchObject({ ok: true, status: { available: true, updateAvailable: false } });
     expect(await readFile(manager.resolve('yt-dlp')!)).toEqual(payload);
-    expect(new ToolManager(root, () => undefined).resolve('yt-dlp')).toBe(manager.resolve('yt-dlp'));
+    expect(new ToolManager(root, () => undefined, { platform: 'win32', arch: 'x64' }).resolve('yt-dlp')).toBe(manager.resolve('yt-dlp'));
   });
   it('keeps the previous executable on checksum failure', async () => {
     const installed = join(root, 'bundled.exe');
     await writeFile(installed, 'original');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('api.github.com') ? Response.json(release('0'.repeat(64))) : new Response(payload)));
-    const manager = new ToolManager(root, () => installed);
+    const manager = new ToolManager(root, () => installed, { platform: 'win32', arch: 'x64' });
     expect(await manager.install('yt-dlp')).toMatchObject({ ok: false, message: expect.stringContaining('checksum') });
     expect(manager.resolve('yt-dlp')).toBe(installed);
     expect(await readFile(installed, 'utf8')).toBe('original');
@@ -45,7 +45,7 @@ describe('managed tool installation', () => {
   it('rejects untrusted assets and unknown tool names before downloading', async () => {
     const fetchMock = vi.fn(async () => Response.json(release(digest, 'https://example.com/yt-dlp.exe')));
     vi.stubGlobal('fetch', fetchMock);
-    const manager = new ToolManager(root, () => undefined);
+    const manager = new ToolManager(root, () => undefined, { platform: 'win32', arch: 'x64' });
     expect((await manager.install('../bad')).ok).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await manager.install('yt-dlp')).ok).toBe(false);

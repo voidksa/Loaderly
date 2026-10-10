@@ -3080,7 +3080,7 @@ export function App() {
       hasMedia: hasRealMedia,
       hasSelection: effectiveTrimEnd > trimStartSeconds + 0.1,
       mediaKind,
-      supportsClipboardFiles: Boolean(window.loaderly?.copyMediaOutput),
+      supportsClipboardFiles: Boolean(window.loaderly?.copyMediaOutput && window.loaderly?.supportsClipboardFiles),
       supportsClipboardImages: Boolean(window.loaderly?.copyMediaOutput || window.loaderly?.copyQuickItem),
       unsupportedRangeEffects: rangePlan.unsupportedEffects,
       unsupportedFrameEffects: framePlan.unsupportedEffects
@@ -5192,7 +5192,7 @@ export function App() {
   }
 
   function updateTimelineZoomFromWheel(event: ReactWheelEvent<HTMLDivElement>) {
-    if (!event.ctrlKey) {
+    if (!event.ctrlKey && !event.metaKey) {
       return;
     }
 

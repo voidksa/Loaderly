@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('loaderly', {
   extractAudio: (path: string) => ipcRenderer.invoke('loaderly:extract-audio', path),
   platform: process.platform,
   arch: process.arch,
+  supportsClipboardFiles: process.platform === 'win32' || process.platform === 'darwin',
   onNavigate: (callback: (route: 'workspace' | 'downloads' | 'editor' | 'settings' | 'export') => void) => {
     const handler = (_event: IpcRendererEvent, route: 'workspace' | 'downloads' | 'editor' | 'settings' | 'export') => callback(route);
 
