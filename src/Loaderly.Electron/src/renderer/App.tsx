@@ -12,6 +12,7 @@ import { VisualizerVideoExport } from './editor/VisualizerVideoExport';
 import {videoDimensions,type VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
 import { CommunityLibrary } from './editor/CommunityLibrary';
 import { ProgramUpdates } from './editor/ProgramUpdates';
+import { ProgramUpdateNotice } from './editor/ProgramUpdateNotice';
 import { SpeedControls } from './editor/SpeedControls';
 import { flushSync } from 'react-dom';
 import { DesktopMenu, type MenuOption } from './editor/DesktopMenu';
@@ -1133,8 +1134,6 @@ export function App() {
   >(undefined);
   const [preferences, setPreferences] = useState<AppPreferences>(initialPreferences);
   const documentationUrl = `https://loaderly-docs.voidksa.workers.dev/${preferences.locale === 'ar' ? 'ar/' : ''}docs/`;
-  const [availableProgramUpdate,setAvailableProgramUpdate]=useState('');
-  useEffect(()=>window.loaderly?.onProgramUpdate(state=>{if(state.phase==='available')setAvailableProgramUpdate(state.version??'');}),[]);
   const [showDiscovery,setShowDiscovery]=useState(()=>localStorage.getItem('loaderly:discovery:2.1')!=='dismissed');
   const [activeNav, setActiveNav] = useState<NavigationKey>('library');
   const [communityCreatorOpen,setCommunityCreatorOpen]=useState(false);
@@ -9276,13 +9275,13 @@ export function App() {
           <div className="loaderly-about">
             <img alt="Loaderly" src="./assets/loaderly-64.png" />
             <div>
-              <strong>Loaderly 2.1</strong>
+              <strong>{window.loaderly?.appName ?? 'Loaderly'}</strong>
               <p>{uiText(preferences.locale, 'Your media, from the first download to the final edit.', 'وسائطك، من أول تنزيل إلى آخر تعديل.')}</p>
             </div>
           </div>
           <div className="detail-list">
             <span>{t('appInfo')}</span>
-            <strong>{window.loaderly?.appName ?? 'Loaderly 2.1'}</strong>
+            <strong>{window.loaderly?.appName ?? 'Loaderly'}</strong>
             <span>{t('platform')}</span>
             <strong>{platformDisplayLabel(window.loaderly?.platform, window.loaderly?.arch)}</strong>
           </div>
@@ -9340,7 +9339,7 @@ export function App() {
         <div className="titlebar__left">
           <div className="titlebar__brand">
             <img alt="" className="brand-icon" src="./assets/loaderly-64.png" />
-            <strong>Loaderly<span className="brand-version">2.1</span></strong>
+            <strong>Loaderly<span className="brand-version">{window.loaderly?.appVersion}</span></strong>
 
           </div>
         </div>
@@ -9410,7 +9409,7 @@ export function App() {
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => void handleWorkspaceDrop(event)}
         >
-          {availableProgramUpdate&&<div className="community-look-card" role="status"><strong>{uiText(preferences.locale,'A new Loaderly update is available: ','يتوفر تحديث جديد لـ Loaderly: ')}{availableProgramUpdate}</strong><button className="button secondary" onClick={()=>{selectNavigation('settings');setSettingsTab('about');setAvailableProgramUpdate('');}}>{uiText(preferences.locale,'View update in Settings','عرض التحديث في الإعدادات')}</button><button className="button secondary" onClick={()=>setAvailableProgramUpdate('')}>{uiText(preferences.locale,'Later','لاحقًا')}</button></div>}
+          <ProgramUpdateNotice ar={preferences.locale==='ar'} hidden={activeNav==='settings'&&settingsTab==='about'} onReview={()=>{selectNavigation('settings');setSettingsTab('about');}}/>
           {showDiscovery&&!communityOpen&&['workspace','library'].includes(activeNav)&&<section className="discovery-card"><div><strong>{uiText(preferences.locale,'Make Loaderly yours','خلّ Loaderly على ذوقك')}</strong><p>{uiText(preferences.locale,'Try community themes, design an audio visualizer, and turn your audio into a video.','جرّب ثيمات المجتمع وصمّم طيفًا للصوت وحوّل صوتك إلى فيديو.')}</p></div><button className="button primary" onClick={()=>selectNavigation('community')}>{uiText(preferences.locale,'Explore designs','اكتشف التصاميم')}</button><button className="button secondary" onClick={()=>{localStorage.setItem('loaderly:discovery:2.1','dismissed');setShowDiscovery(false);}}>{uiText(preferences.locale,'Later','لاحقًا')}</button></section>}
           {renderActiveSurface()}
         </section>

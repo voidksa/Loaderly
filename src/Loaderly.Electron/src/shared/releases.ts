@@ -1,6 +1,6 @@
 export type ReleaseAsset = { platform: string; arch: string; format: 'exe'|'zip'|'AppImage'|'deb'; url: string; size: number; sha256: string };
-export type ReleaseManifest = { schema: 1; version: string; notes: string; publishedAt: string; assets: ReleaseAsset[] };
-export type UpdateState = { phase: 'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'error'; current: string; version?: string; notes?: string; progress?: number; checkedAt?: string; message?: string; automatic: boolean; distribution?: 'store' };
+export type ReleaseManifest = { schema: 1; version: string; notes: string; notesAr?: string; publishedAt: string; assets: ReleaseAsset[] };
+export type UpdateState = { phase: 'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'error'; current: string; version?: string; notes?: string; notesAr?: string; progress?: number; checkedAt?: string; message?: string; automatic: boolean; distribution?: 'store' };
 export const releaseOrigin = 'https://loaderly-docs.voidksa.workers.dev';
 export function versionParts(version: string): number[] | undefined {
   if (!/^\d+\.\d+\.\d+$/.test(version)) return;
@@ -16,6 +16,7 @@ export function newerVersion(next: string, current: string): boolean {
 export function validateRelease(value: unknown): ReleaseManifest {
   const m=value as ReleaseManifest;
   if(!m || m.schema!==1 || !versionParts(m.version) || typeof m.notes!=='string' || m.notes.length>12000 || !Number.isFinite(Date.parse(m.publishedAt)) || !Array.isArray(m.assets) || m.assets.length>12) throw Error('Invalid release manifest');
+  if(m.notesAr!==undefined && (typeof m.notesAr!=='string' || m.notesAr.length>12000)) throw Error('Invalid release notes');
   const targets=new Set<string>();
   for(const a of m.assets) {
     const key=`${a.platform}/${a.arch}/${a.format}`;

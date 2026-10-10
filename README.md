@@ -2,7 +2,7 @@
   <img src="assets/loaderly-256.png" alt="Loaderly app icon" width="96" height="96">
   <h1>Loaderly 2.1</h1>
   <p>Download, edit and make it yours. For Windows, macOS and Linux.</p>
-  <p><a href="https://github.com/voidksa/Loaderly/releases/tag/v2.1.0"><strong>Download Loaderly</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
+  <p><a href="https://github.com/voidksa/Loaderly/releases/latest"><strong>Download Loaderly</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
 </div>
 
 ![The Loaderly editor](docs/images/loaderly-editor-en.png)
@@ -13,11 +13,11 @@ Bring in a link or a local file, refine your clip and export it from one workspa
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10 / 11, 64-bit | [Windows installer](https://github.com/voidksa/Loaderly/releases/download/v2.1.0/Loaderly-Setup-2.1.0.exe) |
-| Mac with Apple Silicon | [Apple Silicon ZIP](https://github.com/voidksa/Loaderly/releases/download/v2.1.0/Loaderly-2.1.0-mac-arm64.zip) |
-| Mac with Intel | [Intel ZIP](https://github.com/voidksa/Loaderly/releases/download/v2.1.0/Loaderly-2.1.0-mac-x64.zip) |
-| Ubuntu / Debian, 64-bit | [DEB package](https://github.com/voidksa/Loaderly/releases/download/v2.1.0/Loaderly-2.1.0-linux-amd64.deb) |
-| Other compatible Linux desktops, 64-bit | [AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.1.0/Loaderly-2.1.0-linux-x86_64.AppImage) |
+| Windows 10 / 11, 64-bit | [Windows installer](https://loaderly-docs.voidksa.workers.dev/download?platform=windows) |
+| Mac with Apple Silicon | [Apple Silicon ZIP](https://loaderly-docs.voidksa.workers.dev/download?platform=macArm) |
+| Mac with Intel | [Intel ZIP](https://loaderly-docs.voidksa.workers.dev/download?platform=macIntel) |
+| Ubuntu / Debian, 64-bit | [DEB package](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxDeb) |
+| Other compatible Linux desktops, 64-bit | [AppImage](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxImage) |
 
 Follow the [installation guide](https://loaderly-docs.voidksa.workers.dev/docs/installation/) for your system. Updating keeps your library and preferences. Finish active downloads and exports before installing.
 

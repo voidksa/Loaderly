@@ -10,6 +10,7 @@ declare global {
   interface Window {
     readonly loaderly?: {
       readonly appName: string;
+      readonly appVersion: string;
       readonly trashMedia:(paths:string[])=>Promise<{removed:string[];failed:string[]}>;
       readonly missingLibraryFiles:(paths:string[])=>Promise<string[]>;
       readonly playlistPreview:(url:string)=>Promise<import('../shared/download-url/playlist').PlaylistResult>;

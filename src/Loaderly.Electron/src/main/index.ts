@@ -4,6 +4,7 @@ import { communityCatalog } from './communityCatalog';
 import {applyWindowAppearance} from './windowAppearance';
 import { CommunityRatings } from './communityRatings';
 import { ProgramUpdates } from './programUpdates';
+import { AutomaticUpdateChecks } from './automaticUpdateChecks';
 import {inspectPlaylist} from './playlist';
 import {trashMediaFiles} from './trashMedia';
 import {managedDownload,missingLibraryFiles,type DuplicateChoice} from './downloadConflicts';
@@ -19,7 +20,7 @@ import { textFontCandidates, toolCandidates } from './desktopPlatform';
 import { macApplicationMenu, textContextMenu } from './desktopMenus';
 import { pathToFileURL } from 'node:url';
 import type { ToolName, ToolStatus } from '../shared/tool-manager/toolStatus';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, powerMonitor, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
@@ -122,6 +123,7 @@ if (isExportValidationRun) {
 
 let visualizerExportController: AbortController | undefined;
 let programUpdater: ProgramUpdates;
+let automaticUpdateChecks: AutomaticUpdateChecks | undefined;
 let activeWork = 0;
 let installingProgramUpdate = false;
 let mainWindowRef: BrowserWindow | undefined;
@@ -385,7 +387,11 @@ function registerIpcHandlers() {
     if(action==='check')return programUpdater.check();
     if(action==='download')return programUpdater.download();
     if(action==='cancel'){programUpdater.cancel();return programUpdater.state;}
-    if(action==='automatic')return programUpdater.preferences(automatic===true);
+    if(action==='automatic'){
+      const state=await programUpdater.preferences(automatic===true);
+      if(state.automatic)void automaticUpdateChecks?.check('enabled');
+      return state;
+    }
     if(action==='install'){
       if(activeWork || installingProgramUpdate)throw Error('Finish active jobs before updating');
       installingProgramUpdate=true;
@@ -3120,7 +3126,13 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
 
     programUpdater=new ProgramUpdates(join(app.getPath('userData'),'Updates'),app.getVersion(),state=>{if(mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:program-update-state',state);},undefined,process.windowsStore===true);
     await programUpdater.initialize();
-    if(app.isPackaged&&!process.windowsStore){setTimeout(()=>{if(programUpdater.state.automatic)void programUpdater.check();},30000);setInterval(()=>{if(programUpdater.state.automatic)void programUpdater.check();},12*60*60*1000).unref();}
+    if(app.isPackaged&&!process.windowsStore){
+      automaticUpdateChecks=new AutomaticUpdateChecks(programUpdater);
+      automaticUpdateChecks.start();
+      app.on('browser-window-focus',()=>void automaticUpdateChecks?.check());
+      powerMonitor.on('resume',()=>void automaticUpdateChecks?.check());
+      app.once('will-quit',()=>automaticUpdateChecks?.stop());
+    }
     registerIpcHandlers();
     mainWindowRef = createMainWindow();
     createTray();

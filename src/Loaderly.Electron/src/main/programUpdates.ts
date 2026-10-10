@@ -34,7 +34,7 @@ export class ProgramUpdates {
       const release=verifiedManifest(JSON.parse(body),this.publicKey);
       const format=process.platform==='win32'?'exe':process.platform==='darwin'?'zip':process.env.APPIMAGE?'AppImage':'deb';
       this.asset=release.assets.find(a=>a.platform===process.platform&&a.arch===process.arch&&a.format===format);
-      return this.emit({phase:newerVersion(release.version,this.state.current)&&this.asset?'available':'current',version:release.version,notes:release.notes,checkedAt:new Date().toISOString()});
+      return this.emit({phase:newerVersion(release.version,this.state.current)&&this.asset?'available':'current',version:release.version,notes:release.notes,notesAr:release.notesAr,checkedAt:new Date().toISOString()});
     } catch {return this.emit({phase:'error',message:'Could not securely check for updates. Please try again.'});}
   }
   cancel() {this.controller?.abort();}

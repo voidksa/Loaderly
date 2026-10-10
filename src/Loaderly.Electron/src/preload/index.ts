@@ -7,8 +7,11 @@ type SubtitleCue = {
   readonly text: string;
 };
 
+declare const __LOADERLY_VERSION__: string;
+
 contextBridge.exposeInMainWorld('loaderly', {
-  appName: 'Loaderly 2.1',
+  appName: `Loaderly ${__LOADERLY_VERSION__}`,
+  appVersion: __LOADERLY_VERSION__,
   trashMedia:(paths:string[])=>ipcRenderer.invoke('loaderly:trash-media',paths),
   missingLibraryFiles:(paths:string[])=>ipcRenderer.invoke('loaderly:missing-library-files',paths) as Promise<string[]>,
   playlistPreview:(url:string)=>ipcRenderer.invoke('loaderly:playlist-preview',url),
