@@ -556,7 +556,7 @@ ExpectTrue(
     MainForm.HistoryTitleFitsNormalCardForTest("كيفية اضافة بوت اغاني في ديسكورد | Discord [qmVD7v8uksY]"));
 ExpectFalse(
     "details file label stays on one line in normal windows",
-    MainForm.DetailsFileLabelForTest(@"C:\Users\voidk\Downloads\Loaderly\video-name.mp4").Contains(Environment.NewLine));
+    MainForm.DetailsFileLabelForTest(@"C:\Users\Example\Downloads\Loaderly\video-name.mp4").Contains(Environment.NewLine));
 ExpectTrue(
     "details panel reserves a fixed compact path row before action buttons",
     MainForm.DetailsPathRowHeightForTest <= 28);

@@ -17,6 +17,7 @@ dist/
 # Local temp and Codex/browser scratch artifacts
 tmp/
 .codex-tmp/
+.playwright-cli/
 
 # Local IDE/user state
 .vs/
