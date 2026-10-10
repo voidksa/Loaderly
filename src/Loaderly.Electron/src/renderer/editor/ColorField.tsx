@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy, X } from 'lucide-react';
+import { Check, Copy, X, RotateCcw } from 'lucide-react';
 import { clampColor, hexHsv, hexRgb, hsvHex, parseHex, rgbHex, type HSV } from './colorMath';
 
 function RgbInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
@@ -12,7 +12,7 @@ function RgbInput({ label, value, onChange }: { label: string; value: number; on
   }} onBlur={() => setDraft(String(value))} />;
 }
 
-export function ColorField({ label, value, onChange, ar }: { label: string; value: string; onChange: (value: string, recordHistory: boolean) => void; ar: boolean }) {
+export function ColorField({ label, value, onChange, ar, onReset }: { label: string; value: string; onChange: (value: string, recordHistory: boolean) => void; ar: boolean; onReset?: () => void }) {
   const t = (en: string, arabic: string) => ar ? arabic : en;
   const id = useId(), canonical = parseHex(value) ?? '#000000';
   const [draft, setDraft] = useState(canonical.toUpperCase());
@@ -104,7 +104,7 @@ export function ColorField({ label, value, onChange, ar }: { label: string; valu
   };
   const rgb = hexRgb(canonical);
   return <div className="app-color-field" ref={fieldRef}>
-    <label htmlFor={id}>{label}</label>
+    <div className="app-color-label"><label htmlFor={id}>{label}</label>{onReset&&<button type="button" aria-label={t('Reset color: ','إعادة ضبط لون: ')+label} data-tooltip={t('Use theme color','استخدام لون الثيم')} onClick={onReset}><RotateCcw size={13}/></button>}</div>
     <div className="app-color-value" dir="ltr">
       <button type="button" className="app-color-swatch" ref={triggerRef} aria-label={t('Choose color: ', 'اختيار لون: ') + label} aria-expanded={open} aria-haspopup="dialog" aria-controls={open ? id + '-picker' : undefined} onClick={() => {
         if (open) { close(); return; }
@@ -119,7 +119,7 @@ export function ColorField({ label, value, onChange, ar }: { label: string; valu
         if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDraft(canonical.toUpperCase()); setInvalid(false); }
       }} />
-      <button type="button" className="app-color-copy" aria-label={t('Copy color: ', 'نسخ لون: ') + label} title={copied ? t('Copied', 'تم النسخ') : t('Copy HEX', 'نسخ HEX')} onClick={async () => {
+      <button type="button" className="app-color-copy" aria-label={t('Copy color: ', 'نسخ لون: ') + label} data-tooltip={copied ? t('Copied', 'تم النسخ') : t('Copy HEX', 'نسخ HEX')} onClick={async () => {
         const color = parseHex(draft);
         if (!color) { setInvalid(true); inputRef.current?.focus(); return; }
         try {

@@ -21,7 +21,7 @@ export default defineConfig({
     root: resolve(__dirname),
     build: {
       rollupOptions: {
-        input: resolve(__dirname, 'index.html'),
+        input: {index:resolve(__dirname, 'index.html'),visualizer:resolve(__dirname,'visualizer.html')},
         output: {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react/jsx-runtime'],

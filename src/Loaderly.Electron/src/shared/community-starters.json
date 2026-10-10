@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "updatedAt": "2026-10-10T12:56:44.901Z",
+  "looks": [
+    {
+      "id": "4",
+      "kind": "theme",
+      "name": "Lavender Dusk",
+      "author": "voidksa",
+      "url": "https://github.com/voidksa/Loaderly/discussions/4",
+      "updatedAt": "2026-10-10T12:56:17Z",
+      "code": "{\n  \"format\": \"loaderly-theme\",\n  \"version\": 2,\n  \"preset\": \"graphite\",\n  \"accent\": \"\",\n  \"density\": \"comfortable\",\n  \"corners\": \"rounded\",\n  \"colors\": {\n    \"dark\": {\n      \"background\": \"#19161f\",\n      \"surface\": \"#25202e\",\n      \"raised\": \"#332c40\",\n      \"border\": \"#51465f\",\n      \"text\": \"#f3edf8\",\n      \"muted\": \"#bcb0cb\",\n      \"accent\": \"#d8acff\"\n    },\n    \"light\": {\n      \"background\": \"#f6f1fa\",\n      \"surface\": \"#ffffff\",\n      \"raised\": \"#ede3f4\",\n      \"border\": \"#cbbbd8\",\n      \"text\": \"#30243c\",\n      \"muted\": \"#756381\",\n      \"accent\": \"#7f489f\"\n    }\n  },\n  \"radius\": 10\n}",
+      "featured": true
+    },
+    {
+      "id": "3",
+      "kind": "visualizer",
+      "name": "Aurora Orbit",
+      "author": "voidksa",
+      "url": "https://github.com/voidksa/Loaderly/discussions/3",
+      "updatedAt": "2026-10-10T07:25:52Z",
+      "code": "{\n  \"format\": \"loaderly-visualizer\",\n  \"version\": 2,\n  \"settings\": {\n    \"style\": \"ring\",\n    \"color\": \"#74e8cd\",\n    \"secondColor\": \"#a6a0fa\",\n    \"gradient\": true,\n    \"background\": \"#101820\",\n    \"backgroundEnd\": \"#211d33\",\n    \"backgroundGradient\": true,\n    \"width\": 80,\n    \"height\": 78,\n    \"positionX\": 50,\n    \"positionY\": 50,\n    \"count\": 112,\n    \"gap\": 5,\n    \"roundness\": 5,\n    \"sensitivity\": 1.15,\n    \"smoothing\": 0.84,\n    \"glow\": 6,\n    \"opacity\": 1,\n    \"showTitle\": false,\n    \"showSubtitle\": false,\n    \"showBadges\": false,\n    \"title\": \"\",\n    \"subtitle\": \"\",\n    \"textColor\": \"#eef1f5\",\n    \"textSize\": 16,\n    \"shape\": {\n      \"points\": [\n        [\n          0.5,\n          0.12\n        ],\n        [\n          0.88,\n          0.5\n        ],\n        [\n          0.5,\n          0.88\n        ],\n        [\n          0.12,\n          0.5\n        ]\n      ],\n      \"closed\": true,\n      \"smooth\": false,\n      \"mirror\": false,\n      \"aspect\": 1,\n      \"amplitude\": 0.5\n    }\n  }\n}",
+      "featured": true
+    },
+    {
+      "id": "2",
+      "kind": "theme",
+      "name": "Mint Slate",
+      "author": "voidksa",
+      "url": "https://github.com/voidksa/Loaderly/discussions/2",
+      "updatedAt": "2026-10-10T07:25:43Z",
+      "code": "{\n  \"format\": \"loaderly-theme\",\n  \"version\": 2,\n  \"preset\": \"graphite\",\n  \"accent\": \"\",\n  \"density\": \"comfortable\",\n  \"corners\": \"rounded\",\n  \"colors\": {\n    \"dark\": {\n      \"background\": \"#10191f\",\n      \"surface\": \"#17252d\",\n      \"raised\": \"#23343e\",\n      \"border\": \"#3b5360\",\n      \"text\": \"#ecf4f5\",\n      \"muted\": \"#a8bec7\",\n      \"accent\": \"#81dbc2\"\n    },\n    \"light\": {\n      \"background\": \"#eff6f4\",\n      \"surface\": \"#ffffff\",\n      \"raised\": \"#e0eeea\",\n      \"border\": \"#b8cec7\",\n      \"text\": \"#19332d\",\n      \"muted\": \"#4f6c64\",\n      \"accent\": \"#147d65\"\n    }\n  },\n  \"radius\": 10\n}",
+      "featured": true
+    }
+  ]
+}

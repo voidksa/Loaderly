@@ -2,6 +2,20 @@
 
 Features, improvements and fixes in each Loaderly release.
 
+## 2.1.0 - 2026-10-10
+
+- Loaderly is available for Windows, macOS and Linux, with English and Arabic interfaces and illustrated guides.
+- Publish themes, visualizers and sound presets directly from the app. Keep private drafts, view your posts, publish updates or remove a design from the community. Sign in with GitHub; published designs appear in both the app and the community website.
+- Import a saved design code or file. Try sound presets with your own audio and compare the original with the edited sound before applying them.
+- Customize individual interface colors, surface transparency, text size, spacing, sidebar width, outlines and corners. Menus, color pickers, tooltips and the editor follow your theme. Shared themes work across systems; desktop glass adapts to support.
+- Create visualizers inside Loaderly and turn audio into an MP4 with animated artwork, titles, a cover or a logo.
+- Add echo and reverb, adjust individual sound sections and keep preview and export in sync. Visualizer captions move with the artwork.
+- Read and enter familiar timecodes throughout the editor. Move segments from the middle and resize them from either edge, including short sections.
+- Select playlist items before downloading. For duplicates, skip, keep a numbered copy or replace the existing file. Audio and video are handled separately.
+- Choose whether removing an item keeps the original file or moves it to your computer's Trash. Files deleted outside Loaderly are removed from the library when their location is available.
+- Improved compact window layouts, complete library titles, native editing shortcuts and clearer update messages.
+- Check for program updates in Preferences → About, with optional automatic checks.
+
 ## 2.0 - 2026-10-10
 
 Loaderly 2.0 introduces a **new visual identity and a completely redesigned app interface** for downloading, editing and personalizing video and audio in one Windows workspace.

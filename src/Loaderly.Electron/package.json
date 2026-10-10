@@ -1,7 +1,7 @@
 {
   "name": "loaderly",
   "productName": "Loaderly",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
@@ -9,11 +9,12 @@
     "dev": "electron-vite dev",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && electron-vite build",
+    "build": "node scripts/build-designer.mjs && tsc --noEmit && electron-vite build",
     "preview": "electron-vite preview",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "prepare:desktop-tools": "tsx scripts/prepare-desktop-tools.ts"
+    "prepare:desktop-tools": "tsx scripts/prepare-desktop-tools.ts",
+    "predev": "node scripts/build-designer.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.21.0",
@@ -40,7 +41,7 @@
   "build": {
     "appId": "com.loaderly.app",
     "productName": "Loaderly",
-    "copyright": "Copyright © 2026 VOIDKSA. All rights reserved.",
+    "copyright": "Copyright \u00a9 2026 VOIDKSA. All rights reserved.",
     "directories": {
       "output": "dist-installer",
       "buildResources": "build"
@@ -147,7 +148,8 @@
           "from": "../../docs/DESKTOP-PREVIEW.md",
           "to": "START-HERE.md"
         }
-      ]
+      ],
+      "syncDesktopName": true
     },
     "publish": null
   },
@@ -157,5 +159,6 @@
     "url": "https://github.com/voidksa"
   },
   "homepage": "https://loaderly-docs.voidksa.workers.dev",
-  "license": "SEE LICENSE IN LICENSE.md"
+  "license": "SEE LICENSE IN LICENSE.md",
+  "desktopName": "com.loaderly.app.desktop"
 }

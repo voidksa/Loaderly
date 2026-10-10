@@ -1,0 +1,14 @@
+import {useEffect,useRef,useState} from 'react';
+import {Check,PenTool,X} from 'lucide-react';
+import {decodeVisualizer,encodeVisualizer,type AudioVisualizerSettings} from '../../shared/editor-project/audioVisualizer';
+export function VisualizerDesigner({value,onChange,ar}:{value:AudioVisualizerSettings;onChange:(value:AudioVisualizerSettings)=>void;ar:boolean}){
+ const [open,setOpen]=useState(false),[draft,setDraft]=useState(value);const frame=useRef<HTMLIFrameElement>(null);const initial=useRef(value),dialog=useRef<HTMLDialogElement>(null);
+ useEffect(()=>{
+  if(!open)return;dialog.current?.showModal();
+  const sendTheme=()=>{const css=getComputedStyle(document.documentElement);frame.current?.contentWindow?.postMessage({type:'loaderly-designer-tooltip-theme',colors:{background:css.getPropertyValue('--background').trim(),popover:css.getPropertyValue('--popover').trim(),surface:css.getPropertyValue('--surface').trim(),raised:css.getPropertyValue('--surface-raised').trim(),accent:css.getPropertyValue('--accent').trim(),muted:css.getPropertyValue('--muted').trim(),foreground:css.getPropertyValue('--foreground').trim(),border:css.getPropertyValue('--border').trim()},radius:css.getPropertyValue('--radius').trim(),mode:document.documentElement.classList.contains('dark')?'dark':'light'},'*');};
+  const listener=(event:MessageEvent)=>{if(event.source!==frame.current?.contentWindow)return;if(event.data?.type==='loaderly-designer-ready'){frame.current.contentWindow?.postMessage({type:'loaderly-designer-init',code:encodeVisualizer(initial.current)},'*');sendTheme();}if(event.data?.type==='loaderly-designer-change'&&typeof event.data.code==='string'){const next=decodeVisualizer(event.data.code);if(next)setDraft(next);}};
+  const observer=new MutationObserver(sendTheme);observer.observe(document.documentElement,{attributes:true,attributeFilter:['style']});
+  window.addEventListener('message',listener);return()=>{observer.disconnect();window.removeEventListener('message',listener);};
+ },[open]);
+ return <><button className="button primary" type="button" onClick={()=>{initial.current=value;setDraft(value);setOpen(true);}}><PenTool size={15}/>{ar?'فتح مصمّم الطيف':'Open visualizer designer'}</button>{open&&<dialog className="native-designer" ref={dialog} onCancel={()=>setOpen(false)}><header><div><strong>{ar?'مصمّم طيف الصوت':'Visualizer designer'}</strong><small>{ar?'عدّل الشكل هنا ثم طبّقه على الصوت.':'Design here, then apply the look to your audio.'}</small></div><button className="button secondary" onClick={()=>setOpen(false)}><X size={15}/>{ar?'إلغاء':'Cancel'}</button><button className="button primary" onClick={()=>{onChange(draft);setOpen(false);}}><Check size={15}/>{ar?'تطبيق التصميم':'Apply design'}</button></header><iframe ref={frame} title={ar?'مساحة تصميم الطيف':'Visualizer design workspace'} sandbox="allow-scripts" src={`./studio/visualizer-${ar?'ar':'en'}.html`}/></dialog>}</>;
+}

@@ -21,9 +21,7 @@ describe('desktop platform integration', () => {
   it.each(['x64', 'arm64'])('selects native Mac/Linux tools for %s', arch => {
     expect(packageSource('yt-dlp', { platform: 'darwin', arch }).assets('1')[0].name).toBe('yt-dlp_macos');
     expect(packageSource('deno', { platform: 'darwin', arch }).assets('1')[0].name).toBe(`deno-${arch === 'x64' ? 'x86_64' : 'aarch64'}-apple-darwin.zip`);
-    const ffmpeg = packageSource('ffmpeg', { platform: 'linux', arch });
-    expect(ffmpeg.assets('b6.1.1').map(asset => asset.name)).toEqual([`ffmpeg-linux-${arch}`, `ffprobe-linux-${arch}`]);
-    expect(ffmpeg.version('b6.1.1')).toBe('6.1.1');
+    expect(() => packageSource('ffmpeg', { platform: 'linux', arch })).toThrow('updated with the desktop preview');
     expect(executableName('deno', 'darwin')).toBe('deno');
   });
   it('rejects unsupported systems instead of downloading a different architecture', () => {

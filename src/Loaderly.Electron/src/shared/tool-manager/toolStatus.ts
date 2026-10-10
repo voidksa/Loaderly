@@ -1,5 +1,6 @@
 export const toolNames = ['yt-dlp', 'ffmpeg', 'ffprobe', 'deno'] as const;
 export type ToolName = typeof toolNames[number];
+export type ToolInstallProgress = { name: string; phase: 'checking' | 'downloading' | 'verifying' | 'activating'; received?: number; total?: number };
 export type ToolStatus = {
   readonly name: string;
   readonly available: boolean;
@@ -13,7 +14,7 @@ export type ToolStatus = {
 };
 
 export function parseToolVersion(value: string): string | undefined {
-  return value.match(/(?:^|\s|v)(\d+(?:\.\d+){1,3})(?=[^\d.]|$)/)?.[1];
+  return value.match(/(?:^|\s|[vn])(\d+(?:\.\d+){1,3})(?=[^\d.]|$)/)?.[1];
 }
 
 // Unknown/nightly builds must never be presented as older stable releases.

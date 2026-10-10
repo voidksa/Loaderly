@@ -8,7 +8,26 @@ type SubtitleCue = {
 };
 
 contextBridge.exposeInMainWorld('loaderly', {
-  appName: 'Loaderly 2.0',
+  appName: 'Loaderly 2.1',
+  trashMedia:(paths:string[])=>ipcRenderer.invoke('loaderly:trash-media',paths),
+  missingLibraryFiles:(paths:string[])=>ipcRenderer.invoke('loaderly:missing-library-files',paths) as Promise<string[]>,
+  playlistPreview:(url:string)=>ipcRenderer.invoke('loaderly:playlist-preview',url),
+  cancelPlaylist:()=>ipcRenderer.invoke('loaderly:playlist-cancel'),
+  cancelToolInstall: () => ipcRenderer.invoke('loaderly:cancel-tool-install'),
+  onToolInstallProgress: (callback: (value: import('../shared/tool-manager/toolStatus').ToolInstallProgress) => void) => {
+    const handler = (_event: IpcRendererEvent, value: import('../shared/tool-manager/toolStatus').ToolInstallProgress) => callback(value);
+    ipcRenderer.on('loaderly:tool-install-progress', handler);
+    return () => ipcRenderer.removeListener('loaderly:tool-install-progress', handler);
+  },
+  exportVisualizerVideo:(payload:unknown)=>ipcRenderer.invoke('loaderly:visualizer-export',payload),
+  cancelVisualizerExport:()=>ipcRenderer.invoke('loaderly:visualizer-cancel'),
+  onVisualizerExport:(callback:(state:import('../shared/editor-project/visualizerVideo').VisualizerExportProgress)=>void)=>{const handler=(_event:IpcRendererEvent,state:import('../shared/editor-project/visualizerVideo').VisualizerExportProgress)=>callback(state);ipcRenderer.on('loaderly:visualizer-progress',handler);return()=>ipcRenderer.removeListener('loaderly:visualizer-progress',handler);},
+  communityCatalog: ()=>ipcRenderer.invoke('loaderly:community-catalog'),
+  communityDrafts:(input:import('../shared/communityDrafts').DraftRequest)=>ipcRenderer.invoke('loaderly:community-drafts',input),
+  communityRatings:(id?:string,stars?:number)=>ipcRenderer.invoke('loaderly:community-ratings',id,stars),
+  communityAccount:(action:string)=>ipcRenderer.invoke('loaderly:community-account',action),
+  programUpdate: (action:string,automatic?:boolean)=>ipcRenderer.invoke('loaderly:program-update',action,automatic),
+  onProgramUpdate: (callback:(state:import('../shared/releases').UpdateState)=>void)=>{const handler=(_event:IpcRendererEvent,state:import('../shared/releases').UpdateState)=>callback(state);ipcRenderer.on('loaderly:program-update-state',handler);return ()=>ipcRenderer.removeListener('loaderly:program-update-state',handler);},
   discoverModels: (connection:AiConnection) => ipcRenderer.invoke('loaderly:ai-models',connection),
   translateSubtitles: (input:TranslationInput) => ipcRenderer.invoke('loaderly:ai-translate',input),
   cancelTranslation: () => ipcRenderer.invoke('loaderly:ai-cancel'),
@@ -84,6 +103,8 @@ contextBridge.exposeInMainWorld('loaderly', {
     >,
   filePathForDrop: (file: File) => webUtils.getPathForFile(file),
   downloadUrl: (payload: {
+    readonly knownFiles?: readonly string[];
+    readonly locale?: 'en'|'ar';
     readonly url: string;
     readonly quality: 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
     readonly downloadDirectory?: string;
@@ -93,6 +114,8 @@ contextBridge.exposeInMainWorld('loaderly', {
   }) =>
     ipcRenderer.invoke('loaderly:download-url', payload) as Promise<{
       readonly ok: boolean;
+      readonly skipped?: boolean;
+      readonly replacedPath?: string;
       readonly path?: string;
       readonly fileUrl?: string;
       readonly thumbnailUrl?: string;

@@ -1,4 +1,5 @@
-export type AudioSettings = { gainDb:number; fadeIn:number; fadeOut:number; bass:number; treble:number; mono:boolean; muted:boolean };
+import { normalizeAudioSpace, type AudioSpace } from './audioSpace';
+export type AudioSettings = { gainDb:number; fadeIn:number; fadeOut:number; bass:number; treble:number; mono:boolean; muted:boolean; space?:AudioSpace };
 export const defaultAudioSettings: AudioSettings = {gainDb:0,fadeIn:0,fadeOut:0,bass:0,treble:0,mono:false,muted:false};
 export type AudioTimeline = {
   ranges: readonly {startSeconds:number;endSeconds:number}[];
@@ -19,7 +20,7 @@ export function audioOutputTime(sourceTime:number,timeline:AudioTimeline):number
 export function normalizeAudioSettings(value:unknown):AudioSettings {
  const v=value&&typeof value==='object'?value as Record<string,unknown>:{};
  const n=(k:string,min:number,max:number)=>typeof v[k]==='number'&&Number.isFinite(v[k])?Math.min(max,Math.max(min,v[k] as number)):0;
- return {gainDb:n('gainDb',-60,12),fadeIn:n('fadeIn',0,10),fadeOut:n('fadeOut',0,10),bass:n('bass',-12,12),treble:n('treble',-12,12),mono:v.mono===true,muted:v.muted===true};
+ return {gainDb:n('gainDb',-60,12),fadeIn:n('fadeIn',0,10),fadeOut:n('fadeOut',0,10),bass:n('bass',-12,12),treble:n('treble',-12,12),mono:v.mono===true,muted:v.muted===true,space:normalizeAudioSpace(v.space)};
 }
 export function audioFilterChain(value:unknown,duration:number):string {
  const s=normalizeAudioSettings(value),filters:string[]=[];

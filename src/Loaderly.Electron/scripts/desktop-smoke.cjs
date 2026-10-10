@@ -8,11 +8,13 @@ const http = require('node:http');
 (async () => {
   const out = path.resolve('desktop-smoke');
   fs.mkdirSync(out, { recursive: true });
+  const downloadDirectory=fs.mkdtempSync(path.join(out,'downloads-'));
+  const audioDownloadDirectory=fs.mkdtempSync(path.join(out,'audio-downloads-'));
   const bundle = process.platform === 'darwin'
     ? path.resolve(`dist-installer/${process.arch === 'arm64' ? 'mac-arm64' : 'mac'}/Loaderly.app/Contents`)
     : path.resolve('dist-installer/linux-unpacked');
   const resources = path.join(bundle, process.platform === 'darwin' ? 'Resources' : 'resources');
-  const executablePath = path.join(bundle, process.platform === 'darwin' ? 'MacOS/Loaderly' : 'loaderly');
+  const executablePath = process.env.LOADERLY_TEST_EXECUTABLE || path.join(bundle, process.platform === 'darwin' ? 'MacOS/Loaderly' : 'loaderly');
   const ffmpeg = path.join(resources, 'tools/ffmpeg');
   const source = path.join(out, 'test video عربي.mp4');
   execFileSync(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100', '-t', '3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', source], { stdio: 'pipe' });
@@ -20,6 +22,7 @@ const http = require('node:http');
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ executablePath, args: [`--user-data-dir=${path.join(out, 'profile')}`, '--disable-gpu'], env, timeout: 60000 });
+  console.log('Application launched.');
   const errors = [];
   app.process().stderr.on('data', chunk => fs.appendFileSync(path.join(out, 'app-stderr.log'), chunk));
   let server;
@@ -27,29 +30,35 @@ const http = require('node:http');
     const page = await app.firstWindow({ timeout: 60000 });
     page.on('pageerror', error => errors.push(error.message));
     await page.waitForSelector('.product-nav');
+    console.log('Renderer ready.');
     const platform = await page.evaluate(() => window.loaderly.platform);
     assert.equal(platform, process.platform);
     assert.equal(await page.evaluate(() => window.loaderly.supportsClipboardFiles), process.platform === 'darwin');
     const tools = await page.evaluate(() => window.loaderly.checkTools());
+    console.log('Tools checked.');
     assert.equal(tools.length, 4);
     for (const tool of tools) assert.equal(tool.available, true, JSON.stringify(tool));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, source);
     const media = await page.evaluate(() => window.loaderly.pickMediaFile());
     assert.equal(media.canceled, false);
     assert.ok(media.durationSeconds > 2);
+    const range = await app.evaluate(async ({ net }, url) => {
+      const response = await net.fetch(url, { headers: { Range: 'bytes=0-1023' } });
+      return { status: response.status, size: (await response.arrayBuffer()).byteLength };
+    }, media.fileUrl);
+    assert.deepEqual(range, { status: 206, size: 1024 });
     const preview = await page.evaluate(async url => {
-      const response = await fetch(url, { headers: { Range: 'bytes=0-1023' } });
       const video = document.createElement('video');
       video.muted = true;
       video.src = url;
       document.body.append(video);
       await video.play();
       await new Promise(resolve => setTimeout(resolve, 300));
-      const result = { status: response.status, size: (await response.arrayBuffer()).byteLength, width: video.videoWidth, advanced: video.currentTime > 0 };
+      const result = { width: video.videoWidth, advanced: video.currentTime > 0 };
       video.remove();
       return result;
     }, media.fileUrl);
-    assert.deepEqual(preview, { status: 206, size: 1024, width: 640, advanced: true });
+    assert.deepEqual(preview, { width: 640, advanced: true });
     const exports = [];
     for (const kind of ['video', 'audio', 'gif', 'snapshot']) {
       const output = path.join(out, `export-${kind}.${{ video: 'mp4', audio: 'mp3', gif: 'gif', snapshot: 'png' }[kind]}`);
@@ -62,6 +71,7 @@ const http = require('node:http');
       assert.equal(result.ok, true, `${kind}: ${JSON.stringify(result)}`);
       assert.ok(fs.statSync(output).size > 500);
       exports.push({ kind, bytes: fs.statSync(output).size });
+      console.log(`Exported ${kind}.`);
     }
     await page.evaluate(() => window.loaderly.copyText('Loaderly clipboard test'));
     assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), 'Loaderly clipboard test');
@@ -77,11 +87,16 @@ const http = require('node:http');
       fs.createReadStream(source).pipe(res);
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const download = await page.evaluate(async ({ url, directory }) => window.loaderly.downloadUrl({ url, downloadDirectory: directory, quality: 'best', writeSubtitles: false, groupDownloadsByPlatform: false }), { url: `http://127.0.0.1:${server.address().port}/test.mp4`, directory: path.join(out, 'downloads') });
+    const download = await page.evaluate(async ({ url, directory }) => window.loaderly.downloadUrl({ url, downloadDirectory: directory, quality: 'best', writeSubtitles: false, groupDownloadsByPlatform: false }), { url: `http://127.0.0.1:${server.address().port}/test.mp4`, directory: downloadDirectory });
     assert.equal(download.ok, true, JSON.stringify(download));
+    const audioDownload = await page.evaluate(async ({ url, directory }) => window.loaderly.downloadUrl({ url, downloadDirectory: directory, quality: 'audio', writeSubtitles: false, groupDownloadsByPlatform: false }), { url: `http://127.0.0.1:${server.address().port}/test.mp4`, directory: audioDownloadDirectory });
+    assert.equal(audioDownload.ok, true, JSON.stringify(audioDownload));
+    const downloadedAudio = fs.readdirSync(audioDownloadDirectory).find(name => name.endsWith('.mp3'));
+    assert.ok(downloadedAudio, 'Audio downloads must finish as a compatible MP3');
+    execFileSync(ffmpeg, ['-v', 'error', '-i', path.join(out, 'audio-downloads', downloadedAudio), '-f', 'null', '-'], { stdio: 'pipe' });
     await page.screenshot({ path: path.join(out, 'app-en.png') });
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify({ ok: true, platform, arch: process.arch, tools, preview, exports, download }, null, 2));
+    fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify({ ok: true, platform, arch: process.arch, tools, preview, exports, download, audioDownload }, null, 2));
     console.log('Native application, media playback, download, exports and clipboard passed.');
   } catch (error) {
     fs.writeFileSync(path.join(out, 'failure.txt'), String(error.stack || error));

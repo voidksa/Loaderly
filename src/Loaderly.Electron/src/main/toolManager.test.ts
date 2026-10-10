@@ -16,9 +16,79 @@ const release = (sha = digest, url = 'https://github.com/yt-dlp/yt-dlp/releases/
 });
 let root: string;
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'loaderly-tool-test-')); });
-afterEach(async () => { vi.unstubAllGlobals(); await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); await rm(root, { recursive: true, force: true }); });
 
 describe('managed tool installation', () => {
+  it('coalesces repeated checks, backs off network failures, and retries after a minute', async () => {
+    let now = 100_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+    vi.stubGlobal('fetch', fetchMock);
+    const manager = new ToolManager(root, () => 'bundled', { platform: 'win32', arch: 'x64' });
+    const statuses = await Promise.all(Array.from({ length: 20 }, () => manager.check('yt-dlp')));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(statuses[0]).toMatchObject({ available: true, checkError: expect.stringContaining('Check your connection') });
+    now += 31_000;
+    await manager.check('yt-dlp');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    now += 31_000;
+    fetchMock.mockResolvedValue(Response.json(release()));
+    expect(await manager.check('yt-dlp')).toMatchObject({ available: true, latestVersion: '2026.10.01', updateAvailable: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it('distinguishes service rate limits from timeouts', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 403, headers: { 'x-ratelimit-remaining': '0' } })));
+    expect(await new ToolManager(root, () => undefined).check('yt-dlp')).toMatchObject({ checkError: expect.stringContaining('limited requests') });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('timeout', 'TimeoutError')));
+    expect(await new ToolManager(root, () => undefined).check('yt-dlp')).toMatchObject({ checkError: expect.stringContaining('too long') });
+  });
+  it('reports download progress, cancels a stalled stream, and permits a fresh installation', async () => {
+    const progress: unknown[] = [];
+    let streamStarted!: () => void;
+    const started = new Promise<void>(resolve => { streamStarted = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes('api.github.com')) return Response.json(release());
+      return new Response(new ReadableStream({ start(controller) {
+        controller.enqueue(payload.subarray(0, 4));
+        options?.signal?.addEventListener('abort', () => controller.error(options.signal?.reason), { once: true });
+        streamStarted();
+      } }));
+    }));
+    const manager = new ToolManager(root, () => undefined, { platform: 'win32', arch: 'x64' });
+    const pending = manager.install('yt-dlp', value => progress.push(value));
+    await started;
+    manager.cancel();
+    expect(await pending).toMatchObject({ ok: false, message: expect.stringContaining('canceled') });
+    expect(manager.resolve('yt-dlp')).toBeUndefined();
+    expect(progress).toContainEqual({ name: 'yt-dlp', phase: 'downloading', received: 0 });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('api.github.com') ? Response.json(release()) : new Response(payload)));
+    expect(await manager.install('yt-dlp')).toMatchObject({ ok: true });
+  });
+  it.each([
+    { platform: 'darwin' as const, arch: 'arm64', asset: 'yt-dlp_macos' },
+    { platform: 'darwin' as const, arch: 'x64', asset: 'yt-dlp_macos' },
+    { platform: 'linux' as const, arch: 'x64', asset: 'yt-dlp_linux' },
+    { platform: 'linux' as const, arch: 'arm64', asset: 'yt-dlp_linux_aarch64' }
+  ])('installs the executable for $platform/$arch', async target => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('api.github.com') ? Response.json({
+      tag_name: '2026.10.01', assets: [{ name: target.asset, digest: `sha256:${digest}`, browser_download_url: `https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.01/${target.asset}` }]
+    }) : new Response(payload)));
+    const manager = new ToolManager(root, () => undefined, target);
+    expect(await manager.install('yt-dlp')).toMatchObject({ ok: true, status: { available: true, updateSupported: true } });
+    expect(manager.resolve('yt-dlp')).toMatch(/[\\/]yt-dlp$/);
+    expect(await readFile(manager.resolve('yt-dlp')!)).toEqual(payload);
+  });
+  it('keeps the tested bundled FFmpeg pair and does not fetch a generic preview replacement', async () => {
+    const installed = join(root, 'ffmpeg');
+    await writeFile(installed, 'bundled');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const manager = new ToolManager(root, () => installed, { platform: 'darwin', arch: 'arm64' });
+    expect(await manager.check('ffmpeg')).toMatchObject({ available: true, updateSupported: false });
+    expect(await manager.install('ffmpeg')).toMatchObject({ ok: false, message: expect.stringContaining('desktop preview') });
+    expect(manager.resolve('ffmpeg')).toBe(installed);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('preserves local availability when release checks fail', async () => {
     const installed = join(root, 'bundled.exe');
     await writeFile(installed, 'existing');

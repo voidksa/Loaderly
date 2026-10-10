@@ -10,6 +10,19 @@ declare global {
   interface Window {
     readonly loaderly?: {
       readonly appName: string;
+      readonly trashMedia:(paths:string[])=>Promise<{removed:string[];failed:string[]}>;
+      readonly missingLibraryFiles:(paths:string[])=>Promise<string[]>;
+      readonly playlistPreview:(url:string)=>Promise<import('../shared/download-url/playlist').PlaylistResult>;
+      readonly cancelPlaylist:()=>Promise<{ok:boolean}>;
+      readonly exportVisualizerVideo:(payload:Parameters<NonNullable<Window['loaderly']>['saveMediaOutput']>[0]&{options:import('../shared/editor-project/visualizerVideo').VisualizerVideoOptions;whole:boolean})=>Promise<{ok:boolean;path?:string;message?:string}>;
+      readonly cancelVisualizerExport:()=>Promise<void>;
+      readonly onVisualizerExport:(callback:(state:import('../shared/editor-project/visualizerVideo').VisualizerExportProgress)=>void)=>()=>void;
+      readonly communityCatalog: ()=>Promise<import('../shared/community').CommunityCatalog>;
+      readonly communityDrafts:(input:import('../shared/communityDrafts').DraftRequest)=>Promise<import('../shared/communityDrafts').DraftResult>;
+      readonly communityRatings:(id?:string,stars?:number)=>Promise<import('../shared/communityRatings').CommunityRatingsResult>;
+      readonly communityAccount:(action:'sign-in'|'poll'|'sign-out'|'cancel'|'open')=>Promise<import('../shared/communityRatings').CommunityAccount>;
+      readonly programUpdate: (action:'state'|'check'|'download'|'cancel'|'install'|'automatic',automatic?:boolean)=>Promise<import('../shared/releases').UpdateState>;
+      readonly onProgramUpdate: (callback:(state:import('../shared/releases').UpdateState)=>void)=>()=>void;
       readonly discoverModels: (connection:import('../shared/app-preferences/aiProviders').AiConnection) => Promise<{ok:boolean;models?:string[];message?:string}>;
       readonly translateSubtitles: (input:import('../shared/app-preferences/aiProviders').TranslationInput) => Promise<{ok:boolean;cues?:LoaderlySubtitleCue[];message?:string}>;
       readonly cancelTranslation: () => Promise<{ok:boolean}>;
@@ -87,6 +100,8 @@ declare global {
       >;
       readonly filePathForDrop: (file: File) => string;
       readonly downloadUrl: (payload: {
+        readonly knownFiles?: readonly string[];
+        readonly locale?: 'en'|'ar';
         readonly url: string;
         readonly quality: 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
         readonly downloadDirectory?: string;
@@ -95,6 +110,8 @@ declare global {
         readonly subtitleLanguages?: string;
       }) => Promise<{
         readonly ok: boolean;
+        readonly skipped?: boolean;
+        readonly replacedPath?: string;
         readonly path?: string;
         readonly fileUrl?: string;
         readonly thumbnailUrl?: string;
@@ -108,6 +125,7 @@ declare global {
         readonly sourcePath: string;
         readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
         readonly audio?: import('../shared/editor-project/audioProcessing').AudioSettings;
+        readonly audioSections?: import('../shared/editor-project/audioSections').AudioSection[];
         readonly label: string;
         readonly startSeconds: number;
         readonly endSeconds: number;
@@ -187,6 +205,7 @@ declare global {
         readonly sourcePath: string;
         readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
         readonly audio?: import('../shared/editor-project/audioProcessing').AudioSettings;
+        readonly audioSections?: import('../shared/editor-project/audioSections').AudioSection[];
         readonly label: string;
         readonly startSeconds: number;
         readonly endSeconds: number;
@@ -275,7 +294,9 @@ declare global {
           readonly checkError?: string;
         }[]
       >;
-      readonly updateTool: (toolName: string) => Promise<{
+        readonly cancelToolInstall: () => Promise<{ ok: boolean }>;
+        readonly onToolInstallProgress: (callback: (value: import('../shared/tool-manager/toolStatus').ToolInstallProgress) => void) => () => void;
+        readonly updateTool: (toolName: string) => Promise<{
         readonly ok: boolean;
         readonly name: string;
         readonly message?: string;
@@ -291,7 +312,7 @@ declare global {
           readonly checkError?: string;
         };
       }>;
-      readonly setTitlebarTheme: (themeMode: 'light' | 'dark', locale?: 'en' | 'ar', appearance?: unknown) => Promise<{ readonly ok: boolean }>;
+      readonly setTitlebarTheme: (themeMode: 'light' | 'dark', locale?: 'en' | 'ar', appearance?: unknown) => Promise<{ readonly ok: boolean; readonly desktopGlass?: boolean }>;
       readonly trayAction: (action: 'open' | 'downloads' | 'editor' | 'settings' | 'exit') => Promise<{ readonly ok: boolean }>;
       readonly windowControl: (action: 'minimize' | 'toggleMaximize' | 'close') => Promise<{
         readonly ok: boolean;

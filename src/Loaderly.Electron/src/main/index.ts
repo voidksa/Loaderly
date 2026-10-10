@@ -1,11 +1,22 @@
+import {exportVisualizerVideo,runEncoder} from './visualizerExport';
+import type {VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
+import { communityCatalog } from './communityCatalog';
+import {applyWindowAppearance} from './windowAppearance';
+import { CommunityRatings } from './communityRatings';
+import { ProgramUpdates } from './programUpdates';
+import {inspectPlaylist} from './playlist';
+import {trashMediaFiles} from './trashMedia';
+import {managedDownload,missingLibraryFiles,type DuplicateChoice} from './downloadConflicts';
 import { audioSpeedFilterChain, hasSpeedSound, normalizeSpeedMode } from '../shared/editor-project/speedSound';
 import { appearanceVariables, normalizeAppearance, defaultAppearance } from '../shared/app-preferences/appearance';
 import { discoverModels, translateCues } from './aiTranslation';
 import type { AiConnection, TranslationInput } from '../shared/app-preferences/aiProviders';
-import { audioFilterChain, type AudioSettings } from '../shared/editor-project/audioProcessing';
+import { type AudioSettings } from '../shared/editor-project/audioProcessing';
+import { applyAudioEffects, needsAudioEffects } from './audioEffects';
 import { blurAmount, pixelBlockSize, blurShapeAlpha } from '../shared/editor-project/blurRendering';
 import { ToolManager } from './toolManager';
 import { textFontCandidates, toolCandidates } from './desktopPlatform';
+import { macApplicationMenu, textContextMenu } from './desktopMenus';
 import { pathToFileURL } from 'node:url';
 import type { ToolName, ToolStatus } from '../shared/tool-manager/toolStatus';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
@@ -109,6 +120,10 @@ if (isExportValidationRun) {
   app.commandLine.appendSwitch('in-process-gpu');
 }
 
+let visualizerExportController: AbortController | undefined;
+let programUpdater: ProgramUpdates;
+let activeWork = 0;
+let installingProgramUpdate = false;
 let mainWindowRef: BrowserWindow | undefined;
 let trayRef: Tray | undefined;
 let trayWindowRef: BrowserWindow | undefined;
@@ -144,6 +159,8 @@ type PickMediaFileResult =
     };
 
 type DownloadUrlPayload = {
+  readonly knownFiles?: readonly string[];
+  readonly locale?: 'en'|'ar';
   readonly url: string;
   readonly quality: 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
   readonly downloadDirectory?: string;
@@ -154,6 +171,8 @@ type DownloadUrlPayload = {
 
 type DownloadUrlResult = {
   readonly ok: boolean;
+  readonly skipped?: boolean;
+  readonly replacedPath?: string;
   readonly path?: string;
   readonly fileUrl?: string;
   readonly thumbnailUrl?: string;
@@ -246,6 +265,7 @@ type CopyMediaOutputPayload = {
   readonly sourcePath: string;
   readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
   readonly audio?: AudioSettings;
+        readonly audioSections?: import('../shared/editor-project/audioSections').AudioSection[];
   readonly label: string;
   readonly startSeconds: number;
   readonly endSeconds: number;
@@ -312,11 +332,67 @@ function handleTrustedIpc<Args extends unknown[], Result>(
       throw new Error(`Blocked untrusted IPC call: ${channel}`);
     }
 
-    return listener(event, ...(args as Args));
+    const work = ['loaderly:playlist-preview','loaderly:download-url','loaderly:save-media-output','loaderly:copy-media-output','loaderly:extract-audio','loaderly:update-tool','loaderly:visualizer-export'].includes(channel);
+    if (work && installingProgramUpdate) throw Error('An update is starting');
+    if (!work) return listener(event, ...(args as Args));
+    activeWork++;
+    return Promise.resolve().then(()=>listener(event, ...(args as Args))).finally(()=>{activeWork--;});
   });
 }
 
 function registerIpcHandlers() {
+  handleTrustedIpc('loaderly:trash-media',(_event,paths:unknown)=>trashMediaFiles(paths,path=>shell.trashItem(path)));
+  handleTrustedIpc('loaderly:visualizer-cancel',()=>visualizerExportController?.abort());
+  handleTrustedIpc('loaderly:visualizer-export',async(event,payload:CopyMediaOutputPayload&{options:VisualizerVideoOptions;whole:boolean})=>{
+    if(visualizerExportController)return {ok:false,message:'Another video is exporting.'};
+    const controller=new AbortController();visualizerExportController=controller;
+    try{
+      const ffmpeg=resolveToolPath('ffmpeg');if(!ffmpeg)throw Error('FFmpeg is unavailable');
+      if(!payload.sourcePath || !existsSync(payload.sourcePath))throw Error('Source audio is missing');
+      const duration=await probeDurationSeconds(payload.sourcePath);if(!duration)throw Error('Could not read audio duration');
+      const start=payload.whole?0:Math.max(0,Math.min(duration,payload.startSeconds)),end=payload.whole?duration:Math.min(duration,payload.endSeconds);
+      if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw Error('Select a valid range');
+      const choice=await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender)!,{title:'Export audio as video',defaultPath:join(app.getPath('videos'),parse(payload.sourcePath).name+'-visualizer.mp4'),filters:[{name:'MP4 video',extensions:['mp4']}]});
+      if(choice.canceled||!choice.filePath)return {ok:false,message:'Save canceled.'};
+      return await exportVisualizerVideo({sourcePath:payload.sourcePath,outputPath:choice.filePath,options:payload.options,ffmpeg,signal:controller.signal,
+        notify:state=>{if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',state);},
+        prepareAudio:async(path,signal)=>{
+          const audioPayload={...payload,kind:'audio' as const,startSeconds:start,endSeconds:end};
+          const args=[...ffmpegCopyArgs(audioPayload,path,false)];
+          args[args.indexOf('libmp3lame')]='pcm_s16le';const quality=args.indexOf('-q:a');if(quality>=0)args.splice(quality,2);
+          await runEncoder(ffmpeg,args,signal);
+          if(payload.audio){const length=await probeDurationSeconds(path)??end-start;if(needsAudioEffects(payload.audio,length,payload.audioSections)){const processed=path+'.processed.wav';await applyAudioEffects(ffmpeg,path,processed,payload.audio,length,'pcm_s16le',signal,payload.audioSections);await rename(processed,path);}}
+        }});
+    }catch(error){const canceled=controller.signal.aborted;if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',{phase:canceled?'canceled':'error',percent:0});return {ok:false,message:canceled?'Export canceled.':error instanceof Error?error.message:'Export failed.'};}
+    finally{visualizerExportController=undefined;}
+  });
+  handleTrustedIpc('loaderly:community-catalog',()=>communityCatalog(app.getPath('userData')));
+  const communityRatings = new CommunityRatings(app.getPath('userData'));
+  handleTrustedIpc('loaderly:community-drafts',(_event,input:import('../shared/communityDrafts').DraftRequest)=>communityRatings.drafts(input));
+  handleTrustedIpc('loaderly:community-ratings',(_event,id?:unknown,stars?:unknown)=>communityRatings.ratings(id,stars));
+  handleTrustedIpc('loaderly:community-account',async (_event,action:string)=>{
+    if(action==='sign-in')return communityRatings.begin();
+    if(action==='poll')return communityRatings.poll();
+    if(action==='sign-out'||action==='cancel')return communityRatings.logout();
+    if(action==='open'){await shell.openExternal('https://github.com/login/device');return {};}
+    throw Error('Invalid account action');
+  });
+  handleTrustedIpc('loaderly:program-update', async (_event, action:string, automatic?:boolean) => {
+    if(action==='check')return programUpdater.check();
+    if(action==='download')return programUpdater.download();
+    if(action==='cancel'){programUpdater.cancel();return programUpdater.state;}
+    if(action==='automatic')return programUpdater.preferences(automatic===true);
+    if(action==='install'){
+      if(activeWork || installingProgramUpdate)throw Error('Finish active jobs before updating');
+      installingProgramUpdate=true;
+      try {
+        if(process.platform==='win32'){
+          await programUpdater.launchWindowsInstaller();isQuitting=true;app.quit();
+        }else shell.showItemInFolder(await programUpdater.verifiedFile());
+      }finally{installingProgramUpdate=false;}
+    }
+    return programUpdater.state;
+  });
   handleTrustedIpc('loaderly:copy-quick-item', (_event, payload: CopyQuickItemPayload) => {
     const safeTitle = payload.mediaTitle || 'Loaderly media';
     const safeRange = payload.rangeLabel || 'current frame';
@@ -443,13 +519,26 @@ function registerIpcHandlers() {
     return getToolManager().checkAll();
   });
 
-  handleTrustedIpc('loaderly:update-tool', async (_event, toolName: string): Promise<ToolUpdateResult> => {
-    return getToolManager().install(toolName);
+  handleTrustedIpc('loaderly:cancel-tool-install', () => { getToolManager().cancel(); return { ok: true }; });
+  handleTrustedIpc('loaderly:update-tool', async (event, toolName: string): Promise<ToolUpdateResult> => {
+    return getToolManager().install(toolName, progress => { if (!event.sender.isDestroyed()) event.sender.send('loaderly:tool-install-progress', progress); });
   });
 
   handleTrustedIpc('loaderly:download-url', async (_event, payload: DownloadUrlPayload): Promise<DownloadUrlResult> => {
     return downloadUrl(payload);
   });
+  handleTrustedIpc('loaderly:missing-library-files',(_event,paths:unknown)=>missingLibraryFiles(paths));
+
+  const playlistJobs=new Map<number,AbortController>();
+  handleTrustedIpc('loaderly:playlist-preview',async(event,url:unknown)=>{
+    const id=event.sender.id;
+    if(playlistJobs.has(id))return {ok:false,message:'A playlist is already loading. Try again shortly.'};
+    const controller=new AbortController();playlistJobs.set(id,controller);
+    const closed=()=>controller.abort();event.sender.once('destroyed',closed);
+    try{return await inspectPlaylist(url,resolveToolPath('yt-dlp'),controller.signal);}
+    finally{event.sender.removeListener('destroyed',closed);if(playlistJobs.get(id)===controller)playlistJobs.delete(id);}
+  });
+  handleTrustedIpc('loaderly:playlist-cancel',event=>{playlistJobs.get(event.sender.id)?.abort();return {ok:true};});
 
   const translationJobs = new Map<number, AbortController>();
   handleTrustedIpc('loaderly:ai-models', async (_event, connection:AiConnection) => {
@@ -485,16 +574,19 @@ function registerIpcHandlers() {
     return saveMediaOutput(payload, owner ?? undefined);
   });
 
-  handleTrustedIpc('loaderly:set-titlebar-theme', (_event, themeMode: ThemeMode, locale?: AppLocale, appearance?: unknown) => {
+  handleTrustedIpc('loaderly:set-titlebar-theme', (event, themeMode: ThemeMode, locale?: AppLocale, appearance?: unknown) => {
     currentThemeMode = themeMode === 'dark' ? 'dark' : 'light';
     currentAppearance = normalizeAppearance(appearance);
     currentLocale = locale === 'ar' ? 'ar' : 'en';
+    if (process.platform === 'darwin' && trayRef) trayRef.setContextMenu(nativeTrayMenu());
 
     if (trayWindowRef) {
       void trayWindowRef.loadURL(trayHtmlUrl());
     }
 
-    return { ok: true };
+    const owner=BrowserWindow.fromWebContents(event.sender);
+    const desktopGlass=owner?applyWindowAppearance(owner,currentAppearance,currentThemeMode==='dark'):false;
+    return { ok: true, desktopGlass };
   });
 
   handleTrustedIpc('loaderly:tray-action', (_event, action: TrayAction) => {
@@ -552,38 +644,34 @@ async function downloadUrl(payload: DownloadUrlPayload): Promise<DownloadUrlResu
   await mkdir(outputDirectory, { recursive: true });
 
   try {
-    return await runYtDlpDownload(toolPath, outputDirectory, normalizedPayload);
+    const denoPath=resolveToolPath('deno');
+    const {stdout}=await execFileAsync(toolPath,[...ytDlpIsolationArgs,'--no-playlist','--skip-download','--dump-single-json','--windows-filenames','--output','%(title).180B [%(id)s].%(ext)s',...(denoPath?['--js-runtimes',`deno:${denoPath}`]:[]),'--',normalizedUrl],{timeout:90_000,windowsHide:true,maxBuffer:8*1024*1024});
+    const metadata=JSON.parse(stdout) as {title?:string;id?:string};
+    if(typeof metadata.title!=='string'||!metadata.title.trim())throw Error('Could not read the download title. Try again.');
+    const result=await managedDownload({directory:outputDirectory,title:metadata.title,identity:metadata.id,kind:payload.quality==='audio'?'audio':'video',knownFiles:Array.isArray(payload.knownFiles)?payload.knownFiles.filter((p):p is string=>typeof p==='string'):[],
+      classify:async path=>{const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)return undefined;try{const {stdout}=await execFileAsync(ffprobe,['-v','error','-show_streams','-of','json',path],{timeout:15_000,windowsHide:true,maxBuffer:1024*1024});const streams=JSON.parse(stdout).streams as {codec_type:string;disposition?:{attached_pic?:number}}[];return streams.some(s=>s.codec_type==='video'&&!s.disposition?.attached_pic)?'video':streams.some(s=>s.codec_type==='audio')?'audio':undefined;}catch{return undefined;}},
+      choose:path=>confirmDuplicateDownload(path,metadata.title!,payload.locale==='ar'),
+      download:stage=>runYtDlpDownload(toolPath,stage,normalizedPayload)});
+    if(!result.ok||!result.path)return result;
+    return {...result,...await mediaFileDetails(result.path),subtitlePath:result.subtitlePath};
   } catch (error) {
     const message = execFailureMessage(error);
-    const shouldRetryWithoutSubtitles =
-      normalizedPayload.quality !== 'audio' &&
-      normalizedPayload.writeSubtitles !== false &&
-      isSubtitleDownloadFailure(message);
-
-    if (shouldRetryWithoutSubtitles) {
-      try {
-        const fallbackResult = await runYtDlpDownload(toolPath, outputDirectory, {
-          ...normalizedPayload,
-          writeSubtitles: false,
-          subtitleLanguages: undefined
-        });
-        return {
-          ...fallbackResult,
-          message: subtitlesSkippedRateLimitMessage
-        };
-      } catch (fallbackError) {
-        return {
-          ok: false,
-          message: execFailureMessage(fallbackError)
-        };
-      }
-    }
 
     return {
       ok: false,
       message
     };
   }
+}
+
+let duplicatePrompt:Promise<unknown>=Promise.resolve();
+function confirmDuplicateDownload(path:string,title:string,ar:boolean):Promise<DuplicateChoice>{
+  const prompt=duplicatePrompt.catch(()=>{}).then(async()=>{
+    const options={type:'question' as const,title:ar?'الملف موجود بالفعل':'Already downloaded',message:ar?'يوجد ملف من النوع نفسه بهذا الاسم.':'A file of the same type already has this name.',detail:`${title}\n\n${path}\n\n${ar?'تخطي يبقي الموجود. استبدال يحمّل الجديد أولًا. نسخة أخرى تضيف رقمًا إلى الاسم.':'Skip keeps the existing file. Replace downloads the new file first. Keep both adds a number to its name.'}`,buttons:ar?['تخطي','تنزيل نسخة أخرى','استبدال الموجود']:['Skip','Keep both','Replace existing'],defaultId:0,cancelId:0,noLink:true};
+    const response=await(mainWindowRef?dialog.showMessageBox(mainWindowRef,options):dialog.showMessageBox(options));
+    return (['skip','keep','replace'] as const)[response.response]??'skip';
+  });
+  duplicatePrompt=prompt;return prompt;
 }
 
 function defaultDownloadBaseDirectory(): string {
@@ -976,11 +1064,10 @@ async function renderMediaOutput(
 
     if ((payload.kind === 'audio' || (payload.kind === 'video' && sourceHasAudio)) && payload.audio) {
       const outputDuration = await probeDurationSeconds(outputPath) ?? Math.max(.1, payload.endSeconds-payload.startSeconds);
-      const chain = audioFilterChain(payload.audio, outputDuration);
-      if (chain) {
+      if (needsAudioEffects(payload.audio, outputDuration,payload.audioSections)) {
         const processed = join(dirname(outputPath), `${parse(outputPath).name}-audio-pass-${Date.now()}${extname(outputPath)}`);
         try {
-          await execFileAsync(toolPath, ['-y','-i',outputPath,'-map','0','-c:v','copy','-af',chain,'-c:a',payload.kind === 'audio' ? 'libmp3lame' : 'aac',processed], {timeout:300000,windowsHide:true,maxBuffer:4*1024*1024});
+          await applyAudioEffects(toolPath, outputPath, processed, payload.audio, outputDuration, payload.kind === 'audio' ? 'libmp3lame' : 'aac', AbortSignal.timeout(300000),payload.audioSections);
           await rename(processed, outputPath);
         } finally { await unlink(processed).catch(()=>{}); }
       }
@@ -1510,7 +1597,9 @@ function composeOverlayGraph(
 
   if (payload.subtitlePath && existsSync(payload.subtitlePath)) {
     const output = nextLabel('subtitles');
-    graph.push(`[${currentLabel}]subtitles=${escapeFilterPath(payload.subtitlePath)}[${output}]`);
+    const bundledFonts = join(process.resourcesPath, 'fonts');
+    const fontDirectory = existsSync(bundledFonts) ? `:fontsdir=${escapeFilterPath(bundledFonts)}` : '';
+    graph.push(`[${currentLabel}]subtitles=${escapeFilterPath(payload.subtitlePath)}${fontDirectory}[${output}]`);
     currentLabel = output;
   }
 
@@ -2446,15 +2535,17 @@ function allowedDevelopmentRendererUrl(): string | undefined {
 
 function createMainWindow(): BrowserWindow {
   const iconPath = resolveAppIconPath();
+  const available = screen.getPrimaryDisplay().workAreaSize;
   const mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 920,
-    minWidth: 1180,
-    minHeight: 720,
-    title: 'Loaderly 2.0',
+    width: Math.min(1440, available.width),
+    height: Math.min(920, available.height),
+    minWidth: Math.min(1180, available.width),
+    minHeight: Math.min(720, available.height),
+    title: 'Loaderly 2.1',
     backgroundColor: '#f3f4f6',
     autoHideMenuBar: true,
-    frame: false,
+    frame: process.platform !== 'win32',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 17 }, vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const, backgroundColor: '#00000000' } : {}),
     icon: iconPath,
     show: false,
     webPreferences: {
@@ -2465,6 +2556,12 @@ function createMainWindow(): BrowserWindow {
     }
   });
   let fallbackLoaded = false;
+
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const template = textContextMenu(params);
+    if (!template.length) return;
+    Menu.buildFromTemplate(template).popup({ window: mainWindow, frame: params.frame ?? undefined });
+  });
 
   const showRendererFallback = (message: string) => {
     if (fallbackLoaded || mainWindow.isDestroyed()) {
@@ -2908,14 +3005,41 @@ function createTray() {
   }
 
   const iconPath = resolveAppIconPath();
-  const icon = iconPath ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
+  let icon = iconPath ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
+  if (process.platform === 'darwin' && iconPath) {
+    // Extract the light brand mark as an alpha mask; macOS supplies its own tint.
+    const source = nativeImage.createFromPath(iconPath).resize({ width: 36, height: 36 });
+    const bitmap = source.toBitmap();
+    for (let i = 0; i < bitmap.length; i += 4) {
+      const alpha = Math.round(Math.max(0, Math.min(1, (Math.min(bitmap[i], bitmap[i + 1], bitmap[i + 2]) - 100) / 140)) * bitmap[i + 3]);
+      bitmap[i] = bitmap[i + 1] = bitmap[i + 2] = 0; bitmap[i + 3] = alpha;
+    }
+    icon = nativeImage.createFromBitmap(bitmap, { width: 36, height: 36, scaleFactor: 2 });
+    icon.setTemplateImage(true);
+  }
   const tray = new Tray(icon);
 
-  tray.setToolTip('Loaderly 2.0');
-  tray.on('click', toggleTrayWindow);
-  tray.on('right-click', toggleTrayWindow);
+  tray.setToolTip('Loaderly');
+  if (process.platform === 'darwin') {
+    tray.setContextMenu(nativeTrayMenu());
+  } else {
+    tray.on('click', toggleTrayWindow);
+    tray.on('right-click', toggleTrayWindow);
+  }
   tray.on('double-click', () => runTrayAction('open'));
   trayRef = tray;
+}
+
+function nativeTrayMenu() {
+  const ar = currentLocale === 'ar';
+  return Menu.buildFromTemplate([
+    { label: ar ? 'فتح Loaderly' : 'Open Loaderly', click: () => runTrayAction('open') },
+    { label: ar ? 'التنزيلات' : 'Downloads', click: () => runTrayAction('downloads') },
+    { type: 'separator' },
+    { label: ar ? 'الإعدادات…' : 'Settings…', accelerator: 'Command+,', click: () => runTrayAction('settings') },
+    { type: 'separator' },
+    { label: ar ? 'إنهاء Loaderly' : 'Quit Loaderly', accelerator: 'Command+Q', click: () => runTrayAction('exit') }
+  ]);
 }
 
 function resolvePreloadPath(): string {
@@ -2976,10 +3100,10 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showMainWindow('workspace'));
 
   app.whenReady().then(async () => {
-    Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate([
-      { role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
-      { role: 'help', submenu: [{ label: 'Loaderly Documentation', click: () => { void shell.openExternal('https://loaderly-docs.voidksa.workers.dev/docs/'); } }] }
-    ]) : null);
+    Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate(macApplicationMenu(
+      () => runTrayAction('settings'),
+      () => { void shell.openExternal('https://loaderly-docs.voidksa.workers.dev/docs/'); }
+    )) : null);
     registerMediaProtocol();
 
     if (await runExportValidationFromEnvironment()) {
@@ -2988,6 +3112,9 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
       return;
     }
 
+    programUpdater=new ProgramUpdates(join(app.getPath('userData'),'Updates'),app.getVersion(),state=>{if(mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:program-update-state',state);});
+    await programUpdater.initialize();
+    if(app.isPackaged){setTimeout(()=>{if(programUpdater.state.automatic)void programUpdater.check();},30000);setInterval(()=>{if(programUpdater.state.automatic)void programUpdater.check();},12*60*60*1000).unref();}
     registerIpcHandlers();
     mainWindowRef = createMainWindow();
     createTray();
@@ -2997,7 +3124,8 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
         mainWindowRef = createMainWindow();
       }
 
-      showMainWindow('workspace');
+      // Returning from another app must preserve the route and the focused input.
+      showMainWindow();
     });
   });
 

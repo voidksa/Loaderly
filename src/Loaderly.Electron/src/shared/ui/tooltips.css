@@ -1,0 +1,8 @@
+.app-tooltip[popover] {
+ position:fixed;inset:auto;margin:0;box-sizing:border-box;
+ width:max-content;max-width:min(360px,calc(100vw - 20px));max-height:min(240px,calc(100vh - 20px));overflow:auto;
+ padding:8px 11px;border:1px solid var(--tooltip-border,var(--border,var(--line,#454545)));border-radius:var(--tooltip-radius,var(--radius,8px));
+ background:var(--tooltip-background,var(--popover-fill,var(--popover,var(--surface-raised,var(--surface,#282828)))));color:var(--tooltip-foreground,var(--foreground,var(--text,#f2f2f2)));
+ box-shadow:0 4px 16px #0003;font:calc(12px * var(--ui-font-scale,1))/1.6 var(--font-ui,system-ui,sans-serif);
+ text-align:start;white-space:pre-wrap;overflow-wrap:anywhere;cursor:default;
+}

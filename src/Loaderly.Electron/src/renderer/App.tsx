@@ -1,16 +1,29 @@
+import {createMediaIdAllocator} from '../shared/mediaIdentity';
+import {AudioSectionControls} from './editor/AudioSectionControls';
+import {normalizeAudioSections,audioSectionsForOutput,adjustAudioSectionWindow,type AudioSection} from '../shared/editor-project/audioSections';
+import {TimeField} from './editor/TimeField';
+import {formatTimecode} from '../shared/editor-timeline/timecode';
+import {SoundPresetControls} from './editor/SoundPresetControls';
+import {PlaylistPicker} from './editor/PlaylistPicker';
+import {LibraryRemoval} from './editor/LibraryRemoval';
+import {youtubePlaylistUrl,type PlaylistEntry} from '../shared/download-url/playlist';
+import {encodeSoundPreset} from '../shared/audioPreset';
+import { VisualizerVideoExport } from './editor/VisualizerVideoExport';
+import type {VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
+import { CommunityLibrary } from './editor/CommunityLibrary';
+import { ProgramUpdates } from './editor/ProgramUpdates';
 import { SpeedControls } from './editor/SpeedControls';
 import { flushSync } from 'react-dom';
 import { hasSpeedSound } from '../shared/editor-project/speedSound';
 import { DesktopMenu, type MenuOption } from './editor/DesktopMenu';
 import { ColorField } from './editor/ColorField';
 import { providerModels, providerBaseUrls } from '../shared/app-preferences/aiProviders';
-import { AudioControls } from './editor/AudioControls';
 import { AudioVisualizer, useAudioPreview } from './editor/AudioPreview';
 import { VisualizerControls } from './editor/VisualizerControls';
-import { defaultVisualizer, normalizeVisualizer, type AudioVisualizerSettings } from '../shared/editor-project/audioVisualizer';
+import { defaultVisualizer, normalizeVisualizer, decodeVisualizer, encodeVisualizer, type AudioVisualizerSettings } from '../shared/editor-project/audioVisualizer';
 import { defaultAudioSettings, normalizeAudioSettings, type AudioSettings } from '../shared/editor-project/audioProcessing';
 import { AppearanceSettings } from './editor/AppearanceSettings';
-import { appearanceVariables } from '../shared/app-preferences/appearance';
+import { appearanceVariables, decodeTheme, encodeTheme } from '../shared/app-preferences/appearance';
 import { RangeInput } from './editor/RangeInput';
 import { FilteredVideoPreview } from './editor/FilteredVideoPreview';
 import { blurAmount, pixelBlockSize } from '../shared/editor-project/blurRendering';
@@ -190,7 +203,7 @@ import { PreviewCanvas } from './editor/PreviewCanvas';
 import { TimelineView } from './editor/TimelineView';
 import { ToolRail, type EditorToolRailItem } from './editor/ToolRail';
 
-type NavigationKey = 'workspace' | 'downloads' | 'library' | 'editor' | 'queue' | 'tools' | 'export' | 'settings';
+type NavigationKey = 'community' | 'workspace' | 'downloads' | 'library' | 'editor' | 'queue' | 'tools' | 'export' | 'settings';
 type MediaStatus = 'ready' | 'downloading' | 'queued' | 'edited' | 'failed';
 type MediaSourceType = 'download' | 'local';
 type MediaKind = 'video' | 'audio';
@@ -247,6 +260,7 @@ type EffectWindow = {
 };
 
 type TimelineSegmentDragTarget =
+  | {readonly kind:'audio-section';readonly id:string;readonly startSeconds:number;readonly endSeconds:number;readonly startClientX:number}
   | {
       readonly kind: 'trim';
       readonly startSeconds: number;
@@ -277,6 +291,7 @@ type TimelineSegmentDragTarget =
     };
 
 type TimelineSegmentDragStart =
+  | {readonly kind:'audio-section';readonly id:string;readonly startSeconds:number;readonly endSeconds:number}
   | {
       readonly kind: 'trim';
       readonly startSeconds: number;
@@ -363,6 +378,7 @@ type ZoomRegion = {
 type RegionResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 type TimelineHandleTarget =
+  | {readonly kind:'audio-section';readonly id:string;readonly edge:'start'|'end'}
   | { readonly kind: 'trim'; readonly edge: 'start' | 'end' | 'playhead' }
   | { readonly kind: 'effect'; readonly layerId: EffectLayerId; readonly edge: 'start' | 'end'; readonly id?: string }
   | { readonly kind: 'text'; readonly id: number; readonly edge: 'start' | 'end' }
@@ -400,7 +416,12 @@ type EditorUiSnapshot = {
   readonly subtitleFile?: LoadedSubtitle;
   readonly subtitlesVisible: boolean;
   readonly audioSettings?: AudioSettings;
+  readonly audioSections?: AudioSection[];
+  readonly visualizerSettings?: AudioVisualizerSettings;
+  readonly visualizerVideo?: VisualizerVideoPreferences;
 };
+
+type VisualizerVideoPreferences = Omit<VisualizerVideoOptions,'scene'>&{image?:string;imageMode:'cover'|'logo';logoSize:number;logoX:number;logoY:number};
 
 type CopiedTimelineItem =
   | { readonly kind: 'text'; readonly item: TextOverlay }
@@ -440,7 +461,7 @@ const navigationItems: readonly NavigationItem[] = [
   { key: 'editor', labelKey: 'editor', icon: Scissors },
 ];
 
-const navigationLabels: Record<NavigationKey, TextKey> = {
+const navigationLabels: Record<Exclude<NavigationKey, 'community'>, TextKey> = {
   workspace: 'workspace',
   downloads: 'downloads',
   library: 'library',
@@ -598,19 +619,11 @@ function formatDuration(seconds: number | undefined): string {
     return '00:00';
   }
 
-  const rounded = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(rounded / 60);
-  const remainingSeconds = rounded % 60;
-
-  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  return formatTimecode(Math.round(seconds),false);
 }
 
 function formatElapsed(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return formatTimecode(Math.floor(ms/1000),false);
 }
 
 function friendlyDownloadError(message: string, locale: AppLocale): string {
@@ -755,10 +768,6 @@ function platformDisplayLabel(platform: NodeJS.Platform | undefined, arch: NodeJ
 
 function defaultToolUpdateMessage(locale: AppLocale): string {
   return uiText(locale, 'Check for updates, then install or update each tool here.', 'افحص التحديثات، ثم ثبّت أو حدّث كل أداة من هنا.');
-}
-
-function roundToTenths(value: number): number {
-  return Math.round(value * 10) / 10;
 }
 
 function subtitleTextAt(cues: readonly SubtitleCue[], seconds: number): string {
@@ -1073,8 +1082,6 @@ export function App() {
   const playerScrubberRef = useRef<HTMLDivElement>(null);
   const trimTimelineRef = useRef<HTMLDivElement>(null);
   const outputMenuRef = useRef<HTMLDivElement>(null);
-  const removeDialogRef = useRef<HTMLElement>(null);
-  const removeDialogCancelRef = useRef<HTMLButtonElement>(null);
   const previewFocusCloseTimerRef = useRef<number | undefined>(undefined);
   const playheadAutosaveTimerRef = useRef<number | undefined>(undefined);
   const timelineSegmentDragRef = useRef<TimelineSegmentDragTarget | undefined>(undefined);
@@ -1127,8 +1134,33 @@ export function App() {
   >(undefined);
   const [preferences, setPreferences] = useState<AppPreferences>(initialPreferences);
   const documentationUrl = `https://loaderly-docs.voidksa.workers.dev/${preferences.locale === 'ar' ? 'ar/' : ''}docs/`;
+  const [availableProgramUpdate,setAvailableProgramUpdate]=useState('');
+  useEffect(()=>window.loaderly?.onProgramUpdate(state=>{if(state.phase==='available')setAvailableProgramUpdate(state.version??'');}),[]);
+  const [showDiscovery,setShowDiscovery]=useState(()=>localStorage.getItem('loaderly:discovery:2.1')!=='dismissed');
   const [activeNav, setActiveNav] = useState<NavigationKey>('library');
+  const [communityCreatorOpen,setCommunityCreatorOpen]=useState(false);
+  const [pendingSoundCode,setPendingSoundCode]=useState<string>();
+  const communityOpen = activeNav === 'community';
+  useEffect(() => {
+    const open = (event:Event) => {setCommunityCreatorOpen((event as CustomEvent).detail?.create===true);selectNavigation('community');};
+    window.addEventListener('loaderly:community', open);
+    return () => window.removeEventListener('loaderly:community', open);
+  });
   const [mediaRows, setMediaRows] = useState<readonly MediaRow[]>(initialMediaRows);
+  const [allocateMediaId] = useState(()=>createMediaIdAllocator(initialMediaRows.map(row=>row.id)));
+  const mediaRowsRef=useRef(mediaRows);mediaRowsRef.current=mediaRows;
+  useEffect(()=>{
+    let busy=false,disposed=false;
+    const refresh=async()=>{
+      if(busy||disposed||document.hidden||!window.loaderly?.missingLibraryFiles)return;
+      const paths=mediaRowsRef.current.filter(row=>row.status==='ready'&&row.filePath).map(row=>row.filePath!);
+      if(!paths.length)return;busy=true;
+      try{const missing=new Set(await window.loaderly.missingLibraryFiles(paths));if(!disposed&&missing.size)setMediaRows(rows=>rows.filter(row=>row.status!=='ready'||!row.filePath||!missing.has(row.filePath)));}catch{/* Keep the library when the system cannot verify files. */}finally{busy=false;}
+    };
+    void refresh();const timer=window.setInterval(()=>void refresh(),15000);
+    window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+    return()=>{disposed=true;clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[]);
   const [selectedMediaId, setSelectedMediaId] = useState<number | undefined>(undefined);
   const [openedEditorMediaId, setOpenedEditorMediaId] = useState<number | undefined>(undefined);
   const [settingsTab, setSettingsTab] = useState<'general' | 'downloads' | 'translation' | 'about'>('general');
@@ -1136,6 +1168,12 @@ export function App() {
   // The active tool is independent of the timeline item shown in the inspector.
   const [activeEditorTool, setActiveEditorTool] = useState<EditorToolId>('select');
   const [urlValue, setUrlValue] = useState('');
+  const [librarySelecting,setLibrarySelecting]=useState(false);
+  const [librarySelection,setLibrarySelection]=useState<number[]>([]);
+  const [libraryRemoval,setLibraryRemoval]=useState<number[]>();
+  const [playlistRequest,setPlaylistRequest]=useState<{url:string;resolve:(entries:PlaylistEntry[]|null)=>void}>();
+  const playlistSelections=useRef(new Map<string,string[]>());
+  const addingDownloads=useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopPlayback, setLoopPlayback] = useState(false);
   useEffect(() => { setLoopPlayback(false); setActiveEditorTool('select'); setAudioInspectorOpen(false); }, [selectedMediaId]);
@@ -1173,6 +1211,8 @@ export function App() {
   const [toolStatuses, setToolStatuses] = useState<readonly ToolStatus[]>([]);
   const [toolCheckBusy, setToolCheckBusy] = useState(false);
   const [updatingToolName, setUpdatingToolName] = useState<string | undefined>(undefined);
+  const [toolInstallProgress, setToolInstallProgress] = useState<import('../shared/tool-manager/toolStatus').ToolInstallProgress>();
+  useEffect(() => window.loaderly?.onToolInstallProgress?.(setToolInstallProgress), []);
   const [copyJobs, setCopyJobs] = useState<readonly QuickCopyJob[]>([]);
   const [textOverlays, setTextOverlays] = useState<readonly TextOverlay[]>([]);
   const [selectedTextOverlayId, setSelectedTextOverlayId] = useState<number | undefined>(undefined);
@@ -1182,8 +1222,12 @@ export function App() {
   const [subtitleFile, setSubtitleFile] = useState<LoadedSubtitle | undefined>(undefined);
   const [subtitlesVisible, setSubtitlesVisible] = useState(true);
   const [audioSettings,setAudioSettings]=useState<AudioSettings>(defaultAudioSettings);
+  const [audioSections,setAudioSections]=useState<AudioSection[]>([]);
+  const [selectedAudioSectionId,setSelectedAudioSectionId]=useState<string>();
   const [audioInspectorOpen,setAudioInspectorOpen]=useState(false);
-  const [audioPanelTab,setAudioPanelTab]=useState<'sound'|'visualizer'>('sound');
+  const [videoExportBusy,setVideoExportBusy]=useState(false);
+  const [visualizerVideo,setVisualizerVideo]=useState<VisualizerVideoPreferences>({size:'landscape',resolution:1080,imageMode:'cover',logoSize:20,logoX:50,logoY:30});
+  const [audioPanelTab,setAudioPanelTab]=useState<'sound'|'visualizer'|'video'>('sound');
   const [visualizerSettings,setVisualizerSettings]=useState<AudioVisualizerSettings>(()=>{
     try { return normalizeVisualizer(JSON.parse(localStorage.getItem('loaderly:audio-visualizer:v1') ?? 'null')); } catch { return defaultVisualizer; }
   });
@@ -1228,7 +1272,6 @@ export function App() {
     if (/failed|could not|not available|unavailable|lost the target|target was lost|no clear|تعذّر|تعذر|فشل|غير متاح|فُقد|لا يوجد وجه/i.test(activity)) setActivityNotice(activity);
   }, [activity]);
 
-  const [pendingRemoveMediaId, setPendingRemoveMediaId] = useState<number | undefined>(undefined);
   const [previewResult, setPreviewResult] = useState(false);
   const [trackingModes, setTrackingModes] = useState<Record<string, 'automatic' | 'manual'>>({});
   useEffect(() => setPreviewResult(false), [selectedMediaId, selectedEffectItemId]);
@@ -1318,10 +1361,6 @@ export function App() {
   const selectedEditorMediaKind: EditorMediaKind = selectedMedia.mediaKind === 'audio' ? 'audio' : 'video';
   const isAudioEditor = selectedEditorMediaKind === 'audio';
   const selectedLayerIdForMedia = normalizeEditorLayerForMedia(selectedEditorMediaKind, selectedLayerId);
-  const pendingRemoveMedia = useMemo(
-    () => mediaRows.find((row) => row.id === pendingRemoveMediaId),
-    [mediaRows, pendingRemoveMediaId]
-  );
 
   const selectedLayer = useMemo(
     () => timelineLayers.find((layer) => layer.id === selectedLayerIdForMedia) ?? timelineLayers[0],
@@ -1636,13 +1675,16 @@ export function App() {
     document.documentElement.dataset.density = preferences.appearance.density;
     document.documentElement.dataset.corners = preferences.appearance.corners;
 
+    let canceled=false;
     const syncTitlebarTheme = () => {
-      void window.loaderly?.setTitlebarTheme?.(preferences.themeMode, preferences.locale, preferences.appearance);
+      void window.loaderly?.setTitlebarTheme?.(preferences.themeMode, preferences.locale, preferences.appearance).then(result=>{
+        if(!canceled) document.documentElement.dataset.desktopGlass=String(!!result.desktopGlass);
+      });
     };
     syncTitlebarTheme();
     const frame = window.requestAnimationFrame(syncTitlebarTheme);
 
-    return () => window.cancelAnimationFrame(frame);
+    return () => {canceled=true;window.cancelAnimationFrame(frame);};
   }, [preferences.locale, preferences.themeMode, preferences.appearance]);
 
   useEffect(() => {
@@ -1690,6 +1732,7 @@ export function App() {
     const duration = selectedMedia.durationSeconds ?? 0;
     const savedSnapshot = readSavedEditorSnapshot(selectedMedia);
     setAudioSettings(defaultAudioSettings);
+    setAudioSections([]);setSelectedAudioSectionId(undefined);
     setAudioInspectorOpen(selectedMedia.mediaKind === 'audio');
 
     if (duration > 0 && savedSnapshot) {
@@ -1793,6 +1836,9 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [
     audioSettings,
+    audioSections,
+    visualizerSettings,
+    visualizerVideo,
     blurMask,
     blurStrength,
     blurItems,
@@ -1870,7 +1916,7 @@ export function App() {
   useEffect(() => {
     const handleEditorShortcut = (event: KeyboardEvent) => {
       if (activeNav !== 'editor' || event.defaultPrevented || event.isComposing) return;
-      if (document.querySelector('[role="menu"], .editor-context-menu, .app-color-picker, dialog[open]') || pendingRemoveMediaId !== undefined || outputMenuOpen) return;
+      if (document.querySelector('[role="menu"], .editor-context-menu, .app-color-picker, dialog[open]') || outputMenuOpen) return;
       if (event.key === 'Escape' && isPreviewFocusMode) {
         event.preventDefault();
         closePreviewFocusMode();
@@ -1911,7 +1957,6 @@ export function App() {
   }, [
     activeNav,
     cleanAudioView,
-    pendingRemoveMediaId,
     outputMenuOpen,
     loopPlayback,
     isAudioEditor,
@@ -2087,50 +2132,7 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (pendingRemoveMediaId === undefined) {
-      return;
-    }
 
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-    const focusFrame = window.requestAnimationFrame(() => removeDialogCancelRef.current?.focus());
-    const handleDialogKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setPendingRemoveMediaId(undefined);
-        return;
-      }
-
-      if (event.key !== 'Tab') {
-        return;
-      }
-
-      const controls = Array.from(removeDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? []);
-
-      if (controls.length === 0) {
-        return;
-      }
-
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener('keydown', handleDialogKeyDown);
-
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      window.removeEventListener('keydown', handleDialogKeyDown);
-      previouslyFocused?.focus();
-    };
-  }, [pendingRemoveMediaId]);
 
   useEffect(() => {
     if (!outputMenuOpen) {
@@ -2509,29 +2511,32 @@ export function App() {
   }
 
   function requestRemoveMedia(rowId: number) {
-    setPendingRemoveMediaId(rowId);
+    if(mediaRows.some(row=>row.id===rowId&&row.status!=='downloading'))setLibraryRemoval([rowId]);
   }
 
-  function confirmRemoveMedia() {
-    const row = pendingRemoveMedia;
+  function toggleLibrarySelection(id:number){setLibrarySelection(ids=>ids.includes(id)?ids.filter(value=>value!==id):[...ids,id]);}
 
-    if (!row) {
-      setPendingRemoveMediaId(undefined);
-      return;
+  async function removeLibrarySelection(disk:boolean):Promise<string|undefined>{
+    const selected=mediaRows.filter(row=>libraryRemoval?.includes(row.id));
+    let removedIds=selected.map(row=>row.id);
+    let removedPaths:string[]=[];
+    if(disk){
+      if(!window.loaderly?.trashMedia)throw Error();
+      const result=await window.loaderly.trashMedia(selected.flatMap(row=>row.filePath?[row.filePath]:[]));
+      removedPaths=result.removed;
+      removedIds=selected.filter(row=>!row.filePath||result.removed.includes(row.filePath)).map(row=>row.id);
     }
-
-    setMediaRows((rows) => {
-      const nextRows = rows.filter((item) => item.id !== row.id);
-
-      if (selectedMediaId === row.id) {
-        setSelectedMediaId(undefined);
-      }
-
-      return nextRows;
-    });
-    setPendingRemoveMediaId(undefined);
-    setActivity(preferences.locale === 'ar' ? `حُذف "${displayMediaTitle(row)}" من Loaderly.` : `Removed "${displayMediaTitle(row)}".`);
+    const allRemovedIds=mediaRows.filter(row=>removedIds.includes(row.id)||(disk&&row.filePath&&removedPaths.includes(row.filePath))).map(row=>row.id);
+    setMediaRows(rows=>rows.filter(row=>!allRemovedIds.includes(row.id)));
+    if(selectedMediaId!==undefined&&allRemovedIds.includes(selectedMediaId))setSelectedMediaId(undefined);
+    setLibrarySelection(ids=>ids.filter(id=>!allRemovedIds.includes(id)));
+    const failed=selected.filter(row=>!removedIds.includes(row.id));
+    if(failed.length){setLibraryRemoval(failed.map(row=>row.id));return uiText(preferences.locale,`${failed.length} files could not be moved to Trash. They remain in your library.`,`${failed.length} ملفات تعذّر نقلها إلى السلة وبقيت في المكتبة.`);}
+    setLibraryRemoval(undefined);setLibrarySelecting(false);
+    setActivity(uiText(preferences.locale,`${selected.length} files removed${disk?' and moved to Trash':''}.`,`تمت إزالة ${selected.length} ملفات${disk?' ونقلها إلى السلة':''}.`));
   }
+
+
 
   function retryDownload(row: MediaRow) {
     if (!row.source) {
@@ -2575,15 +2580,6 @@ export function App() {
     void startDownloadBatch(queuedRows);
   }
 
-  function checkProgramUpdates() {
-    const message =
-      preferences.locale === 'ar'
-        ? 'فحص تحديث Loaderly غير جاهز في هذه النسخة بعد. سيتم تفعيله مع نظام التحديث الرسمي.'
-        : 'Loaderly update checking is not ready in this build yet. It will be enabled with the official updater.';
-    setToolUpdateMessage(message);
-    setActivity(message);
-  }
-
   function friendlyToolUpdateResult(toolName: string, ok: boolean, message: string | undefined): string {
     return ok ? uiText(preferences.locale, `${toolName} is ready.`, `${toolName} جاهز.`)
       : uiText(preferences.locale, `Could not install ${toolName}. ${message ?? 'Please retry.'}`, `تعذر تثبيت ${toolName}. ${message ?? 'حاول مرة أخرى.'}`);
@@ -2602,6 +2598,7 @@ export function App() {
     }
 
     setUpdatingToolName(toolName);
+    setToolInstallProgress(undefined);
     setToolUpdateMessage(preferences.locale === 'ar' ? `جارٍ تحديث ${toolName}...` : `Updating ${toolName}...`);
     setActivity(preferences.locale === 'ar' ? `جارٍ تحديث ${toolName}...` : `Updating ${toolName}...`);
 
@@ -2611,13 +2608,14 @@ export function App() {
       setToolUpdateMessage(message);
       setActivity(message);
 
-      if (result.ok) setToolStatuses(await window.loaderly.checkTools());
+      if (result.ok && result.status) setToolStatuses(previous => [...previous.filter(item => item.name !== toolName), result.status!]);
     } catch (error) {
       const message = friendlyToolUpdateResult(toolName, false, error instanceof Error ? error.message : undefined);
       setToolUpdateMessage(message);
       setActivity(message);
     } finally {
       setUpdatingToolName(undefined);
+      setToolInstallProgress(undefined);
     }
   }
 
@@ -2638,7 +2636,7 @@ export function App() {
     }
 
     setActiveNav(key);
-    setActivity(t('openedSection', { section: t(navigationLabels[key]) }));
+    setActivity(t('openedSection', { section: key === 'community' ? uiText(preferences.locale, 'Community library', 'مكتبة المجتمع') : t(navigationLabels[key]) }));
   }
 
   function selectMediaRow(rowId: number) {
@@ -2676,6 +2674,12 @@ export function App() {
   }
 
   async function addDownload() {
+    if(addingDownloads.current)return;
+    addingDownloads.current=true;
+    try { await prepareDownloads(); } finally { addingDownloads.current=false; }
+  }
+
+  async function prepareDownloads() {
     const sources = splitBatchSources(urlValue);
 
     if (sources.length === 0) {
@@ -2684,6 +2688,8 @@ export function App() {
     }
 
     const remoteSources: string[] = [];
+    const playlistMetadata=new Map<string,PlaylistEntry>();
+    const inspectedPlaylists=new Set<string>();
 
     for (const source of sources) {
       const localPath = normalizeLocalFileSource(source);
@@ -2699,7 +2705,15 @@ export function App() {
         continue;
       }
 
-      remoteSources.push(normalizeRemoteSourceUrl(source));
+      const normalized=normalizeRemoteSourceUrl(source);
+      const playlistUrl=youtubePlaylistUrl(normalized);
+      if(playlistUrl){
+        if(inspectedPlaylists.has(playlistUrl))continue;
+        inspectedPlaylists.add(playlistUrl);
+        const selection=await new Promise<PlaylistEntry[]|null>(resolve=>setPlaylistRequest({url:playlistUrl,resolve}));
+        if(selection===null)return;
+        for(const entry of selection){if(!remoteSources.includes(entry.url))remoteSources.push(entry.url);playlistMetadata.set(entry.url,entry);}
+      }else if(!remoteSources.includes(normalized))remoteSources.push(normalized);
     }
 
     if (remoteSources.length === 0) {
@@ -2708,10 +2722,11 @@ export function App() {
     }
 
     const createdRows = remoteSources.map<MediaRow>((source, index) => {
-      const title = source.replace(/^https?:\/\//, '');
+      const metadata=playlistMetadata.get(source);
+      const title = metadata?.title??source.replace(/^https?:\/\//, '');
 
       return {
-        id: Date.now() + index,
+        id: allocateMediaId(),
         title,
         source,
         duration: '00:00',
@@ -2819,6 +2834,8 @@ export function App() {
       const requestedQuality = qualityOverride ?? queuedRow?.quality ?? preferences.quality;
       const shouldWriteSubtitles = preferences.subtitleDownloadMode === 'auto' && requestedQuality !== 'audio';
       const result = await window.loaderly.downloadUrl({
+        knownFiles:mediaRowsRef.current.flatMap(row=>row.filePath?[row.filePath]:[]),
+        locale:preferences.locale,
         url: source,
         quality: requestedQuality,
         downloadDirectory: preferences.downloadDirectory,
@@ -2827,6 +2844,11 @@ export function App() {
         subtitleLanguages: shouldWriteSubtitles ? subtitleLanguagesForProfile(preferences.subtitleLanguageProfile) : undefined
       });
 
+      if(result?.skipped){
+        setMediaRows(rows=>rows.filter(row=>row.id!==rowId));
+        setActivity(uiText(preferences.locale,'Skipped duplicate. The existing file was kept.','تم تخطي التكرار والإبقاء على الملف الموجود.'));
+        return;
+      }
       if (!result?.ok || result.path === undefined || result.fileUrl === undefined) {
         const rawErrorMessage = result?.message ?? 'unknown error';
         const errorMessage = friendlyDownloadError(rawErrorMessage, preferences.locale);
@@ -2851,7 +2873,7 @@ export function App() {
       }
 
       setMediaRows((rows) =>
-        rows.map((row) =>
+        rows.filter(row=>row.id===rowId||!result.replacedPath||row.filePath!==result.replacedPath).map((row) =>
           row.id === rowId
             ? {
                 ...row,
@@ -2920,7 +2942,7 @@ export function App() {
         return;
       }
 
-      const nextId = Date.now();
+      const nextId = allocateMediaId();
       const nextRow: MediaRow = {
         id: nextId,
         title: result.name,
@@ -3060,8 +3082,8 @@ export function App() {
     };
   }
 
-  function renderPlanForKind(kind: QuickCopyOutputKind): EditorRenderPlan {
-    const outputWindow = outputRangeForKind(kind);
+  function renderPlanForKind(kind: QuickCopyOutputKind, whole = false): EditorRenderPlan {
+    const outputWindow = whole ? {startSeconds:0,endSeconds:selectedDurationSeconds} : outputRangeForKind(kind);
 
     return buildEditorRenderPlan(currentEditorProject(), {
       kind: renderOutputKind(kind),
@@ -3109,15 +3131,15 @@ export function App() {
     if (!row.filePath || !window.loaderly?.extractAudio || extractingAudio) return;
     setExtractingAudio(true);setActivity(uiText(preferences.locale,'Extracting audio…','جارٍ استخراج الصوت…'));
     try { const result=await window.loaderly.extractAudio(row.filePath);if(result.canceled)return;
-      const next:MediaRow={id:Date.now(),title:result.name,source:result.path,sourceType:'local',mediaKind:'audio',status:'ready',progress:100,progressKnown:true,downloadPhase:'completed',duration:formatDuration(result.durationSeconds),durationSeconds:result.durationSeconds,size:formatBytes(result.sizeBytes),filePath:result.path,fileUrl:result.fileUrl,createdAtMs:Date.now(),completedAtMs:Date.now()};
+      const next:MediaRow={id:allocateMediaId(),title:result.name,source:result.path,sourceType:'local',mediaKind:'audio',status:'ready',progress:100,progressKnown:true,downloadPhase:'completed',duration:formatDuration(result.durationSeconds),durationSeconds:result.durationSeconds,size:formatBytes(result.sizeBytes),filePath:result.path,fileUrl:result.fileUrl,createdAtMs:Date.now(),completedAtMs:Date.now()};
       setMediaRows(rows=>[next,...rows]);openSelectedMediaEditor(next);setAudioInspectorOpen(true);
       setActivity(uiText(preferences.locale,'Audio extracted. Your video is unchanged.','استُخرج الصوت. بقي الفيديو الأصلي كما هو.'));
     } catch(error) {setActivity(uiText(preferences.locale,`Could not extract audio: ${error instanceof Error?error.message:'Unknown error'}`,'تعذّر استخراج الصوت. تحقق من وجود مسار صوتي وأداة FFmpeg.'));} finally {setExtractingAudio(false)}
   }
 
-  function mediaOutputPayload(kind: QuickCopyOutputKind, label: string) {
-    const outputWindow = outputRangeForKind(kind);
-    const plan = renderPlanForKind(kind);
+  function mediaOutputPayload(kind: QuickCopyOutputKind, label: string, whole = false) {
+    const outputWindow = whole ? {startSeconds:0,endSeconds:selectedDurationSeconds} : outputRangeForKind(kind);
+    const plan = renderPlanForKind(kind,whole);
     const exportBlurItems = plan.blurItems.flatMap((item) =>
       regionSegmentsForExport(item.region, item.trackingEnabled ? item.keyframes : undefined, item.startTime, item.endTime).map((segment) => ({
         strength: blurStrengthForItem(item),
@@ -3148,6 +3170,7 @@ export function App() {
     return {
       sourcePath: selectedMedia.filePath ?? '',
       audio: audioSettings,
+      audioSections: audioSectionsForOutput(audioSections,{ranges:keptRangesFromCutOuts(outputWindow,plan.cutOutRanges.map(s=>({startSeconds:s.startTime,endSeconds:s.endTime}))),speeds:plan.speedItems}),
       kind,
       label,
       startSeconds: outputWindow.startSeconds,
@@ -3372,7 +3395,7 @@ export function App() {
       const updates = new Set(statuses.filter(status => status.updateAvailable).map(status => status.name === 'ffprobe' ? 'ffmpeg' : status.name)).size;
       const failed = statuses.some(status => status.checkError);
       const toolUpdateStatus = failed
-        ? uiText(preferences.locale, 'Installed tools checked. Some update checks failed; you can retry.', 'فُحصت الأدوات المثبتة. تعذر التحقق من بعض التحديثات؛ يمكنك إعادة المحاولة.')
+        ? uiText(preferences.locale, 'Installed tools checked. Update checks are temporarily unavailable. Try again in a minute.', 'فُحصت الأدوات المثبتة. تعذر فحص بعض التحديثات مؤقتًا. أعد المحاولة بعد دقيقة.')
         : uiText(preferences.locale, `Check complete. ${updates} updates available.`, `اكتمل الفحص. ${updates} تحديثات متاحة.`);
 
       setToolStatuses(statuses);
@@ -3380,7 +3403,6 @@ export function App() {
       setActivity(t('toolsChecked', { installed, total: statuses.length, missing }));
     } catch (error) {
       const message = t('toolCheckFailed', { message: error instanceof Error ? error.message : 'unknown error' });
-      setToolStatuses([]);
       setToolUpdateMessage(message);
       setActivity(message);
     } finally {
@@ -3507,6 +3529,9 @@ export function App() {
         selectedCutOutId: value.selectedCutOutId,
         subtitleFile: value.subtitleFile,
         audioSettings: normalizeAudioSettings(value.audioSettings),
+        audioSections: normalizeAudioSections(value.audioSections,row.durationSeconds),
+        visualizerSettings: value.visualizerSettings ? normalizeVisualizer(value.visualizerSettings) : undefined,
+        visualizerVideo: value.visualizerVideo,
         subtitlesVisible: value.subtitlesVisible ?? true
       };
     } catch {
@@ -3550,12 +3575,18 @@ export function App() {
       selectedCutOutId,
       subtitleFile,
       subtitlesVisible,
-      audioSettings
+      audioSettings,
+      audioSections,
+      visualizerSettings,
+      visualizerVideo
     };
   }
 
   function applyEditorSnapshot(snapshot: EditorUiSnapshot) {
     setAudioSettings(normalizeAudioSettings(snapshot.audioSettings));
+    setAudioSections(normalizeAudioSections(snapshot.audioSections));
+    if(snapshot.visualizerSettings)setVisualizerSettings(normalizeVisualizer(snapshot.visualizerSettings));
+    if(snapshot.visualizerVideo)setVisualizerVideo(snapshot.visualizerVideo);
     const nextLayerId = normalizeEditorLayerForMedia(selectedEditorMediaKind, snapshot.selectedLayerId);
 
     setSelectedLayerId(nextLayerId);
@@ -5042,7 +5073,7 @@ export function App() {
           locked: false,
           hidden: false,
           rate: speedRate !== 1 ? speedRate : 2,
-          mode: 'preserve-pitch'
+          mode: 'normal'
         };
         setSpeedItems((items) => [...items, next]);
         setSpeedWindow(windowValue);
@@ -5241,6 +5272,11 @@ export function App() {
   }
 
   function moveTimelineHandle(target: TimelineHandleTarget, clientX: number) {
+    if(target.kind==='audio-section') {
+      const seconds=snapTimelineSeconds(timelineSecondsFromPointer(clientX),audioSections.filter(s=>s.id!==target.id).flatMap(s=>[s.startSeconds,s.endSeconds]));
+      setAudioSections(items=>items.map(item=>item.id===target.id?adjustAudioSectionWindow(item,items,timelineDuration,target.edge,seconds):item));
+      return;
+    }
     if (target.kind === 'trim') {
       moveTrimControl(target.edge, clientX);
       return;
@@ -5313,6 +5349,7 @@ export function App() {
       onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
         if (event.button !== 0) return;
         activateTimelineSelection();
+        if(target.kind==='audio-section')selectAudioSection(target.id);
         event.stopPropagation();
         event.currentTarget.setPointerCapture(event.pointerId);
         timelineHandleGestureRef.current = { startX: event.clientX, committed: false };
@@ -5351,6 +5388,11 @@ export function App() {
     const nextStart = snapTimelineSeconds(rawStart, timelineWindowSnapStartPoints(span, [trimStartSeconds, effectiveTrimEnd]));
     const nextWindow = { startSeconds: nextStart, endSeconds: nextStart + span };
 
+    if(drag.kind==='audio-section') {
+      setAudioSections(items=>items.map(item=>item.id===drag.id?adjustAudioSectionWindow(item,items,timelineDuration,'move',nextStart):item));
+      return;
+    }
+
     if (drag.kind === 'trim') {
       setTrimStartSeconds(nextWindow.startSeconds);
       setTrimEndSeconds(nextWindow.endSeconds);
@@ -5374,6 +5416,11 @@ export function App() {
     setEffectWindowForLayer(drag.layerId, nextWindow, drag.id);
   }
 
+  function selectAudioSection(id:string) {
+    setAudioInspectorOpen(true);setAudioPanelTab('sound');setSelectedAudioSectionId(id);
+    setSelectedEffectItemId(undefined);setSelectedCutOutId(undefined);setSelectedTextOverlayId(undefined);
+  }
+
   function bindTimelineSegment(target: TimelineSegmentDragStart) {
     return {
       onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
@@ -5385,7 +5432,9 @@ export function App() {
         timelineDragCommittedRef.current = false;
         timelineSegmentDragRef.current = { ...target, startClientX: event.clientX };
 
-        if (target.kind === 'effect') {
+        if (target.kind === 'audio-section') {
+          selectAudioSection(target.id);
+        } else if (target.kind === 'effect') {
           if (target.id) {
             selectEffectItem(target.layerId, target.id);
           } else {
@@ -5502,16 +5551,15 @@ export function App() {
         return <article className="download-entry" key={row.id}>
           <div className="download-entry__thumbnail">{renderMediaThumbnail(row)}</div>
           <div className="download-entry__body">
-            <strong className="download-entry__title" title={title}><bdi>{title}</bdi></strong>
-            <div className="download-entry__metadata"><span title={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
+            <strong className="download-entry__title" data-tooltip={title}><bdi>{title}</bdi></strong>
+            <div className="download-entry__metadata"><span className={`download-entry__state ${statusClass(row.status)}`}>{running ? <Download size={12}/> : ready ? <Check size={12}/> : row.status==='failed' ? <AlertTriangle size={12}/> : <Clock3 size={12}/>} {running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : displayStatus(row.status)}</span><span data-tooltip={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
             {running ? <div className="download-entry__progress"><div className={`download-progress${row.progressKnown === false ? ' indeterminate' : ''}`} role="progressbar" aria-label={uiText(preferences.locale, 'Download progress', 'تقدم التنزيل')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progressKnown === false ? undefined : row.progress}><span style={{inlineSize: `${Math.max(0, Math.min(100, row.progress))}%`}} /></div><small><DownloadElapsedLabel fallbackDownloadingLabel={downloadPhaseLabel(row)} locale={preferences.locale} row={row} /></small></div> : null}
             {row.status === 'failed' && row.errorMessage ? <p className="download-entry__error">{friendlyDownloadError(row.errorMessage, preferences.locale)}</p> : null}
           </div>
-          <span className={`status-pill ${statusClass(row.status)}`}>{running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : displayStatus(row.status)}</span>
           <div className="download-entry__actions">
             {row.status === 'queued' || row.status === 'failed' ? <DesktopMenu ariaLabel={t('quality')} options={qualityMenuOptions} value={row.quality ?? preferences.quality} valueLabel={qualityLabel(row.quality ?? preferences.quality, preferences.locale)} onChange={(quality) => updateQueuedMediaQuality(row.id, quality)} /> : null}
             {ready ? <button className="button secondary" onClick={() => { selectMediaRow(row.id); selectNavigation('library'); }} type="button"><Library size={14} />{uiText(preferences.locale, 'View in library', 'عرض في المكتبة')}</button> : !running ? <button className="button secondary" onClick={() => retryDownload(row)} type="button"><Play size={14} />{row.status === 'failed' ? uiText(preferences.locale, 'Retry', 'إعادة المحاولة') : uiText(preferences.locale, 'Start', 'بدء')}</button> : null}
-            <button aria-label={uiText(preferences.locale, `Remove ${title}`, `حذف ${title}`)} title={uiText(preferences.locale, 'Remove from list', 'حذف من القائمة')} className="download-remove" disabled={running} onClick={() => requestRemoveMedia(row.id)} type="button"><X size={16} /></button>
+            <button aria-label={uiText(preferences.locale, `Remove ${title}`, `حذف ${title}`)} data-tooltip={uiText(preferences.locale, 'Remove item', 'إزالة العنصر')} className="download-remove" disabled={running} onClick={() => requestRemoveMedia(row.id)} type="button"><X size={16} /></button>
           </div>
         </article>;
       })}
@@ -5538,17 +5586,18 @@ export function App() {
       const title = displayMediaTitle(row);
       const KindIcon = mediaKindForRow(row) === 'audio' ? AudioLines : Film;
       return (
-        <article className={`library-card${effectiveSelectedId === row.id ? ' selected' : ''}`} key={row.id}>
+        <article className={`library-card${(librarySelecting?librarySelection.includes(row.id):effectiveSelectedId === row.id) ? ' selected' : ''}`} key={row.id}>
+          {librarySelecting&&<input className="library-card-select" type="checkbox" aria-label={uiText(preferences.locale,`Select ${title}`,`تحديد ${title}`)} checked={librarySelection.includes(row.id)} onChange={()=>toggleLibrarySelection(row.id)}/>}
           <button aria-label={title} aria-pressed={effectiveSelectedId === row.id} className="library-card__main"
-            onClick={() => selectMediaRow(row.id)} onDoubleClick={() => openSelectedMediaEditor(row)} type="button">
+            onClick={() => librarySelecting?toggleLibrarySelection(row.id):selectMediaRow(row.id)} onDoubleClick={() => {if(!librarySelecting)openSelectedMediaEditor(row);}} type="button">
             <span className="library-card__visual">
               {renderMediaThumbnail(row)}
               <span className="library-card__duration">{displayMediaDuration(row)}</span>
               {row.status === 'edited' ? <span className="library-card__edited"><Scissors size={12} />{displayStatus(row.status)}</span> : null}
             </span>
             <span className="library-card__copy">
-              <strong title={title}><bdi>{title}</bdi></strong>
-              <small title={displayMediaSource(row)}><bdi>{mediaSourceLabel(row)}</bdi></small>
+              <strong data-tooltip={title}><bdi>{title}</bdi></strong>
+              <small data-tooltip={displayMediaSource(row)}><bdi>{mediaSourceLabel(row)}</bdi></small>
               <span className="library-card__metadata"><span><KindIcon size={13} />{mediaKindLabel(row)}</span><span>{displayMediaSize(row)}</span><span>{mediaFormatLabel(row)}</span></span>
             </span>
           </button>
@@ -5615,7 +5664,7 @@ export function App() {
                   type="range"
                   value={selectedTextOverlay.startSeconds}
                 />
-                <strong>{formatDuration(selectedTextOverlay.startSeconds)}</strong>
+                <strong>{formatTimecode(selectedTextOverlay.startSeconds)}</strong>
               </label>
               <label className="range-control">
                 <span>{t('trimEnd')}</span>
@@ -5627,7 +5676,7 @@ export function App() {
                   type="range"
                   value={selectedTextOverlay.endSeconds}
                 />
-                <strong>{formatDuration(selectedTextOverlay.endSeconds)}</strong>
+                <strong>{formatTimecode(selectedTextOverlay.endSeconds)}</strong>
               </label>
               <button className="button secondary" onClick={removeSelectedTextOverlay} type="button">
                 <X aria-hidden="true" size={15} />
@@ -5694,28 +5743,8 @@ export function App() {
                     value={activeSubtitleCue.text}
                   />
                   <div className="subtitle-cue-editor__times">
-                    <label>
-                      <span>{editorText.subtitleStart}</span>
-                      <input
-                        max={Math.max(0.1, activeSubtitleCue.endSeconds - 0.1)}
-                        min={0}
-                        onChange={(event) => updateActiveSubtitleCue({ startSeconds: Number(event.currentTarget.value) })}
-                        step={0.05}
-                        type="number"
-                        value={roundToTenths(activeSubtitleCue.startSeconds)}
-                      />
-                    </label>
-                    <label>
-                      <span>{editorText.subtitleEnd}</span>
-                      <input
-                        max={Math.max(0.1, timelineDuration)}
-                        min={activeSubtitleCue.startSeconds + 0.1}
-                        onChange={(event) => updateActiveSubtitleCue({ endSeconds: Number(event.currentTarget.value) })}
-                        step={0.05}
-                        type="number"
-                        value={roundToTenths(activeSubtitleCue.endSeconds)}
-                      />
-                    </label>
+                    <TimeField label={editorText.subtitleStart} value={activeSubtitleCue.startSeconds} max={Math.max(0,activeSubtitleCue.endSeconds-.1)} ar={preferences.locale==='ar'} onChange={value=>updateActiveSubtitleCue({startSeconds:value})}/>
+                    <TimeField label={editorText.subtitleEnd} value={activeSubtitleCue.endSeconds} min={activeSubtitleCue.startSeconds+.1} max={timelineDuration} ar={preferences.locale==='ar'} onChange={value=>updateActiveSubtitleCue({endSeconds:value})}/>
                   </div>
                   <button className="button secondary" onClick={removeActiveSubtitleCue} type="button">
                     <X aria-hidden="true" size={15} />
@@ -6028,7 +6057,7 @@ export function App() {
       seconds: timelineViewportSecondsFromRatio(tick, timelineViewport)
     }));
     const formatTimelineRange = (windowValue: EffectWindow) =>
-      `${formatDuration(windowValue.startSeconds)} - ${formatDuration(windowValue.endSeconds)}`;
+      `${formatTimecode(windowValue.startSeconds)} - ${formatTimecode(windowValue.endSeconds)}`;
     const segmentStyle = (windowValue: EffectWindow) => {
       const normalized = normalizeEffectWindow(windowValue, timelineDuration);
       const viewportStart = Math.min(timelineViewport.startSeconds, timelineViewport.endSeconds);
@@ -6113,12 +6142,16 @@ export function App() {
 
       return (
         <button
+          key={layerId+'-'+(segmentDragTarget&&'id' in segmentDragTarget?segmentDragTarget.id:'')}
           aria-label={`${label}: ${formatTimelineRange(windowValue)}`}
+          data-tooltip={`${label}: ${formatTimelineRange(windowValue)}`}
           aria-pressed={isSegmentSelected}
           className={`timeline-segment timeline-segment--${tone}${isSegmentSelected ? ' selected' : ''}${isActiveAtPlayhead ? ' active' : ''}${conflict ? ' conflict' : ''}`}
           onClick={() => {
             activateTimelineSelection();
-            if (layerId.startsWith('cutout-')) {
+            if (segmentDragTarget?.kind === 'audio-section') {
+              selectAudioSection(segmentDragTarget.id);
+            } else if (layerId.startsWith('cutout-')) {
               setSelectedCutOutId(Number(layerId.replace('cutout-', '')));
               setSelectedTextOverlayId(undefined);
               setSelectedEffectItemId(undefined);
@@ -6144,7 +6177,10 @@ export function App() {
           }}
           onContextMenu={(event) => {
             activateTimelineSelection();
-            if (layerId.startsWith('cutout-')) {
+            if (segmentDragTarget?.kind === 'audio-section') {
+              event.preventDefault();
+              selectAudioSection(segmentDragTarget.id);
+            } else if (layerId.startsWith('cutout-')) {
               setSelectedCutOutId(Number(layerId.replace('cutout-', '')));
               setSelectedTextOverlayId(undefined);
               setSelectedEffectItemId(undefined);
@@ -6269,6 +6305,7 @@ export function App() {
               })}
             </div>
           </div>
+          {audioSections.length>0&&<div className="timeline-row timeline-row--sound"><span className="timeline-row__label"><AudioLines size={14}/>{uiText(preferences.locale,'Sound sections','أجزاء الصوت')}</span><div className="timeline-row__track">{audioSections.map((section,i)=>renderSegment({layerId:`audio-section-${section.id}`,label:`${uiText(preferences.locale,'Sound','الصوت')} ${i+1}`,windowValue:section,tone:'speed',enabled:true,handles:true,selected:selectedAudioSectionId===section.id,dragTarget:{kind:'audio-section',id:section.id,startSeconds:section.startSeconds,endSeconds:section.endSeconds},startHandleTarget:{kind:'audio-section',id:section.id,edge:'start'},endHandleTarget:{kind:'audio-section',id:section.id,edge:'end'}}))}</div></div>}
           {cutOutRanges.length > 0 ? (
           <div className="timeline-row">
             <span className="timeline-row__label">
@@ -6606,17 +6643,17 @@ export function App() {
       <div className="inspector-section">
         <strong>{inspectorText.timing}</strong>
         <div className="inspector-grid">
-          {renderInspectorNumberField(inspectorText.start, startSeconds, (value) => {
+          <TimeField label={inspectorText.start} value={startSeconds} min={0} max={Math.max(0,endSeconds-timelineItemMinimumSeconds)} ar={preferences.locale==='ar'} onChange={value=>{
             pushEditorHistory();
             updateWindow({ startSeconds: clampRangeValue(value, 0, Math.max(0, endSeconds - timelineItemMinimumSeconds)), endSeconds });
-          }, { min: 0, max: timelineDuration, step: 0.01, suffix: 's' })}
-          {renderInspectorNumberField(inspectorText.end, endSeconds, (value) => {
+          }}/>
+          <TimeField label={inspectorText.end} value={endSeconds} min={startSeconds+timelineItemMinimumSeconds} max={timelineDuration} ar={preferences.locale==='ar'} onChange={value=>{
             pushEditorHistory();
             updateWindow({ startSeconds, endSeconds: clampRangeValue(value, startSeconds + timelineItemMinimumSeconds, timelineDuration) });
-          }, { min: timelineItemMinimumSeconds, max: timelineDuration, step: 0.01, suffix: 's' })}
+          }}/>
           <label className="inspector-field readonly">
             <span>{inspectorText.duration}</span>
-            <strong>{formatDuration(duration)}</strong>
+            <strong dir="ltr">{formatTimecode(duration)}</strong>
           </label>
         </div>
       </div>
@@ -6952,7 +6989,7 @@ export function App() {
       const detail = error instanceof Error ? error.message : '';
       const code = detail.split(':')[0];
       const lostAt = Number(detail.split(':')[1]);
-      const lostTime = Number.isFinite(lostAt) ? ` (${lostAt.toFixed(2)}s)` : '';
+      const lostTime = Number.isFinite(lostAt) ? ` (${formatTimecode(lostAt)})` : '';
       const message = code === 'tracking-cancelled'
         ? uiText(preferences.locale, 'Tracking cancelled. Existing motion points were kept.', 'أُلغي التتبع مع الاحتفاظ بنقاط الحركة السابقة.')
         : code === 'tracking-no-face'
@@ -7167,14 +7204,14 @@ export function App() {
             <summary>{uiText(preferences.locale, 'Transition & precise scale', 'الانتقال والتكبير الدقيق')}</summary>
             <div className="inspector-grid">
             {renderInspectorNumberField(inspectorText.scale, currentScale, applyZoomScale, { min: 1.05, max: 8, step: 0.05, suffix: 'x' })}
-            {renderInspectorNumberField(inspectorText.easeIn, selectedZoomItem.easeIn ?? 0.75, (value) => {
+            <TimeField label={inspectorText.easeIn} value={selectedZoomItem.easeIn??.75} max={2} ar={preferences.locale==='ar'} onChange={value=>{
               pushEditorHistory();
               updateZoomItem(selectedZoomItem.id, { easeIn: clampRangeValue(value, 0, 2) });
-            }, { min: 0, max: 2, step: 0.05, suffix: 's' })}
-            {renderInspectorNumberField(inspectorText.easeOut, selectedZoomItem.easeOut ?? 0.75, (value) => {
+            }}/>
+            <TimeField label={inspectorText.easeOut} value={selectedZoomItem.easeOut??.75} max={2} ar={preferences.locale==='ar'} onChange={value=>{
               pushEditorHistory();
               updateZoomItem(selectedZoomItem.id, { easeOut: clampRangeValue(value, 0, 2) });
-            }, { min: 0, max: 2, step: 0.05, suffix: 's' })}
+            }}/>
             </div>
           </details>
         </div>
@@ -7198,6 +7235,10 @@ export function App() {
     );
   }
 
+  function renderSoundPresets() {
+    return <SoundPresetControls ar={preferences.locale==='ar'} value={{audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}} initialCode={pendingSoundCode} speedAvailable={!!selectedSpeedItem&&!selectedSpeedItem.locked} onApply={(preset,includeSpeed)=>{pushEditorHistory();if(audioSections.some(section=>section.id===selectedAudioSectionId))setAudioSections(sections=>sections.map(section=>section.id===selectedAudioSectionId?{...section,settings:{...preset.audio,fadeIn:0,fadeOut:0}}:section));else setAudioSettings(preset.audio);if(includeSpeed&&preset.speed&&selectedSpeedItem&&!selectedSpeedItem.locked)updateSpeedItem(selectedSpeedItem.id,preset.speed);setPendingSoundCode(undefined);}}/>;
+  }
+
   function renderSpeedInspector() {
     const hint = speedEditorHint();
 
@@ -7219,20 +7260,21 @@ export function App() {
 
     return (
       <InspectorPanel title={selectedSpeedItem.name || t('speed')} subtitle={hint} footer={renderAddTimelineItem('speed')}>
-        <div className="inspector-section">
-          <strong>{inspectorText.item}</strong>
+        <SpeedControls rate={selectedSpeedItem.rate} mode={selectedSpeedItem.mode} ar={preferences.locale === 'ar'} onRate={rate => {
+          pushEditorHistory(); setSpeedRate(rate); updateSpeedItem(selectedSpeedItem.id, {rate});
+        }} onMode={mode => {pushEditorHistory(); updateSpeedItem(selectedSpeedItem.id, {mode});}} />
+        {renderInspectorTimingFields(selectedSpeedItem.startTime, selectedSpeedItem.endTime, (windowValue) =>
+          setEffectWindowForLayer('speed', windowValue, selectedSpeedItem.id)
+        )}
+        <details className="inspector-section inspector-advanced">
+          <summary>{uiText(preferences.locale, 'Rename effect', 'تسمية التأثير')}</summary>
           {renderInspectorTextField(inspectorText.name, selectedSpeedItem.name, (value) => {
             pushEditorHistory();
             updateSpeedItem(selectedSpeedItem.id, { name: value });
           })}
-        </div>
-        {renderInspectorTimingFields(selectedSpeedItem.startTime, selectedSpeedItem.endTime, (windowValue) =>
-          setEffectWindowForLayer('speed', windowValue, selectedSpeedItem.id)
-        )}
-        <SpeedControls rate={selectedSpeedItem.rate} mode={selectedSpeedItem.mode} ar={preferences.locale === 'ar'} onRate={rate => {
-          pushEditorHistory(); setSpeedRate(rate); updateSpeedItem(selectedSpeedItem.id, {rate});
-        }} onMode={mode => {pushEditorHistory(); updateSpeedItem(selectedSpeedItem.id, {mode});}} />
+        </details>
         {renderInspectorToggles()}
+        {renderSoundPresets()}
       </InspectorPanel>
     );
   }
@@ -7603,12 +7645,12 @@ export function App() {
                   value={activeSubtitleCue.text}
                 />
                 <div className="inspector-grid">
-                  {renderInspectorNumberField(editorText.subtitleStart, activeSubtitleCue.startSeconds, (value) =>
+                  <TimeField label={editorText.subtitleStart} value={activeSubtitleCue.startSeconds} max={Math.max(0,activeSubtitleCue.endSeconds-.1)} ar={preferences.locale==='ar'} onChange={value=>
                     updateActiveSubtitleCue({ startSeconds: clampRangeValue(value, 0, Math.max(0, activeSubtitleCue.endSeconds - 0.1)) })
-                  , { min: 0, max: timelineDuration, step: 0.05, suffix: 's' })}
-                  {renderInspectorNumberField(editorText.subtitleEnd, activeSubtitleCue.endSeconds, (value) =>
+                  }/>
+                  <TimeField label={editorText.subtitleEnd} value={activeSubtitleCue.endSeconds} min={activeSubtitleCue.startSeconds+.1} max={timelineDuration} ar={preferences.locale==='ar'} onChange={value=>
                     updateActiveSubtitleCue({ endSeconds: clampRangeValue(value, activeSubtitleCue.startSeconds + 0.1, timelineDuration) })
-                  , { min: 0, max: timelineDuration, step: 0.05, suffix: 's' })}
+                  }/>
                 </div>
                 <button className="button secondary danger" onClick={removeActiveSubtitleCue} type="button">
                   <X aria-hidden="true" size={15} />
@@ -7658,14 +7700,14 @@ export function App() {
           <div className="inspector-section">
             <strong>{editorText.keepRange}</strong>
             <div className="inspector-grid">
-              {renderInspectorNumberField(inspectorText.start, trimStartSeconds, (value) => {
+              <TimeField label={inspectorText.start} value={trimStartSeconds} max={Math.max(0,effectiveTrimEnd-timelineItemMinimumSeconds)} ar={preferences.locale==='ar'} onChange={value=>{
                 pushEditorHistory();
                 setTrimStartSeconds(clampRangeValue(value, 0, Math.max(0, effectiveTrimEnd - timelineItemMinimumSeconds)));
-              }, { min: 0, max: timelineDuration, step: 0.01, suffix: 's' })}
-              {renderInspectorNumberField(inspectorText.end, effectiveTrimEnd, (value) => {
+              }}/>
+              <TimeField label={inspectorText.end} value={effectiveTrimEnd} min={trimStartSeconds+timelineItemMinimumSeconds} max={timelineDuration} ar={preferences.locale==='ar'} onChange={value=>{
                 pushEditorHistory();
                 setTrimEndSeconds(clampRangeValue(value, trimStartSeconds + timelineItemMinimumSeconds, timelineDuration));
-              }, { min: timelineItemMinimumSeconds, max: timelineDuration, step: 0.01, suffix: 's' })}
+              }}/>
             </div>
             <button className="button primary" onClick={addCutOutRange} type="button">
               <Scissors aria-hidden="true" size={15} />
@@ -7701,7 +7743,7 @@ export function App() {
     }
   }
 
-  const audioAnalyser = useAudioPreview(videoRef, audioSettings, {ranges:keptRanges,speeds:speedItems.filter(item=>!item.hidden)});
+  const audioAnalyser = useAudioPreview(videoRef, audioSettings, {ranges:keptRanges,speeds:speedItems.filter(item=>!item.hidden)},audioSections);
 
   function activateTimelineSelection() {
     setActiveEditorTool('select');
@@ -7719,16 +7761,16 @@ export function App() {
       const item = selectedCutOut ?? cutOutRanges.find(item => playheadSeconds >= item.startSeconds && playheadSeconds < item.endSeconds) ?? cutOutRanges.at(-1);
       if (item) {
         setSelectedCutOutId(item.id); setSelectedEffectItemId(undefined); setSelectedTextOverlayId(undefined); setSelectedLayerId('cuts');
-      } else addCutOutRange();
+      } else {setSelectedLayerId('cuts');setSelectedCutOutId(undefined);setSelectedEffectItemId(undefined);setSelectedTextOverlayId(undefined);}
     } else if (toolId === 'text') {
       const item = selectedTextOverlay ?? textOverlays.find(item => playheadSeconds >= item.startSeconds && playheadSeconds < item.endSeconds) ?? textOverlays.at(-1);
-      if (item) selectTextOverlay(item.id); else addTextOverlay();
+      if (item) selectTextOverlay(item.id); else {setSelectedLayerId('text');setSelectedTextOverlayId(undefined);setSelectedEffectItemId(undefined);setSelectedCutOutId(undefined);}
     } else if (toolId === 'subtitles') {
       setSelectedTextOverlayId(undefined); setSelectedEffectItemId(undefined); setSelectedCutOutId(undefined); setSelectedLayerId('subtitles');
     } else {
       const items = toolId === 'blur' ? blurItems : toolId === 'zoom' ? zoomItems : toolId === 'speed' ? speedItems : reframeItems;
       const item = items.find(item => item.id === selectedEffectItemId) ?? items.find(item => isTimelineItemActive(item, playheadSeconds)) ?? items.at(-1);
-      if (item) selectEffectItem(toolId, item.id); else enableTimelineEffect(toolId);
+      if (item) selectEffectItem(toolId, item.id); else {setSelectedLayerId(toolId);setSelectedEffectItemId(undefined);setSelectedTextOverlayId(undefined);setSelectedCutOutId(undefined);}
     }
     setActiveEditorTool(toolId);
   }
@@ -7856,9 +7898,9 @@ export function App() {
               {t('library')}
             </button>
             <div>
-              <h2 dir="auto">{displayMediaTitle(selectedMedia)}</h2>
+              <h2 dir="auto" data-tooltip={displayMediaTitle(selectedMedia)}>{displayMediaTitle(selectedMedia)}</h2>
               <p className="editor-source-line">
-                <span dir="auto" title={displayMediaSource(selectedMedia)}>{mediaSourceLabel(selectedMedia)} · {displayMediaSize(selectedMedia)}</span>
+                <span dir="auto" data-tooltip={displayMediaSource(selectedMedia)}>{mediaSourceLabel(selectedMedia)} · {displayMediaSize(selectedMedia)}</span>
                 {(selectedMedia.source || selectedMedia.filePath) ? (
                   <button className="source-copy-button" onClick={() => void copyMediaSource(selectedMedia)} type="button">
                     <Clipboard aria-hidden="true" size={13} />
@@ -7869,10 +7911,10 @@ export function App() {
             </div>
           </div>
           <div className="editor-command-bar__status">
-            <span aria-live="polite" className={`autosave-status autosave-status--${autosaveState}`} role="status">{autosaveLabel()}</span>
+            <span aria-live="polite" className={`autosave-status autosave-status--${autosaveState}`} role="status" data-tooltip={autosaveLabel()}>{autosaveState==='saved'?<><Check size={13} aria-hidden="true"/>{uiText(preferences.locale,'Saved','محفوظ')}</>:autosaveLabel()}</span>
           </div>
           <div className="panel-actions">
-            <a className="button secondary editor-guide-link" href={`${documentationUrl}${isAudioEditor ? 'audio' : 'editor'}/`} target="_blank" rel="noopener noreferrer" title={uiText(preferences.locale, 'Open the editor guide', 'فتح دليل المحرر')}>
+            <a className="button secondary editor-guide-link" href={`${documentationUrl}${isAudioEditor ? 'audio' : 'editor'}/`} target="_blank" rel="noopener noreferrer" data-tooltip={uiText(preferences.locale, 'Open the editor guide', 'فتح دليل المحرر')}>
               <BookOpen aria-hidden="true" size={15} />
               {uiText(preferences.locale, 'Help', 'مساعدة')}
             </a>
@@ -7885,6 +7927,7 @@ export function App() {
               {uiText(preferences.locale, 'Redo', 'إعادة')}
             </button>
             {!isAudioEditor ? <button className="button secondary" disabled={extractingAudio} onClick={()=>void extractAudioForEditing(selectedMedia)}><AudioLines size={15}/>{uiText(preferences.locale,extractingAudio?'Extracting…':'Extract audio',extractingAudio?'جارٍ الاستخراج…':'استخراج الصوت')}</button> : null}
+            {isAudioEditor&&<button className="button secondary" onClick={()=>{setAudioInspectorOpen(true);setAudioPanelTab('video');setTimeout(()=>document.querySelector('.visualizer-video-export')?.scrollIntoView({block:'nearest',behavior:'smooth'}),50);}} type="button"><Film size={15}/>{uiText(preferences.locale,'Export video','تصدير فيديو')}</button>}
             {renderOutputMenu()}
           </div>
         </div>
@@ -7918,17 +7961,13 @@ export function App() {
               onContextMenu={(event) => openEditorContextMenu(event, 'preview')}
               onDrop={(event) => void handleWorkspaceDrop(event)}
               onPointerDown={() => setEditorContextMenu(undefined)}
-              orientation={previewOrientation}
+              orientation={isAudioEditor?visualizerVideo.size:previewOrientation}
               previewRef={previewFrameRef}
               selectedLayerId={selectedLayerIdForMedia}
             >
             {selectedMedia.fileUrl ? selectedMedia.mediaKind === 'audio' ? (
               <div className="preview-audio audio-scene" style={{background:visualizerSettings.backgroundGradient ? `linear-gradient(145deg,${visualizerSettings.background},${visualizerSettings.backgroundEnd})` : visualizerSettings.background}}>
-                <div className="audio-visual-content" style={{left:`${Math.max(visualizerSettings.width/2,Math.min(100-visualizerSettings.width/2,visualizerSettings.positionX))}%`,width:`${visualizerSettings.width}%`,height:`${visualizerSettings.height}%`,top:`${Math.max(visualizerSettings.height/2,Math.min(100-visualizerSettings.height/2,visualizerSettings.positionY))}%`,color:visualizerSettings.textColor}}>
-                  <AudioVisualizer analyser={audioAnalyser} playing={isPlaying} settings={visualizerSettings}/>
-                  {visualizerSettings.showTitle ? <strong style={{fontSize:visualizerSettings.textSize}}>{visualizerSettings.title || displayMediaTitle(selectedMedia)}</strong> : null}
-                  {visualizerSettings.showSubtitle && visualizerSettings.subtitle ? <small>{visualizerSettings.subtitle}</small> : null}
-                </div>
+                <AudioVisualizer analyser={audioAnalyser} playing={isPlaying} settings={visualizerSettings} scene={{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}/>
                 <audio
                   className="preview-audio__element"
                   crossOrigin="anonymous"
@@ -8319,7 +8358,7 @@ export function App() {
                 >
                   {isPlaying ? <Pause aria-hidden="true" size={16} /> : <Play aria-hidden="true" size={16} />}
                 </button>
-                {isAudioEditor ? <button type="button" className={`preview-control-button${loopPlayback ? ' active' : ''}`} aria-label={uiText(preferences.locale,'Repeat playback','تكرار التشغيل')} title={uiText(preferences.locale,'Repeat the kept audio range. Preview only.','تكرار النطاق المحدد أثناء الاستماع فقط.')} aria-pressed={loopPlayback} onClick={()=>setLoopPlayback(value=>!value)}><Repeat size={16} aria-hidden="true"/></button> : null}
+                {isAudioEditor ? <button type="button" className={`preview-control-button${loopPlayback ? ' active' : ''}`} aria-label={uiText(preferences.locale,'Repeat playback','تكرار التشغيل')} data-tooltip={uiText(preferences.locale,'Repeat the kept audio range. Preview only.','تكرار النطاق المحدد أثناء الاستماع فقط.')} aria-pressed={loopPlayback} onClick={()=>setLoopPlayback(value=>!value)}><Repeat size={16} aria-hidden="true"/></button> : null}
                 <strong>{formatDuration(playheadSeconds)}</strong>
                 <div
                   aria-label={uiText(preferences.locale, 'Player scrubber', 'شريط تقدم المعاينة')}
@@ -8397,8 +8436,8 @@ export function App() {
           </section>
 
           {audioInspectorOpen ? <InspectorPanel title={uiText(preferences.locale,'Audio','الصوت')} subtitle={uiText(preferences.locale,'Sound and visualizer settings','إعدادات الصوت والطيف')}>
-            {isAudioEditor ? <div className="segmented-control audio-panel-tabs">{(['sound','visualizer'] as const).map(tab=><button key={tab} type="button" aria-pressed={audioPanelTab===tab} className={audioPanelTab===tab?'active':''} onClick={()=>setAudioPanelTab(tab)}>{tab==='sound'?uiText(preferences.locale,'Sound','الصوت'):uiText(preferences.locale,'Visualizer','الطيف')}</button>)}</div> : null}
-            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : <AudioControls loop={isAudioEditor ? loopPlayback : undefined} onLoopChange={setLoopPlayback} value={audioSettings} ar={preferences.locale==='ar'} onChange={value=>{pushEditorHistory();setAudioSettings(value)}} />}
+            {isAudioEditor ? <div className="segmented-control audio-panel-tabs">{(['sound','visualizer','video'] as const).map(tab=><button key={tab} type="button" aria-pressed={audioPanelTab===tab} className={audioPanelTab===tab?'active':''} onClick={()=>setAudioPanelTab(tab)}>{tab==='sound'?<SlidersHorizontal size={14} aria-hidden="true"/>:tab==='video'?<Film size={14} aria-hidden="true"/>:<AudioLines size={14} aria-hidden="true"/>}{tab==='sound'?uiText(preferences.locale,'Sound','الصوت'):tab==='video'?uiText(preferences.locale,'Video','الفيديو'):uiText(preferences.locale,'Visualizer','الطيف')}</button>)}</div> : null}
+            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : isAudioEditor && audioPanelTab==='video' ? <VisualizerVideoExport busy={videoExportBusy} ar={preferences.locale==='ar'} analyser={audioAnalyser} playing={isPlaying} onBusy={setVideoExportBusy} options={{...visualizerVideo,scene:{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}} onChange={value=>setVisualizerVideo({...value,...value.scene})} payload={whole=>mediaOutputPayload(QuickCopyOutputKind.Audio,'Visualizer video',whole)}/> : <><AudioSectionControls base={audioSettings} sections={audioSections} selectedId={selectedAudioSectionId} onSelect={setSelectedAudioSectionId} onBase={value=>{pushEditorHistory();setAudioSettings(value);}} onSections={value=>{pushEditorHistory();setAudioSections(value);}} duration={timelineDuration} playhead={playheadSeconds} onSeek={updatePlayhead} ar={preferences.locale==='ar'} loop={isAudioEditor?loopPlayback:undefined} onLoopChange={setLoopPlayback}/>{renderSoundPresets()}</>}
           </InspectorPanel> : renderEditorInspector()}
         </div>
 
@@ -8572,6 +8611,7 @@ export function App() {
                       onClick={() => setLibraryFilter(option.value)}
                       type="button"
                     >
+                      {option.value === 'all' ? <Layers3 size={14} aria-hidden="true" /> : option.value === 'video' ? <Film size={14} aria-hidden="true" /> : <AudioLines size={14} aria-hidden="true" />}
                       {option.label}
                     </button>
                   ))}
@@ -8606,6 +8646,10 @@ export function App() {
                 </div>
               </div>
             </div>
+            <div className="library-bulk-toolbar" hidden={!libraryRows.length}>
+              <button className="button secondary" disabled={!libraryRows.length} aria-pressed={librarySelecting} onClick={()=>{setLibrarySelecting(value=>!value);setLibrarySelection([]);}}>{librarySelecting?<X size={15}/>:<Check size={15}/>} {uiText(preferences.locale,librarySelecting?'Done selecting':'Select files',librarySelecting?'إنهاء التحديد':'تحديد ملفات')}</button>
+              {librarySelecting&&<><button className="button secondary" onClick={()=>setLibrarySelection(filteredLibraryRows.map(row=>row.id))}><Check size={15}/>{uiText(preferences.locale,librarySearch||libraryFilter!=='all'?'Select all results':'Select all',librarySearch||libraryFilter!=='all'?'تحديد كل النتائج':'تحديد الكل')}</button><button className="button secondary" disabled={!librarySelection.length} onClick={()=>setLibrarySelection([])}><X size={15}/>{uiText(preferences.locale,'Clear selection','إلغاء التحديد')}</button><span role="status">{librarySelection.length} {uiText(preferences.locale,'selected','محدد')}</span><button className="button secondary" disabled={!librarySelection.length} onClick={()=>setLibraryRemoval([...librarySelection])}><Trash2 size={15}/>{uiText(preferences.locale,'Remove selected','إزالة المحدد')}</button></>}
+            </div>
             <div className={`library-grid library-grid--${libraryViewMode}`}>
               {filteredLibraryRows.length === 0 && libraryRows.length > 0 ? (
                 <div className="library-empty">
@@ -8637,7 +8681,7 @@ export function App() {
                   {renderMediaThumbnail(selectedLibraryItem)}
                   <div>
                     <h2><bdi>{displayMediaTitle(selectedLibraryItem)}</bdi></h2>
-                    <p dir="auto" title={displayMediaSource(selectedLibraryItem)}>{mediaSourceLabel(selectedLibraryItem)}</p>
+                    <p dir="auto" data-tooltip={displayMediaSource(selectedLibraryItem)}>{mediaSourceLabel(selectedLibraryItem)}</p>
                   </div>
                 </div>
                 <div className="detail-list">
@@ -8660,7 +8704,7 @@ export function App() {
                   {selectedLibraryItem.mediaKind !== 'audio' ? <button className="button secondary button-wide" disabled={extractingAudio} onClick={()=>void extractAudioForEditing(selectedLibraryItem)}><AudioLines size={15}/>{uiText(preferences.locale,'Extract and edit audio','استخراج الصوت وتعديله')}</button> : null}
                   <button className="button secondary button-danger button-wide" onClick={() => requestRemoveMedia(selectedLibraryItem.id)} type="button">
                     <Trash2 aria-hidden="true" size={15} />
-                    {uiText(preferences.locale, 'Remove from library', 'حذف من المكتبة')}
+                    {uiText(preferences.locale, 'Remove file', 'إزالة الملف')}
                   </button>
                 </div>
           </aside> : null}
@@ -8814,6 +8858,13 @@ export function App() {
         })}
         <article className="card-panel tools-manager" aria-busy={toolCheckBusy || Boolean(updatingToolName)}>
           <div className="tools-update-notice" role="status" aria-live="polite"><Wrench size={16} /><span dir="auto">{toolUpdateMessage}</span></div>
+          {updatingToolName && <div className="tool-install-progress" role="status" aria-live="polite">
+            <span>{toolInstallProgress?.phase === 'downloading'
+              ? uiText(preferences.locale, `Downloading ${(Number(toolInstallProgress.received ?? 0) / 1048576).toFixed(1)} MB${toolInstallProgress.total ? ` / ${(toolInstallProgress.total / 1048576).toFixed(1)} MB` : ''}`, `جارٍ التنزيل: ${(Number(toolInstallProgress.received ?? 0) / 1048576).toFixed(1)} ميجابايت`)
+              : toolInstallProgress?.phase === 'verifying' ? uiText(preferences.locale, 'Verifying and starting the tool. The first run can take up to 90 seconds on macOS.', 'جارٍ التحقق وتشغيل الأداة. قد يستغرق التشغيل الأول على الماك حتى 90 ثانية.')
+              : toolInstallProgress?.phase === 'activating' ? uiText(preferences.locale, 'Finishing installation…', 'جارٍ إنهاء التثبيت…') : uiText(preferences.locale, 'Checking the verified package…', 'جارٍ فحص حزمة الأداة…')}</span>
+            <button className="button secondary" type="button" onClick={() => void window.loaderly?.cancelToolInstall()}>{uiText(preferences.locale, 'Cancel', 'إلغاء')}</button>
+          </div>}
           <div className="tools-list">
             {tools.map(tool => {
               const status = toolStatuses.find(item => item.name === tool.name);
@@ -8821,14 +8872,14 @@ export function App() {
               const missing = status && (!status.available || (probe && !probe.available));
               const update = status?.updateAvailable || probe?.updateAvailable;
               const working = updatingToolName === tool.name;
-              const badge = !status ? uiText(preferences.locale, 'Not checked', 'لم يُفحص') : missing ? uiText(preferences.locale, 'Not installed', 'غير مثبت') : status.checkError ? uiText(preferences.locale, 'Update check failed', 'تعذر فحص التحديث') : update ? uiText(preferences.locale, 'Update available', 'تحديث متاح') : status.updateAvailable === false ? uiText(preferences.locale, 'Up to date', 'محدّث') : uiText(preferences.locale, 'Installed', 'مثبت');
+              const badge = !status ? uiText(preferences.locale, 'Not checked', 'لم يُفحص') : missing ? uiText(preferences.locale, 'Not installed', 'غير مثبت') : status.checkError ? uiText(preferences.locale, 'Installed', 'مثبت') : update ? uiText(preferences.locale, 'Update available', 'تحديث متاح') : status.updateAvailable === false ? uiText(preferences.locale, 'Up to date', 'محدّث') : uiText(preferences.locale, 'Installed', 'مثبت');
               return <div className="tool-entry" key={tool.name}>
                 <span className="tool-entry__icon"><Wrench size={22} /></span>
                 <div className="tool-entry__copy"><div className="tool-entry__heading"><h2>{tool.title}</h2><span className={`tool-row__badge${missing ? ' missing' : update ? ' pending' : ' current'}`}>{badge}</span></div>
                   <p>{tool.description}</p>
-                  <div className="tool-entry__versions"><span title={status?.path}>{uiText(preferences.locale, 'Installed', 'المثبت')}: <b>{status?.available ? parseToolVersion(status.version ?? '') ?? status.version : 'N/A'}</b></span>
+                  <div className="tool-entry__versions"><span data-tooltip={status?.path}>{uiText(preferences.locale, 'Installed', 'المثبت')}: <b>{status?.available ? parseToolVersion(status.version ?? '') ?? status.version : 'N/A'}</b></span>
                   <span>{uiText(preferences.locale, 'Latest', 'الأحدث')}: <b>{status?.latestVersion ?? 'N/A'}</b></span></div>
-                  {status?.checkError ? <small className="tool-entry__error" dir="auto">{status.checkError}</small> : null}
+                  {status?.checkError ? <small className="tool-entry__error" dir="auto">{uiText(preferences.locale, status.checkError, status.checkError.includes('limited requests') ? 'خدمة التحديثات حدّت الطلبات مؤقتًا. أعد المحاولة لاحقًا.' : status.checkError.includes('too long') ? 'تأخرت استجابة خدمة التحديثات. أعد المحاولة بعد دقيقة.' : status.checkError.includes('reach the update service') ? 'تعذر الاتصال بخدمة التحديثات. تحقق من اتصالك وأعد المحاولة بعد دقيقة.' : 'تعذر فحص التحديثات الآن. أعد المحاولة لاحقًا.')}</small> : null}
                   {status?.message && !status.available && status.path ? <small className="tool-entry__error" dir="auto">{status.message}</small> : null}
                 </div>
                 <button className={`button ${missing || update ? 'primary' : 'secondary'}`} disabled={!status?.updateSupported || toolCheckBusy || Boolean(updatingToolName) || (!missing && !update)} onClick={() => void updateBundledTool(tool.name)} type="button">
@@ -9229,13 +9280,13 @@ export function App() {
           <div className="loaderly-about">
             <img alt="Loaderly" src="./assets/loaderly-64.png" />
             <div>
-              <strong>Loaderly 2.0</strong>
+              <strong>Loaderly 2.1</strong>
               <p>{uiText(preferences.locale, 'Your media, from the first download to the final edit.', 'وسائطك، من أول تنزيل إلى آخر تعديل.')}</p>
             </div>
           </div>
           <div className="detail-list">
             <span>{t('appInfo')}</span>
-            <strong>{window.loaderly?.appName ?? 'Loaderly 2.0'}</strong>
+            <strong>{window.loaderly?.appName ?? 'Loaderly 2.1'}</strong>
             <span>{t('platform')}</span>
             <strong>{platformDisplayLabel(window.loaderly?.platform, window.loaderly?.arch)}</strong>
           </div>
@@ -9247,22 +9298,18 @@ export function App() {
                 <small>{uiText(preferences.locale, 'Loaderly and bundled component updates', 'تحديث Loaderly والمكونات المدمجة')}</small>
               </span>
             </div>
-            <div className="setting-row">
-              <span>
-                <strong>{preferences.locale === 'ar' ? 'تحديث Loaderly' : 'Loaderly update'}</strong>
-                <small>{preferences.locale === 'ar' ? 'سيُفعّل عند ربط نظام التحديث الرسمي' : 'Will be enabled with the official updater'}</small>
-              </span>
-              <button className="button secondary" disabled onClick={checkProgramUpdates} type="button">
-                <RefreshCcw aria-hidden="true" size={15} />
-                {preferences.locale === 'ar' ? 'قريبًا' : 'Coming soon'}
-              </button>
-            </div>
+            <ProgramUpdates beforeInstall={()=>!hasRealMedia||persistEditorSnapshotNow()} ar={preferences.locale==='ar'} busy={videoExportBusy||Boolean(outputBusy)||mediaRows.some(row=>row.status==='downloading')||copyJobs.some(job=>job.status==='rendering')}/>
         </> : null}
       </div></article>
     </section>;
   }
 
   function renderActiveSurface() {
+    if(communityOpen)return <CommunityLibrary initialStudio={communityCreatorOpen} ar={preferences.locale==='ar'} dark={preferences.themeMode==='dark'} currentCode={kind=>kind==='sound'?encodeSoundPreset({audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}):kind==='theme'?encodeTheme(preferences.appearance):encodeVisualizer(visualizerSettings)} onApply={look=>{
+      if(look.kind==='sound'){const previous=pendingSoundCode;setPendingSoundCode(look.code);return()=>setPendingSoundCode(previous);}
+      if(look.kind==='theme'){const previous=preferences.appearance;updatePreferences({appearance:decodeTheme(look.code)});return()=>updatePreferences({appearance:previous});}
+      const previous=visualizerSettings,value=decodeVisualizer(look.code);if(value)setVisualizerSettings(value);return()=>setVisualizerSettings(previous);
+    }}/>;
     switch (activeNav) {
       case 'workspace':
         return renderLibrarySurface();
@@ -9283,46 +9330,7 @@ export function App() {
     }
   }
 
-  function renderRemoveMediaDialog() {
-    if (!pendingRemoveMedia) {
-      return null;
-    }
 
-    return (
-      <div className="confirm-backdrop" role="presentation" onPointerDown={() => setPendingRemoveMediaId(undefined)}>
-        <section
-          aria-describedby="remove-media-description"
-          aria-labelledby="remove-media-title"
-          aria-modal="true"
-          className="confirm-dialog"
-          onPointerDown={(event) => event.stopPropagation()}
-          ref={removeDialogRef}
-          role="dialog"
-        >
-          <span className="confirm-dialog__icon">
-            <AlertTriangle aria-hidden="true" size={20} />
-          </span>
-          <div>
-            <h2 id="remove-media-title">{preferences.locale === 'ar' ? 'حذف من Loaderly؟' : 'Remove from Loaderly?'}</h2>
-            <p id="remove-media-description">
-              {preferences.locale === 'ar'
-                ? `سيحُذف "${displayMediaTitle(pendingRemoveMedia)}" من مساحة العمل وقائمة الانتظار والمكتبة. الملف الأصلي على جهازك لن يحُذفه.`
-                : `This removes "${displayMediaTitle(pendingRemoveMedia)}" from the workspace queue and library. The original file on your device is not deleted.`}
-            </p>
-          </div>
-          <div className="confirm-dialog__actions">
-            <button className="button secondary" onClick={() => setPendingRemoveMediaId(undefined)} ref={removeDialogCancelRef} type="button">
-              {preferences.locale === 'ar' ? 'إلغاء' : 'Cancel'}
-            </button>
-            <button className="button primary button-danger" onClick={confirmRemoveMedia} type="button">
-              <Trash2 aria-hidden="true" size={15} />
-              {preferences.locale === 'ar' ? 'حذف' : 'Remove'}
-            </button>
-          </div>
-        </section>
-      </div>
-    );
-  }
 
 
   return (
@@ -9330,20 +9338,20 @@ export function App() {
       className={`app-shell${activeNav === 'editor' ? ' editor-mode' : ''}`}
       data-locale={preferences.locale}
       data-theme={preferences.themeMode}
+      data-platform={window.loaderly?.platform ?? 'win32'}
     >
       <header className="titlebar">
         <div className="titlebar__left">
           <div className="titlebar__brand">
             <img alt="" className="brand-icon" src="./assets/loaderly-64.png" />
-            <strong>Loaderly<span className="brand-version">2.0</span></strong>
+            <strong>Loaderly<span className="brand-version">2.1</span></strong>
 
           </div>
         </div>
         <div className="titlebar__actions">
           <span aria-live="polite" className="activity-announcement" dir="auto" role="status">{activity}</span>
-          {activityNotice && <div className="activity-notice" role="alert" dir="auto"><span>{activityNotice}</span><button type="button" aria-label={preferences.locale==='ar'?'إغلاق':'Dismiss'} onClick={()=>setActivityNotice('')}><X size={15}/></button></div>}
         </div>
-        <div className="window-controls" aria-label={uiText(preferences.locale, 'Window controls', 'أزرار النافذة')}>
+        {(!window.loaderly || window.loaderly.platform === 'win32') && <div className="window-controls" aria-label={uiText(preferences.locale, 'Window controls', 'أزرار النافذة')}>
           <button aria-label={uiText(preferences.locale, 'Minimize', 'تصغير')} className="window-control" onClick={() => void handleWindowControl('minimize')} type="button">
             <Minus aria-hidden="true" size={15} />
           </button>
@@ -9353,8 +9361,9 @@ export function App() {
           <button aria-label={uiText(preferences.locale, 'Close', 'إغلاق')} className="window-control window-control--close" onClick={() => void handleWindowControl('close')} type="button">
             <X aria-hidden="true" size={15} />
           </button>
-        </div>
+        </div>}
       </header>
+          {activityNotice && <div className="activity-notice" role="alert" dir="auto"><span>{activityNotice}</span><button type="button" aria-label={preferences.locale==='ar'?'إغلاق':'Dismiss'} onClick={()=>setActivityNotice('')}><X size={15}/></button></div>}
 
       <div className="shell-body">
         <aside className="product-nav" aria-label={uiText(preferences.locale, 'Primary navigation', 'التنقل الرئيسي')}>
@@ -9375,20 +9384,22 @@ export function App() {
                 </button>
               );
             })}
+            <div className="product-nav__community">
+              <button className={`product-nav__item${communityOpen ? ' active' : ''}`} aria-current={communityOpen ? 'page' : undefined} onClick={() => selectNavigation('community')} type="button">
+                <Users aria-hidden="true" size={16}/><span>{uiText(preferences.locale, 'Community library', 'مكتبة المجتمع')}</span>
+              </button>
+            </div>
           </nav>
           <div className="product-nav__utilities">
-            <button className={`product-nav__utility${activeNav === 'tools' ? ' active' : ''}`} onClick={() => { selectNavigation('tools'); if (!toolStatuses.length) void runToolCheck(); }} type="button">
+            <button aria-current={activeNav === 'tools' ? 'page' : undefined} className={`product-nav__utility${activeNav === 'tools' ? ' active' : ''}`} onClick={() => { selectNavigation('tools'); if (!toolStatuses.length) void runToolCheck(); }} type="button">
               <SlidersHorizontal aria-hidden="true" size={15} />
               <span>{t('tools')}</span>
             </button>
-            <button className={`product-nav__utility${activeNav === 'settings' ? ' active' : ''}`} onClick={() => selectNavigation('settings')} type="button">
+            <button aria-current={activeNav === 'settings' ? 'page' : undefined} className={`product-nav__utility${activeNav === 'settings' ? ' active' : ''}`} onClick={() => selectNavigation('settings')} type="button">
               <Settings aria-hidden="true" size={15} />
               <span>{t('preferences')}</span>
             </button>
-            <a className="product-nav__utility" href="https://github.com/voidksa/Loaderly/discussions" target="_blank" rel="noopener noreferrer" title={uiText(preferences.locale, 'Discover and share themes and audio visualizers', 'اكتشف ثيمات البرنامج وأشكال الطيف وشارك تصميمك')}>
-              <Users aria-hidden="true" size={15}/><span>{uiText(preferences.locale, 'Community looks', 'مظاهر المجتمع')}</span>
-            </a>
-            <a className="product-nav__utility documentation-link" href={documentationUrl} target="_blank" rel="noopener noreferrer" title={uiText(preferences.locale, 'Open documentation and troubleshooting', 'فتح أدلة الاستخدام وحل المشكلات')}>
+            <a className="product-nav__utility documentation-link" href={documentationUrl} target="_blank" rel="noopener noreferrer" data-tooltip={uiText(preferences.locale, 'Open documentation and troubleshooting', 'فتح أدلة الاستخدام وحل المشكلات')}>
               <BookOpen aria-hidden="true" size={15} /><span>{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</span>
             </a>
             <a className="product-nav__utility support-link" href={preferences.locale === 'ar' ? 'https://creators.sa/ar/voidksa' : 'https://creators.sa/en/voidksa'} target="_blank" rel="noopener noreferrer">
@@ -9403,10 +9414,13 @@ export function App() {
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => void handleWorkspaceDrop(event)}
         >
+          {availableProgramUpdate&&<div className="community-look-card" role="status"><strong>{uiText(preferences.locale,'A new Loaderly update is available: ','يتوفر تحديث جديد لـ Loaderly: ')}{availableProgramUpdate}</strong><button className="button secondary" onClick={()=>{selectNavigation('settings');setSettingsTab('about');setAvailableProgramUpdate('');}}>{uiText(preferences.locale,'View update in Settings','عرض التحديث في الإعدادات')}</button><button className="button secondary" onClick={()=>setAvailableProgramUpdate('')}>{uiText(preferences.locale,'Later','لاحقًا')}</button></div>}
+          {showDiscovery&&!communityOpen&&['workspace','library'].includes(activeNav)&&<section className="discovery-card"><div><strong>{uiText(preferences.locale,'Make Loaderly yours','خلّ Loaderly على ذوقك')}</strong><p>{uiText(preferences.locale,'Try community themes, design an audio visualizer, and turn your audio into a video.','جرّب ثيمات المجتمع وصمّم طيفًا للصوت وحوّل صوتك إلى فيديو.')}</p></div><button className="button primary" onClick={()=>selectNavigation('community')}>{uiText(preferences.locale,'Explore designs','اكتشف التصاميم')}</button><button className="button secondary" onClick={()=>{localStorage.setItem('loaderly:discovery:2.1','dismissed');setShowDiscovery(false);}}>{uiText(preferences.locale,'Later','لاحقًا')}</button></section>}
           {renderActiveSurface()}
         </section>
       </div>
-      {renderRemoveMediaDialog()}
+      {libraryRemoval&&<LibraryRemoval ar={preferences.locale==='ar'} names={mediaRows.filter(row=>libraryRemoval.includes(row.id)).map(displayMediaTitle)} canTrash={mediaRows.some(row=>libraryRemoval.includes(row.id)&&!!row.filePath)} onCancel={()=>setLibraryRemoval(undefined)} onRemove={removeLibrarySelection}/>}
+      {playlistRequest&&<PlaylistPicker key={playlistRequest.url} url={playlistRequest.url} ar={preferences.locale==='ar'} initialSelection={playlistSelections.current.get(playlistRequest.url)} onRemember={ids=>playlistSelections.current.set(playlistRequest.url,ids)} onDone={entries=>{setPlaylistRequest(undefined);playlistRequest.resolve(entries);}}/>}
     </main>
   );
 }

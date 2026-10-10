@@ -23,8 +23,7 @@ export function packageSource(name: ToolPackage, { platform, arch }: ToolPlatfor
     assets: tag => [{ name: `ffmpeg-${tag}-essentials_build.zip`, binaries: ['ffmpeg', 'ffprobe'], zipped: true }]
   };
   if (platform === 'win32') throw new Error('Use the Windows x64 edition for bundled FFmpeg.');
-  return {
-    repository: 'eugeneware/ffmpeg-static', version,
-    assets: () => ['ffmpeg', 'ffprobe'].map(binary => ({ name: `${binary}-${platform}-${arch}`, binaries: [binary], zipped: false }))
-  };
+  // Preview packages include a tested FFmpeg/FFprobe pair. Do not replace them
+  // with a generic build that may omit text/subtitle filters or require local libraries.
+  throw new Error('FFmpeg and FFprobe are updated with the desktop preview.');
 }

@@ -1,6 +1,8 @@
+import {ControlDeck} from './ControlDeck';
 import { CommunityLookCard } from './CommunityLookCard';
+import { VisualizerDesigner } from './VisualizerDesigner';
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Copy, Download, Expand, RotateCcw, Upload } from 'lucide-react';
+import { ExternalLink, Code, Shapes, Palette, Move, Type, Share2, Check, Copy, Download, Expand, RotateCcw, Upload } from 'lucide-react';
 import { DesktopMenu } from './DesktopMenu';
 import { RangeInput } from './RangeInput';
 import { ColorField } from './ColorField';
@@ -21,7 +23,9 @@ export function VisualizerControls({value,onChange,onCleanView,ar}:{value:AudioV
     onChange(result);setCode(encodeVisualizer(result));setStatus(t('Visualizer look applied.','طُبّق مظهر الطيف.'));
   };
   return <div className="visualizer-controls">
-    <div className="inspector-section">
+ <ControlDeck label={t('Visualizer settings','إعدادات الطيف')} pages={[
+{id:'shape',label:t('Shape','الشكل'),icon:<Shapes size={15}/>,content:<div className="visualizer-page">    <div className="inspector-section">
+      <VisualizerDesigner value={value} onChange={onChange} ar={ar}/>
       <strong>{t('Audio visualizer','طيف الصوت')}</strong>
       <small>{t('Customize the display separately from your sound and app theme.','خصص العرض بشكل مستقل عن إعدادات الصوت ومظهر البرنامج.')}</small>
       <button className="button primary" type="button" onClick={onCleanView}><Expand size={15}/>{t('Clean view','عرض نظيف')}</button>
@@ -34,22 +38,23 @@ export function VisualizerControls({value,onChange,onCleanView,ar}:{value:AudioV
     {value.style==='path'?<div className="inspector-section"><strong>{t('Custom shape','شكل مخصص')}</strong><div className="visualizer-presets">{visualizerShapePresets.map(p=><button type="button" className="button secondary" key={p.id} onClick={()=>patch({shape:p.shape})}>{ar?p.ar:p.en}</button>)}</div>{(['closed','smooth','mirror'] as const).filter(key=>!value.shape.paths||key==='mirror').map((key)=><label className="audio-toggle" key={key}><input type="checkbox" checked={value.shape[key]} onChange={e=>patch({shape:{...value.shape,[key]:e.target.checked}})}/>{t({closed:'Close the shape',smooth:'Smooth curve',mirror:'Two-sided movement'}[key],{closed:'إغلاق الشكل',smooth:'منحنى ناعم',mirror:'حركة في الاتجاهين'}[key])}</label>)}<small>{t('Import a shape from the online designer through Share this look below.','استورد شكلًا من المصمّم في الموقع عبر مشاركة مظهر الطيف أدناه.')}</small></div>:null}
     {value.style==='path'?<div className="inspector-section"><strong>{t('Shape finish','طريقة رسم الشكل')}</strong><DesktopMenu ariaLabel={t('Shape finish','طريقة رسم الشكل')} value={value.shape.stroke??'bars'} valueLabel={t({bars:'Bars',dots:'Dots',line:'Outline'}[value.shape.stroke??'bars'],{bars:'أعمدة',dots:'نقاط',line:'خط متصل'}[value.shape.stroke??'bars'])} options={[{value:'line',label:t('Outline','خط متصل')},{value:'bars',label:t('Bars','أعمدة')},{value:'dots',label:t('Dots','نقاط')}]} onChange={stroke=>patch({shape:{...value.shape,stroke:stroke as 'bars'|'dots'|'line'}})}/><label className="audio-control"><span>{t('Stroke thickness','سماكة الرسم')}<output>{value.shape.thickness??2}</output></span><RangeInput aria-label={t('Stroke thickness','سماكة الرسم')} min={.5} max={8} step={.25} value={value.shape.thickness??2} onChange={e=>patch({shape:{...value.shape,thickness:Number(e.target.value)}})}/></label>{value.shape.paths?<small>{t('Your text and separate shapes are preserved. Use the online designer to edit letters and points.','يُحفظ النص والأجزاء المنفصلة كما صمّمتها. استخدم المصمّم في الموقع لتعديل الحروف والنقاط.')}</small>:null}</div>:null}
     {value.style==='path'?<label className="audio-control"><span>{t('Movement strength','قوة الحركة')}<output dir="ltr">{Math.round((value.shape.amplitude??.5)*100)}%</output></span><RangeInput aria-label={t('Movement strength','قوة الحركة')} min={0} max={1} step={.01} value={value.shape.amplitude??.5} onChange={e=>patch({shape:{...value.shape,amplitude:Number(e.target.value)}})}/></label>:null}
-    <a className="button secondary visualizer-designer-link" href={'https://loaderly-docs.voidksa.workers.dev/'+(ar?'ar/':'')+'docs/audio-visualizer/#visualizer-builder'} target="_blank" rel="noreferrer">{t('Design and share a new shape','صمّم شكلًا جديدًا وشاركه')}</a>
-    <details className="visualizer-section" open><summary>{t('Colors and background','الألوان والخلفية')}<ChevronDown size={15}/></summary><div className="visualizer-section__body">
+    <a className="button secondary visualizer-designer-link" href={'https://loaderly-docs.voidksa.workers.dev/'+(ar?'ar/':'')+'docs/audio-visualizer/#visualizer-builder'} target="_blank" rel="noreferrer"><ExternalLink size={14}/>{t('Design and share a new shape','صمّم شكلًا جديدًا وشاركه')}</a>
+</div>},
+{id:'colors',label:t('Colors','الألوان'),icon:<Palette size={15}/>,content:<div className="visualizer-page">
       {color('color','Visualizer color','لون الطيف')}{toggle('gradient','Gradient color','تدرّج لون الطيف')}{value.gradient?color('secondColor','Second color','اللون الثاني'):null}
       {color('background','Background color','لون الخلفية')}{toggle('backgroundGradient','Gradient background','خلفية متدرّجة')}{value.backgroundGradient?color('backgroundEnd','Background end color','لون نهاية الخلفية'):null}
       {range('opacity','Opacity','العتامة',.15,1,.05)}{range('glow','Glow','التوهج',0,30,1)}
-    </div></details>
-    <details className="visualizer-section"><summary>{t('Size and motion','الحجم والحركة')}<ChevronDown size={15}/></summary><div className="visualizer-section__body">
+    </div>},
+{id:'motion',label:t('Layout & motion','التنسيق والحركة'),icon:<Move size={15}/>,content:<div className="visualizer-page">
       {range('width','Visualizer width','عرض الطيف',20,100,1,'%')}{range('height','Visualizer height','ارتفاع الطيف',15,80,1,'%')}{range('positionX','Horizontal position','الموضع الأفقي',10,90,1,'%')}{range('positionY','Vertical position','الموضع الرأسي',10,90,1,'%')}
       {range('count','Detail','التفاصيل',16,value.shape.paths?1200:160,1)}{range('gap','Bar gap','المسافة بين الأعمدة',0,12,1)}{range('roundness','Roundness','استدارة الأطراف',0,12,1)}{range('sensitivity','Visual sensitivity','حساسية الحركة',.25,3,.05)}{range('smoothing','Motion smoothing','نعومة الحركة',0,.95,.05)}
-    </div></details>
-    <details className="visualizer-section"><summary>{t('Text and labels','النصوص والشارات')}<ChevronDown size={15}/></summary><div className="visualizer-section__body">
+    </div>},
+{id:'text',label:t('Text','النصوص'),icon:<Type size={15}/>,content:<div className="visualizer-page">
       {toggle('showTitle','Show track title','إظهار اسم المقطع')}{value.showTitle?<label className="inspector-field"><span>{t('Custom title (blank uses track name)','عنوان مخصص (اتركه فارغًا لاستخدام اسم المقطع)')}</span><input aria-label={t('Custom visualizer title','عنوان الطيف المخصص')} maxLength={160} value={value.title} onChange={e=>patch({title:e.target.value})}/></label>:null}
       {toggle('showSubtitle','Show subtitle','إظهار نص إضافي')}{value.showSubtitle?<label className="inspector-field"><span>{t('Subtitle','النص الإضافي')}</span><input aria-label={t('Visualizer subtitle','النص الإضافي للطيف')} maxLength={160} value={value.subtitle} onChange={e=>patch({subtitle:e.target.value})}/></label>:null}
       {toggle('showBadges','Show tool and playback badges','إظهار شارات الأداة والتشغيل')}{color('textColor','Title color','لون النص')}{range('textSize','Title size','حجم النص',10,48,1,'px')}
-    </div></details>
-    <details className="visualizer-section"><summary>{t('Share this look','مشاركة مظهر الطيف')}<ChevronDown size={15}/></summary><div className="visualizer-section__body">
+    </div>},
+{id:'share',label:t('Import & share','استيراد ومشاركة'),icon:<Share2 size={15}/>,content:<div className="visualizer-page">
       <small>{t('This code contains only visualizer settings and custom text. It never contains audio files or their paths.','يحتوي الكود على إعدادات الطيف والنصوص المخصصة فقط. لا يتضمن الملفات الصوتية أو مساراتها.')}</small>
       <div className="inspector-actions"><button className="button secondary" type="button" onClick={async()=>{
         const text=encodeVisualizer(value);setCode(text);
@@ -61,9 +66,10 @@ export function VisualizerControls({value,onChange,onCleanView,ar}:{value:AudioV
       <button className="button secondary" type="button" onClick={()=>fileRef.current?.click()}><Upload size={14}/>{t('Import look','استيراد المظهر')}</button></div>
       <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;if(file.size>visualizerCodeLimit){setStatus(t('Choose a visualizer JSON file under 320 KB.','اختر ملف JSON للطيف بحجم أقل من 320 كيلوبايت.'));return;}apply(await file.text());}}/>
   <textarea className="visualizer-code" aria-label={t('Visualizer code','كود الطيف')} dir="ltr" spellCheck={false} value={code} placeholder={t('Paste visualizer JSON here','الصق كود JSON للطيف هنا')} onChange={e=>setCode(e.target.value)}/>
-      <div className="inspector-actions"><button className="button secondary" type="button" onClick={()=>apply(code)}>{t('Apply look','تطبيق المظهر')}</button><button className="button secondary" type="button" onClick={()=>setCode(encodeVisualizer(value))}>{t('Show current code','عرض الكود الحالي')}</button></div>
+      <div className="inspector-actions"><button className="button secondary" type="button" onClick={()=>apply(code)}><Check size={14}/>{t('Apply look','تطبيق المظهر')}</button><button className="button secondary" type="button" onClick={()=>setCode(encodeVisualizer(value))}><Code size={14}/>{t('Show current code','عرض الكود الحالي')}</button></div>
       <p role="status" className="inspector-hint">{status}</p>
-    </div></details>
+    </div>}
+ ]}/>
     <button className="button secondary" type="button" onClick={()=>{onChange(defaultVisualizer);setStatus('');}}><RotateCcw size={14}/>{t('Reset visualizer','إعادة ضبط الطيف')}</button>
   <CommunityLookCard ar={ar} kind="visualizer"/>
   </div>;

@@ -49,3 +49,6 @@ tmp/
 /src/Loaderly.Electron/build/tools/
 /src/Loaderly.Electron/build/managed-tools/
 /src/Loaderly.Electron/desktop-smoke/
+
+# Generated from the bundled offline designer sources
+/src/Loaderly.Electron/public/studio/
