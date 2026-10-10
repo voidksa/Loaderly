@@ -1,5 +1,18 @@
 import {shapeContours, type AudioVisualizerSettings, type VisualizerShape, type VisualizerContour} from './audioVisualizer';
 type Point = [number,number];
+// Group nearby FFT bins into musical bands instead of sampling isolated bins.
+// The upper half of the FFT often contains only codec-cutoff silence; reserve the
+// width for the low, mid and treble range (up to about 11-12 kHz at normal rates).
+export function visualizerBands(spectrum:Uint8Array,count:number):number[]{
+  const end=Math.max(2,Math.floor(spectrum.length/2));
+  return Array.from({length:count},(_,i)=>{
+    const start=1+Math.floor((i/count)**2*(end-1));
+    const stop=Math.min(end,Math.max(start+1,1+Math.ceil(((i+1)/count)**2*(end-1))));
+    let energy=0;
+    for(let bin=start;bin<stop;bin++)energy+=(spectrum[bin]??0)**2;
+    return Math.sqrt(energy/Math.max(1,stop-start))/255;
+  });
+}
 const cache = new WeakMap<VisualizerContour,Point[]>();
 export function shapeCurve(shape:VisualizerContour):Point[] {
   const previous=cache.get(shape);if(previous)return previous;
@@ -44,7 +57,8 @@ export function fitShape(shape:VisualizerShape,width:number,height:number) {
 export function drawVisualizer(ctx:CanvasRenderingContext2D,width:number,height:number,s:AudioVisualizerSettings,spectrum:Uint8Array,waveform:Uint8Array,fitOverride?:ReturnType<typeof fitShape>) {
   const gradient=ctx.createLinearGradient(0,0,width,height);gradient.addColorStop(0,s.color);gradient.addColorStop(1,s.secondColor);
   ctx.fillStyle=ctx.strokeStyle=s.gradient?gradient:s.color;ctx.globalAlpha=s.opacity;ctx.shadowBlur=s.glow;ctx.shadowColor=s.color;
-  const magnitude=(i:number)=>Math.min(1,(spectrum[Math.min(spectrum.length-1,Math.floor((i/s.count)**2*768))]||0)/255*s.sensitivity);
+  const bands=visualizerBands(spectrum,s.count);
+  const magnitude=(i:number)=>Math.min(1,(bands[Math.min(bands.length-1,i)]??0)*s.sensitivity);
   if(s.style==='path'){
     let entries=samples.get(s.shape);if(!entries){entries=new Map();samples.set(s.shape,entries);}
     let contours=entries.get(s.count);if(!contours){contours=sampleContours(s.shape,s.count);entries.set(s.count,contours);}

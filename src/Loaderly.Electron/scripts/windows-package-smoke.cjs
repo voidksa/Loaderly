@@ -37,6 +37,9 @@ const { createRequire } = require('node:module');
     console.log(`Packaged Loaderly ${manifest.version}: dependencies, ZIP reader, main process and renderer passed.`);
   } finally {
     if (app) await app.close();
-    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3 });
+    assert.equal(path.dirname(path.resolve(profile)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(profile).startsWith('loaderly-package-check-'));
+    // Let Chromium and Windows release the temporary profile after shutdown.
+    await fs.promises.rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

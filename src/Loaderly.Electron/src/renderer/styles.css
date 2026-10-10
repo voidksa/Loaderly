@@ -6102,7 +6102,7 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .visualizer-color input { width:74px; padding:0; background:transparent; border:0; color:var(--foreground); font:12px/1.5 Consolas,monospace; }
 .visualizer-color input[aria-invalid=true] { color:#f29b95; }
 .visualizer-code { width:100%; height:140px; resize:vertical; padding:10px; border:1px solid var(--border-soft); border-radius:var(--radius); background:var(--background); color:var(--foreground); font:11px/1.6 Consolas,monospace; }
-.preview-audio.audio-scene { position:absolute; inset:0; padding:0; display:block; overflow:hidden; }
+.preview-audio.audio-scene { position:absolute; inset:auto; padding:0; display:block; overflow:hidden; }
 .audio-scene>canvas {max-width:none;max-height:none;}
 .audio-visual-content { position:absolute; left:50%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:18px; min-height:0; text-align:center; }
 .audio-visual-content .audio-visualizer { flex:1 1 0; min-height:0; width:100%; height:100%; max-height:none; }
@@ -6479,6 +6479,9 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .editor-inspector .control-deck__tabs {flex-wrap:nowrap;align-items:stretch;border:0;background:transparent;padding:0;gap:4px;margin-bottom:14px;}
 .editor-inspector .control-deck__tabs button {flex:1 1 0;padding:7px 5px;font-size:calc(11px * var(--ui-font-scale,1));line-height:1.4;gap:5px;}
 .editor-inspector .control-deck__tabs button span {min-width:0;overflow-wrap:anywhere;}
+.editor-inspector .audio-settings>.control-deck>.control-deck__tabs {flex-wrap:wrap;}
+.editor-inspector .audio-settings>.control-deck>.control-deck__tabs button {flex:1 0 auto;}
+.editor-inspector .audio-settings>.control-deck>.control-deck__tabs button span {white-space:nowrap;overflow-wrap:normal;}
 .editor-inspector .control-deck__tabs button[aria-selected=true] {box-shadow:none;background:var(--accent-soft);}
 .editor-inspector .visualizer-controls .control-deck__tabs {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}
 .editor-inspector .visualizer-controls .control-deck__tabs button {min-height:34px;}

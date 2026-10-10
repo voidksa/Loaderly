@@ -2,6 +2,15 @@
 
 Features, improvements and fixes in each Loaderly release.
 
+## 2.1.1 - 2026-10-10
+
+- Windows setup handles Arabic and redirected desktop paths when creating shortcuts. If a shortcut cannot be created, setup completes with instructions for opening the app.
+- Video shape and quality selections now apply and stay saved.
+- Audio speed, tone and effects remain consistent when the app is minimized and restored.
+- Reset affects only the open sound section, preserving other adjustments.
+- Visualizer bars respond to grouped music frequencies across the preview and exported video.
+- Sound tab labels stay on one line.
+
 ## 2.1.0 - 2026-10-10
 
 - Loaderly is available for Windows, macOS and Linux, with English and Arabic interfaces and illustrated guides.

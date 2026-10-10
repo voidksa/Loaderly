@@ -1,6 +1,11 @@
 import { normalizeAudioSpace, type AudioSpace } from './audioSpace';
 export type AudioSettings = { gainDb:number; fadeIn:number; fadeOut:number; bass:number; treble:number; mono:boolean; muted:boolean; space?:AudioSpace };
 export const defaultAudioSettings: AudioSettings = {gainDb:0,fadeIn:0,fadeOut:0,bass:0,treble:0,mono:false,muted:false};
+export function resetAudioControls(value:AudioSettings,section:'level'|'fades'|'space'):AudioSettings {
+  if(section==='level')return {...value,gainDb:0,bass:0,treble:0,mono:false,muted:false};
+  if(section==='fades')return {...value,fadeIn:0,fadeOut:0};
+  return {...value,space:normalizeAudioSpace(undefined)};
+}
 export type AudioTimeline = {
   ranges: readonly {startSeconds:number;endSeconds:number}[];
   speed?: {startTime:number;endTime:number;rate:number};

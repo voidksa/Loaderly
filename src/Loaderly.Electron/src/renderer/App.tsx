@@ -9,12 +9,11 @@ import {LibraryRemoval} from './editor/LibraryRemoval';
 import {youtubePlaylistUrl,type PlaylistEntry} from '../shared/download-url/playlist';
 import {encodeSoundPreset} from '../shared/audioPreset';
 import { VisualizerVideoExport } from './editor/VisualizerVideoExport';
-import type {VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
+import {videoDimensions,type VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
 import { CommunityLibrary } from './editor/CommunityLibrary';
 import { ProgramUpdates } from './editor/ProgramUpdates';
 import { SpeedControls } from './editor/SpeedControls';
 import { flushSync } from 'react-dom';
-import { hasSpeedSound } from '../shared/editor-project/speedSound';
 import { DesktopMenu, type MenuOption } from './editor/DesktopMenu';
 import { ColorField } from './editor/ColorField';
 import { providerModels, providerBaseUrls } from '../shared/app-preferences/aiProviders';
@@ -1412,7 +1411,6 @@ export function App() {
     () => isAudioEditor ? [] : zoomItems.filter((item) => !item.hidden && isTimelineItemActive(item, playheadSeconds)),
     [isAudioEditor, playheadSeconds, zoomItems]
   );
-  const activeSpeedItems = useMemo(() => speedItems.filter((item) => !item.hidden && hasSpeedSound(item.rate, item.mode) && isTimelineItemActive(item, playheadSeconds)), [playheadSeconds, speedItems]);
   const activeReframeItems = useMemo(
     () => isAudioEditor ? [] : reframeItems.filter((item) => !item.hidden),
     [reframeItems, isAudioEditor, playheadSeconds]
@@ -1430,11 +1428,14 @@ export function App() {
     [isAudioEditor, playheadSeconds, textOverlays]
   );
   const activeZoomItem = activeZoomItems.find((item) => item.id === selectedEffectItemId) ?? activeZoomItems[0];
-  const activeSpeedItem = activeSpeedItems.find((item) => item.id === selectedEffectItemId) ?? activeSpeedItems[0];
   const previewMediaRect = useMemo(
     () => containMediaRect(previewFrameSize, previewMediaSize),
     [previewFrameSize, previewMediaSize]
   );
+  const audioSceneRect = useMemo(() => {
+    const [width,height] = videoDimensions(visualizerVideo);
+    return containMediaRect(previewFrameSize,{width,height});
+  },[previewFrameSize,visualizerVideo.size,visualizerVideo.resolution]);
   const previewMediaRectPercent = useMemo(
     () => rectPixelsToPercent(previewMediaRect, previewFrameSize),
     [previewFrameSize, previewMediaRect]
@@ -1865,12 +1866,7 @@ export function App() {
     zoomWindow
   ]);
 
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.playbackRate = activeSpeedItem?.rate ?? 1;
-      videoRef.current.preservesPitch = activeSpeedItem?.mode !== 'normal';
-    }
-  }, [activeSpeedItem]);
+  // Playback speed and pitch are owned by the media-clock audio preview engine.
 
   useEffect(() => {
     const video = videoRef.current;
@@ -7966,7 +7962,7 @@ export function App() {
               selectedLayerId={selectedLayerIdForMedia}
             >
             {selectedMedia.fileUrl ? selectedMedia.mediaKind === 'audio' ? (
-              <div className="preview-audio audio-scene" style={{background:visualizerSettings.backgroundGradient ? `linear-gradient(145deg,${visualizerSettings.background},${visualizerSettings.backgroundEnd})` : visualizerSettings.background}}>
+              <div className="preview-audio audio-scene" style={{left:'50%',top:'50%',transform:'translate(-50%, -50%)',width:audioSceneRect.width,height:audioSceneRect.height,background:visualizerSettings.backgroundGradient ? `linear-gradient(145deg,${visualizerSettings.background},${visualizerSettings.backgroundEnd})` : visualizerSettings.background}}>
                 <AudioVisualizer analyser={audioAnalyser} playing={isPlaying} settings={visualizerSettings} scene={{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}/>
                 <audio
                   className="preview-audio__element"
@@ -8437,7 +8433,7 @@ export function App() {
 
           {audioInspectorOpen ? <InspectorPanel title={uiText(preferences.locale,'Audio','الصوت')} subtitle={uiText(preferences.locale,'Sound and visualizer settings','إعدادات الصوت والطيف')}>
             {isAudioEditor ? <div className="segmented-control audio-panel-tabs">{(['sound','visualizer','video'] as const).map(tab=><button key={tab} type="button" aria-pressed={audioPanelTab===tab} className={audioPanelTab===tab?'active':''} onClick={()=>setAudioPanelTab(tab)}>{tab==='sound'?<SlidersHorizontal size={14} aria-hidden="true"/>:tab==='video'?<Film size={14} aria-hidden="true"/>:<AudioLines size={14} aria-hidden="true"/>}{tab==='sound'?uiText(preferences.locale,'Sound','الصوت'):tab==='video'?uiText(preferences.locale,'Video','الفيديو'):uiText(preferences.locale,'Visualizer','الطيف')}</button>)}</div> : null}
-            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : isAudioEditor && audioPanelTab==='video' ? <VisualizerVideoExport busy={videoExportBusy} ar={preferences.locale==='ar'} analyser={audioAnalyser} playing={isPlaying} onBusy={setVideoExportBusy} options={{...visualizerVideo,scene:{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}} onChange={value=>setVisualizerVideo({...value,...value.scene})} payload={whole=>mediaOutputPayload(QuickCopyOutputKind.Audio,'Visualizer video',whole)}/> : <><AudioSectionControls base={audioSettings} sections={audioSections} selectedId={selectedAudioSectionId} onSelect={setSelectedAudioSectionId} onBase={value=>{pushEditorHistory();setAudioSettings(value);}} onSections={value=>{pushEditorHistory();setAudioSections(value);}} duration={timelineDuration} playhead={playheadSeconds} onSeek={updatePlayhead} ar={preferences.locale==='ar'} loop={isAudioEditor?loopPlayback:undefined} onLoopChange={setLoopPlayback}/>{renderSoundPresets()}</>}
+            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : isAudioEditor && audioPanelTab==='video' ? <VisualizerVideoExport busy={videoExportBusy} ar={preferences.locale==='ar'} analyser={audioAnalyser} playing={isPlaying} onBusy={setVideoExportBusy} options={{...visualizerVideo,scene:{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}} onChange={value=>setVisualizerVideo({size:value.size,resolution:value.resolution,image:value.scene.image,imageMode:value.scene.imageMode,logoSize:value.scene.logoSize,logoX:value.scene.logoX,logoY:value.scene.logoY})} payload={whole=>mediaOutputPayload(QuickCopyOutputKind.Audio,'Visualizer video',whole)}/> : <><AudioSectionControls base={audioSettings} sections={audioSections} selectedId={selectedAudioSectionId} onSelect={setSelectedAudioSectionId} onBase={value=>{pushEditorHistory();setAudioSettings(value);}} onSections={value=>{pushEditorHistory();setAudioSections(value);}} duration={timelineDuration} playhead={playheadSeconds} onSeek={updatePlayhead} ar={preferences.locale==='ar'} loop={isAudioEditor?loopPlayback:undefined} onLoopChange={setLoopPlayback}/>{renderSoundPresets()}</>}
           </InspectorPanel> : renderEditorInspector()}
         </div>
 

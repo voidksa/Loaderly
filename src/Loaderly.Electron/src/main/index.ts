@@ -2550,6 +2550,8 @@ function createMainWindow(): BrowserWindow {
     show: false,
     webPreferences: {
       preload: resolvePreloadPath(),
+      // Continue media-clock edits while the desktop window is minimized or hidden.
+      backgroundThrottling: false,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true

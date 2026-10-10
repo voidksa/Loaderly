@@ -1,10 +1,10 @@
 # Install Loaderly 2.1
 
-Download Loaderly for your computer from [the release page](https://github.com/voidksa/Loaderly/releases/tag/v2.1.0).
+Download Loaderly for your computer from [the release page](https://github.com/voidksa/Loaderly/releases/latest).
 
 ## Windows
 
-Open **Loaderly-Setup-2.1.0.exe**, choose where to install the app and follow the installer. Finish any active downloads or exports before updating. Your library and preferences are preserved.
+Open the **Loaderly-Setup** file you downloaded, choose where to install the app and follow the installer. Finish any active downloads or exports before updating. Your library and preferences are preserved.
 
 ## macOS
 
