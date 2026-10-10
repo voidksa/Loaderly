@@ -2,7 +2,14 @@
   <img src="assets/loaderly-256.png" alt="أيقونة Loaderly" width="96" height="96">
   <h1>Loaderly 2.1</h1>
   <p>نزّل مقطعك وعدّله بطريقتك. على ويندوز وماك ولينكس.</p>
-  <p><a href="https://github.com/voidksa/Loaderly/releases/latest"><strong>تنزيل Loaderly</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/ar/">الموقع والوثائق</a> · <a href="README.md">English</a></p>
+  <p><a href="https://loaderly-docs.voidksa.workers.dev/ar/#desktop-downloads"><strong>تنزيل للماك أو لينكس</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/ar/">الموقع والوثائق</a> · <a href="README.md">English</a></p>
+  <p><a href="https://apps.microsoft.com/detail/9n1r1h10hxr7?referrer=appbadge&amp;mode=full">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/ar%20dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://get.microsoft.com/images/ar%20light.svg">
+      <img src="https://get.microsoft.com/images/ar%20dark.svg" width="200" alt="تنزيل Loaderly من Microsoft Store">
+    </picture>
+  </a></p>
 </div>
 
 ![محرر Loaderly](docs/images/loaderly-editor-ar.png)
@@ -13,11 +20,13 @@
 
 | جهازك | رابط التنزيل |
 | --- | --- |
-| ويندوز 10 أو 11 بمعمارية 64 بت | [مثبّت ويندوز](https://loaderly-docs.voidksa.workers.dev/download?platform=windows) |
+| ويندوز 10 أو 11 بمعمارية 64 بت | [تنزيل من Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
 | ماك بمعالج Apple Silicon | [نسخة Apple Silicon](https://loaderly-docs.voidksa.workers.dev/download?platform=macArm) |
 | ماك بمعالج Intel | [نسخة Intel](https://loaderly-docs.voidksa.workers.dev/download?platform=macIntel) |
 | Ubuntu أو Debian بمعمارية 64 بت | [حزمة DEB](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxDeb) |
 | توزيعات لينكس الأخرى المتوافقة بمعمارية 64 بت | [ملف AppImage](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxImage) |
+
+نسخة ويندوز وتحديثاتها التالية متاحة عبر Microsoft Store فقط. إذا كنت تستخدم نسخة ويندوز القديمة من خارج المتجر، ثبّت نسخة المتجر وتحقق من مكتبتك وإعداداتك قبل إزالة النسخة القديمة.
 
 اتبع [دليل التثبيت](https://loaderly-docs.voidksa.workers.dev/ar/docs/installation/) الخاص بنظامك. يحتفظ التحديث بمكتبتك وإعداداتك. أنهِ التنزيلات والتصدير قبل التثبيت.
 

@@ -2,7 +2,14 @@
   <img src="assets/loaderly-256.png" alt="Loaderly app icon" width="96" height="96">
   <h1>Loaderly 2.1</h1>
   <p>Download, edit and make it yours. For Windows, macOS and Linux.</p>
-  <p><a href="https://github.com/voidksa/Loaderly/releases/latest"><strong>Download Loaderly</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
+  <p><a href="https://loaderly-docs.voidksa.workers.dev/#desktop-downloads"><strong>Download for Mac or Linux</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
+  <p><a href="https://apps.microsoft.com/detail/9n1r1h10hxr7?referrer=appbadge&amp;mode=full">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://get.microsoft.com/images/en-us%20light.svg">
+      <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Download Loaderly from Microsoft Store">
+    </picture>
+  </a></p>
 </div>
 
 ![The Loaderly editor](docs/images/loaderly-editor-en.png)
@@ -18,6 +25,8 @@ Bring in a link or a local file, refine your clip and export it from one workspa
 | Mac with Intel | [Intel ZIP](https://loaderly-docs.voidksa.workers.dev/download?platform=macIntel) |
 | Ubuntu / Debian, 64-bit | [DEB package](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxDeb) |
 | Other compatible Linux desktops, 64-bit | [AppImage](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxImage) |
+
+Windows downloads and future Windows updates are available only through Microsoft Store. If you use an older standalone Windows copy, install the Store edition and check your library and settings before removing the old copy.
 
 Follow the [installation guide](https://loaderly-docs.voidksa.workers.dev/docs/installation/) for your system. Updating keeps your library and preferences. Finish active downloads and exports before installing.
 
