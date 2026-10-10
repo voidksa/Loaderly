@@ -2,7 +2,7 @@
   <img src="assets/loaderly-256.png" alt="Loaderly app icon" width="96" height="96">
   <h1>Loaderly 2.1</h1>
   <p>Download, edit and make it yours. For Windows, macOS and Linux.</p>
-  <p><a href="https://loaderly-docs.voidksa.workers.dev/#desktop-downloads"><strong>Download for Mac or Linux</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
+  <p><a href="https://loaderly.app/#desktop-downloads"><strong>Download for Mac or Linux</strong></a> · <a href="https://loaderly.app/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
   <p><a href="https://apps.microsoft.com/detail/9n1r1h10hxr7?referrer=appbadge&amp;mode=full">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20dark.svg">
@@ -21,14 +21,14 @@ Bring in a link or a local file, refine your clip and export it from one workspa
 | Your computer | Download |
 | --- | --- |
 | Windows 10 / 11, 64-bit | [Get it from Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| Mac with Apple Silicon | [Apple Silicon ZIP](https://loaderly-docs.voidksa.workers.dev/download?platform=macArm) |
-| Mac with Intel | [Intel ZIP](https://loaderly-docs.voidksa.workers.dev/download?platform=macIntel) |
-| Ubuntu / Debian, 64-bit | [DEB package](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxDeb) |
-| Other compatible Linux desktops, 64-bit | [AppImage](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxImage) |
+| Mac with Apple Silicon | [Apple Silicon ZIP](https://loaderly.app/download?platform=macArm) |
+| Mac with Intel | [Intel ZIP](https://loaderly.app/download?platform=macIntel) |
+| Ubuntu / Debian, 64-bit | [DEB package](https://loaderly.app/download?platform=linuxDeb) |
+| Other compatible Linux desktops, 64-bit | [AppImage](https://loaderly.app/download?platform=linuxImage) |
 
 Windows downloads and future Windows updates are available only through Microsoft Store. If you use an older standalone Windows copy, install the Store edition and check your library and settings before removing the old copy.
 
-Follow the [installation guide](https://loaderly-docs.voidksa.workers.dev/docs/installation/) for your system. Updating keeps your library and preferences. Finish active downloads and exports before installing.
+Follow the [installation guide](https://loaderly.app/docs/installation/) for your system. Updating keeps your library and preferences. Finish active downloads and exports before installing.
 
 ## New in 2.1
 
@@ -50,7 +50,7 @@ Follow the [installation guide](https://loaderly-docs.voidksa.workers.dev/docs/i
 
 ![Create and try a sound preset](docs/images/loaderly-sound-preview-en.png)
 
-Sign in with **GitHub** inside Loaderly to publish. Your designs appear in both the app and the [community website](https://loaderly-docs.voidksa.workers.dev/community/). The [illustrated guide](https://loaderly-docs.voidksa.workers.dev/docs/community/) explains drafts, publishing and updates.
+Sign in with **GitHub** inside Loaderly to publish. Your designs appear in both the app and the [community website](https://loaderly.app/community/). The [illustrated guide](https://loaderly.app/docs/community/) explains drafts, publishing and updates.
 
 ## Start with one clip
 
@@ -58,9 +58,11 @@ Choose **Library → Import**, select a video or audio file and choose **Open ed
 
 ![Choose your colors](docs/images/loaderly-theme-colors-en.png)
 
-[Your first edit](https://loaderly-docs.voidksa.workers.dev/docs/getting-started/) · [Sound presets](https://loaderly-docs.voidksa.workers.dev/docs/sound-presets/) · [Design a visualizer](https://loaderly-docs.voidksa.workers.dev/docs/audio-visualizer/) · [Customize your theme](https://loaderly-docs.voidksa.workers.dev/docs/appearance/)
+[Your first edit](https://loaderly.app/docs/getting-started/) · [Sound presets](https://loaderly.app/docs/sound-presets/) · [Design a visualizer](https://loaderly.app/docs/audio-visualizer/) · [Customize your theme](https://loaderly.app/docs/appearance/)
 
 ## Support and license
+
+For help, email [support@loaderly.app](mailto:support@loaderly.app). For general inquiries, use [hello@loaderly.app](mailto:hello@loaderly.app).
 
 [Support Void](https://creators.sa/en/voidksa) if you would like to help keep Loaderly growing. Support is optional.
 

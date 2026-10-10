@@ -25,6 +25,6 @@ export function AudioSpaceControls({value, onChange, ar}: {value: unknown; onCha
       {range('tone', 'Brightness', 'سطوع الصدى', 500, 16000, 100, 'Hz')}
     </fieldset>
     <small>{t('Preview and exports use the same effect. The effect ends at the selected clip boundary; leave silence at the end if you want to hear its full decay.', 'المعاينة والتصدير يستخدمان التأثير نفسه. ينتهي الصدى عند نهاية المقطع المحدد؛ اترك صمتًا في آخر التسجيل لسماع التلاشي كاملًا.')}</small>
-    <a href={`https://loaderly-docs.voidksa.workers.dev/${ar?'ar/':''}docs/audio-echo/`} target="_blank" rel="noreferrer">{t('Echo & reverb guide', 'دليل الصدى والرنين')}</a>
+    <a href={`https://loaderly.app/${ar?'ar/':''}docs/audio-echo/`} target="_blank" rel="noreferrer">{t('Echo & reverb guide', 'دليل الصدى والرنين')}</a>
   </section>;
 }

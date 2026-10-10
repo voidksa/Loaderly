@@ -1,10 +1,10 @@
 # Install Loaderly 2.1
 
-Download Loaderly for your computer from [the release page](https://github.com/voidksa/Loaderly/releases/latest).
+Download Loaderly for your computer from [the official website](https://loaderly.app).
 
 ## Windows
 
-Open the **Loaderly-Setup** file you downloaded, choose where to install the app and follow the installer. Finish any active downloads or exports before updating. Your library and preferences are preserved.
+Install Loaderly from [Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7). Microsoft Store delivers Windows updates. Finish any active downloads or exports before updating.
 
 ## macOS
 
@@ -23,4 +23,4 @@ Choose **Library → Import** to open a local video or audio file. Select it, ch
 
 Open **Community library** to find themes, visualizers and sound presets. **Create & share** lets you publish a design directly from Loaderly. Themes work across Windows, macOS and Linux; desktop glass adapts to system support.
 
-[English illustrated guide](https://loaderly-docs.voidksa.workers.dev/docs/) · [الدليل المصوّر بالعربية](https://loaderly-docs.voidksa.workers.dev/ar/docs/)
+[English illustrated guide](https://loaderly.app/docs/) · [الدليل المصوّر بالعربية](https://loaderly.app/ar/docs/)

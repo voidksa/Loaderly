@@ -2,7 +2,7 @@
   <img src="assets/loaderly-256.png" alt="أيقونة Loaderly" width="96" height="96">
   <h1>Loaderly 2.1</h1>
   <p>نزّل مقطعك وعدّله بطريقتك. على ويندوز وماك ولينكس.</p>
-  <p><a href="https://loaderly-docs.voidksa.workers.dev/ar/#desktop-downloads"><strong>تنزيل للماك أو لينكس</strong></a> · <a href="https://loaderly-docs.voidksa.workers.dev/ar/">الموقع والوثائق</a> · <a href="README.md">English</a></p>
+  <p><a href="https://loaderly.app/ar/#desktop-downloads"><strong>تنزيل للماك أو لينكس</strong></a> · <a href="https://loaderly.app/ar/">الموقع والوثائق</a> · <a href="README.md">English</a></p>
   <p><a href="https://apps.microsoft.com/detail/9n1r1h10hxr7?referrer=appbadge&amp;mode=full">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/ar%20dark.svg">
@@ -21,14 +21,14 @@
 | جهازك | رابط التنزيل |
 | --- | --- |
 | ويندوز 10 أو 11 بمعمارية 64 بت | [تنزيل من Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| ماك بمعالج Apple Silicon | [نسخة Apple Silicon](https://loaderly-docs.voidksa.workers.dev/download?platform=macArm) |
-| ماك بمعالج Intel | [نسخة Intel](https://loaderly-docs.voidksa.workers.dev/download?platform=macIntel) |
-| Ubuntu أو Debian بمعمارية 64 بت | [حزمة DEB](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxDeb) |
-| توزيعات لينكس الأخرى المتوافقة بمعمارية 64 بت | [ملف AppImage](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxImage) |
+| ماك بمعالج Apple Silicon | [نسخة Apple Silicon](https://loaderly.app/download?platform=macArm) |
+| ماك بمعالج Intel | [نسخة Intel](https://loaderly.app/download?platform=macIntel) |
+| Ubuntu أو Debian بمعمارية 64 بت | [حزمة DEB](https://loaderly.app/download?platform=linuxDeb) |
+| توزيعات لينكس الأخرى المتوافقة بمعمارية 64 بت | [ملف AppImage](https://loaderly.app/download?platform=linuxImage) |
 
 نسخة ويندوز وتحديثاتها التالية متاحة عبر Microsoft Store فقط. إذا كنت تستخدم نسخة ويندوز القديمة من خارج المتجر، ثبّت نسخة المتجر وتحقق من مكتبتك وإعداداتك قبل إزالة النسخة القديمة.
 
-اتبع [دليل التثبيت](https://loaderly-docs.voidksa.workers.dev/ar/docs/installation/) الخاص بنظامك. يحتفظ التحديث بمكتبتك وإعداداتك. أنهِ التنزيلات والتصدير قبل التثبيت.
+اتبع [دليل التثبيت](https://loaderly.app/ar/docs/installation/) الخاص بنظامك. يحتفظ التحديث بمكتبتك وإعداداتك. أنهِ التنزيلات والتصدير قبل التثبيت.
 
 ## الجديد في 2.1
 
@@ -50,7 +50,7 @@
 
 ![إنشاء إعداد صوت وتجربته](docs/images/loaderly-sound-preview-ar.png)
 
-سجّل الدخول بحساب **GitHub** داخل Loaderly للنشر. يظهر تصميمك في البرنامج و[موقع المجتمع](https://loaderly-docs.voidksa.workers.dev/ar/community/). يشرح [الدليل المصوّر](https://loaderly-docs.voidksa.workers.dev/ar/docs/community/) المسودات والنشر والتحديث.
+سجّل الدخول بحساب **GitHub** داخل Loaderly للنشر. يظهر تصميمك في البرنامج و[موقع المجتمع](https://loaderly.app/ar/community/). يشرح [الدليل المصوّر](https://loaderly.app/ar/docs/community/) المسودات والنشر والتحديث.
 
 ## ابدأ بمقطع واحد
 
@@ -58,9 +58,11 @@
 
 ![تخصيص الألوان](docs/images/loaderly-theme-colors-ar.png)
 
-[أول تعديل](https://loaderly-docs.voidksa.workers.dev/ar/docs/getting-started/) · [إعدادات الصوت](https://loaderly-docs.voidksa.workers.dev/ar/docs/sound-presets/) · [تصميم الطيف](https://loaderly-docs.voidksa.workers.dev/ar/docs/audio-visualizer/) · [تخصيص الثيم](https://loaderly-docs.voidksa.workers.dev/ar/docs/appearance/)
+[أول تعديل](https://loaderly.app/ar/docs/getting-started/) · [إعدادات الصوت](https://loaderly.app/ar/docs/sound-presets/) · [تصميم الطيف](https://loaderly.app/ar/docs/audio-visualizer/) · [تخصيص الثيم](https://loaderly.app/ar/docs/appearance/)
 
 ## الدعم والترخيص
+
+للمساعدة، راسل [support@loaderly.app](mailto:support@loaderly.app). وللتواصل العام، استخدم [hello@loaderly.app](mailto:hello@loaderly.app).
 
 [ادعم Void](https://creators.sa/en/voidksa) إذا رغبت في دعم تطوير Loaderly. الدعم اختياري.
 

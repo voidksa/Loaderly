@@ -10,6 +10,8 @@ import { retryMediaTransfer } from './downloadRetry';
 import { downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
 import {inspectPlaylist} from './playlist';
 import {trashMediaFiles} from './trashMedia';
+import {DuplicatePrompts} from './duplicatePrompt';
+import {youtubeThumbnailUrl} from '../shared/download-url/mediaIdentity';
 import {managedDownload,missingLibraryFiles,type DuplicateChoice} from './downloadConflicts';
 import { audioSpeedFilterChain, hasSpeedSound, normalizeSpeedMode } from '../shared/editor-project/speedSound';
 import { appearanceVariables, normalizeAppearance, defaultAppearance } from '../shared/app-preferences/appearance';
@@ -164,6 +166,7 @@ type PickMediaFileResult =
     };
 
 type DownloadUrlPayload = {
+  readonly rowId?:number;
   readonly knownFiles?: readonly string[];
   readonly locale?: 'en'|'ar';
   readonly url: string;
@@ -345,7 +348,9 @@ function handleTrustedIpc<Args extends unknown[], Result>(
   });
 }
 
+const duplicatePrompts=new DuplicatePrompts();
 function registerIpcHandlers() {
+  handleTrustedIpc('loaderly:duplicate-choice',(event,id:unknown,choice:unknown)=>({ok:duplicatePrompts.reply(event.sender.id,id,choice)}));
   handleTrustedIpc('loaderly:trash-media',(_event,paths:unknown)=>trashMediaFiles(paths,path=>shell.trashItem(path)));
   handleTrustedIpc('loaderly:visualizer-cancel',()=>visualizerExportController?.abort());
   handleTrustedIpc('loaderly:visualizer-export',async(event,payload:CopyMediaOutputPayload&{options:VisualizerVideoOptions;whole:boolean})=>{
@@ -401,6 +406,8 @@ function registerIpcHandlers() {
       try {
         if(process.platform==='win32'){
           await programUpdater.launchWindowsInstaller();isQuitting=true;app.quit();
+        }else if(process.platform==='darwin'){
+          await programUpdater.launchMacInstaller();isQuitting=true;app.quit();
         }else shell.showItemInFolder(await programUpdater.verifiedFile());
       }finally{installingProgramUpdate=false;}
     }
@@ -669,9 +676,10 @@ async function downloadUrl(payload: DownloadUrlPayload): Promise<DownloadUrlResu
     const {stdout}=await execFileAsync(toolPath,[...ytDlpIsolationArgs,'--no-playlist','--skip-download','--dump-single-json','--windows-filenames','--output','%(title).180B [%(id)s].%(ext)s',...(denoPath?['--js-runtimes',`deno:${denoPath}`]:[]),'--',normalizedUrl],{timeout:90_000,windowsHide:true,maxBuffer:8*1024*1024});
     const metadata=JSON.parse(stdout) as {title?:string;id?:string};
     if(typeof metadata.title!=='string'||!metadata.title.trim())throw Error('Could not read the download title. Try again.');
+    if(Number.isSafeInteger(payload.rowId)&&mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:download-identity',{rowId:payload.rowId,source:normalizedUrl,title:metadata.title,thumbnailUrl:youtubeThumbnailUrl(normalizedUrl)});
     const result=await managedDownload({directory:outputDirectory,title:metadata.title,identity:metadata.id,kind:payload.quality==='audio'?'audio':'video',knownFiles:Array.isArray(payload.knownFiles)?payload.knownFiles.filter((p):p is string=>typeof p==='string'):[],
       classify:async path=>{const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)return undefined;try{const {stdout}=await execFileAsync(ffprobe,['-v','error','-show_streams','-of','json',path],{timeout:15_000,windowsHide:true,maxBuffer:1024*1024});const streams=JSON.parse(stdout).streams as {codec_type:string;disposition?:{attached_pic?:number}}[];return streams.some(s=>s.codec_type==='video'&&!s.disposition?.attached_pic)?'video':streams.some(s=>s.codec_type==='audio')?'audio':undefined;}catch{return undefined;}},
-      choose:path=>confirmDuplicateDownload(path,metadata.title!,payload.locale==='ar'),
+      choose:path=>confirmDuplicateDownload(path,metadata.title!,normalizedUrl),
       download:stage=>runYtDlpDownload(toolPath,stage,normalizedPayload)});
     if(!result.ok||!result.path)return result;
     return {...result,...await mediaFileDetails(result.path),subtitlePath:result.subtitlePath};
@@ -686,11 +694,14 @@ async function downloadUrl(payload: DownloadUrlPayload): Promise<DownloadUrlResu
 }
 
 let duplicatePrompt:Promise<unknown>=Promise.resolve();
-function confirmDuplicateDownload(path:string,title:string,ar:boolean):Promise<DuplicateChoice>{
+function confirmDuplicateDownload(path:string,title:string,source:string):Promise<DuplicateChoice>{
+  const owner=mainWindowRef?.webContents;
   const prompt=duplicatePrompt.catch(()=>{}).then(async()=>{
-    const options={type:'question' as const,title:ar?'الملف موجود بالفعل':'Already downloaded',message:ar?'يوجد ملف من النوع نفسه بهذا الاسم.':'A file of the same type already has this name.',detail:`${title}\n\n${path}\n\n${ar?'تخطي يبقي الموجود. استبدال يحمّل الجديد أولًا. نسخة أخرى تضيف رقمًا إلى الاسم.':'Skip keeps the existing file. Replace downloads the new file first. Keep both adds a number to its name.'}`,buttons:ar?['تخطي','تنزيل نسخة أخرى','استبدال الموجود']:['Skip','Keep both','Replace existing'],defaultId:0,cancelId:0,noLink:true};
-    const response=await(mainWindowRef?dialog.showMessageBox(mainWindowRef,options):dialog.showMessageBox(options));
-    return (['skip','keep','replace'] as const)[response.response]??'skip';
+    if(!owner||owner.isDestroyed())return 'skip' as const;
+    const closed=()=>duplicatePrompts.cancel(owner.id);
+    owner.once('destroyed',closed);owner.once('render-process-gone',closed);
+    try{return await duplicatePrompts.request(owner.id,{path,title,source,thumbnailUrl:youtubeThumbnailUrl(source)},value=>owner.send('loaderly:duplicate-prompt',value));}
+    finally{owner.removeListener('destroyed',closed);owner.removeListener('render-process-gone',closed);}
   });
   duplicatePrompt=prompt;return prompt;
 }
@@ -2600,6 +2611,7 @@ function createMainWindow(): BrowserWindow {
   mainWindow.once('ready-to-show', () => {
     mainWindow.setMenuBarVisibility(false);
     mainWindow.show();
+    if(!fallbackLoaded)void programUpdater?.acknowledgeStartup();
   });
 
   mainWindow.on('close', (event) => {
@@ -3125,7 +3137,7 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate(macApplicationMenu(
       () => runTrayAction('settings'),
-      () => { void shell.openExternal('https://loaderly-docs.voidksa.workers.dev/docs/'); }
+      () => { void shell.openExternal('https://loaderly.app/docs/'); }
     )) : null);
     registerMediaProtocol();
 

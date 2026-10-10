@@ -1,7 +1,7 @@
 {
   "name": "loaderly",
   "productName": "Loaderly",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
@@ -158,7 +158,7 @@
     "name": "VOIDKSA",
     "url": "https://github.com/voidksa"
   },
-  "homepage": "https://loaderly-docs.voidksa.workers.dev",
+  "homepage": "https://loaderly.app",
   "license": "SEE LICENSE IN LICENSE.md",
   "desktopName": "com.loaderly.app.desktop"
 }

@@ -27,8 +27,8 @@ The code contains the look only. Its motion follows your audio, so the bars will
 
 ## Share your version
 
-Open **Community library > Create & share** in Loaderly. Sign in with GitHub, create or import a theme, visualizer or sound preset, then choose **Publish in Loaderly**. Your design appears in the app and on the [community website](https://loaderly-docs.voidksa.workers.dev/community/). Use **Publish update** after editing. GitHub is used for sign-in; publishing happens in Loaderly.
+Open **Community library > Create & share** in Loaderly. Sign in with GitHub, create or import a theme, visualizer or sound preset, then choose **Publish in Loaderly**. Your design appears in the app and on the [community website](https://loaderly.app/community/). Use **Publish update** after editing. GitHub is used for sign-in; publishing happens in Loaderly.
 
-[Theme guide](https://loaderly-docs.voidksa.workers.dev/docs/appearance/) · [Visualizer designer and guide](https://loaderly-docs.voidksa.workers.dev/docs/audio-visualizer/#visualizer-builder)
+[Theme guide](https://loaderly.app/docs/appearance/) · [Visualizer designer and guide](https://loaderly.app/docs/audio-visualizer/#visualizer-builder)
 
 Both examples were imported, applied and copied back out of Loaderly 2.0. The previews were captured in the app using the included example codes.

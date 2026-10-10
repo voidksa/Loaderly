@@ -9,6 +9,9 @@ type LoaderlySubtitleCue = {
 declare global {
   interface Window {
     readonly loaderly?: {
+      readonly onDuplicatePrompt:(callback:(value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt)=>void)=>()=>void;
+      readonly duplicateChoice:(id:string,choice:import('../shared/download-url/mediaIdentity').DuplicateChoice)=>Promise<{ok:boolean}>;
+      readonly onDownloadIdentity:(callback:(value:import('../shared/download-url/mediaIdentity').DownloadIdentity)=>void)=>()=>void;
       readonly appName: string;
       readonly appVersion: string;
       readonly trashMedia:(paths:string[])=>Promise<{removed:string[];failed:string[]}>;
@@ -102,7 +105,8 @@ declare global {
       >;
       readonly filePathForDrop: (file: File) => string;
       readonly downloadUrl: (payload: {
-        readonly knownFiles?: readonly string[];
+        readonly rowId?:number;
+    readonly knownFiles?: readonly string[];
         readonly locale?: 'en'|'ar';
         readonly url: string;
         readonly quality: 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';

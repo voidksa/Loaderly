@@ -2,6 +2,26 @@
 
 Features, improvements and fixes in each Loaderly release.
 
+## 2.1.3 - 2026-10-10
+
+- Preserve the starting video when opening a YouTube Mix, so the playlist picker can read the mix instead of an unsupported playlist page.
+- Use lightweight playlist rows with thumbnails, clear selection controls, themed status messages and Arabic recovery instructions.
+- Prevent selecting dialog interface text while preserving text selection in editable fields.
+- Show download titles and artwork before completion, including duplicate prompts and removal confirmations.
+- Use Loaderly's theme for duplicate choices and other app dialogs. Explain when an entry has no local file to delete.
+- On macOS, future in-app updates replace the running app and reopen the new version after it exits. Keep a recovery copy until the new app starts.
+- Move official website links to loaderly.app and add support and contact email addresses.
+
+## 2.1.2 - 2026-10-10
+
+- Show the complete installed version and localized release notes, with a compact update notice and themed download progress.
+- Check for updates every 15 minutes on Mac and Linux while the app is open, and on return after being away.
+- Use lighter library rows, consistent gallery sizes and separate scrollbar spacing.
+- Check download-folder access and show practical recovery messages for missing drives or unavailable folders.
+- Retry a refused media download once using a fresh request.
+- Align the live theme preview with its customization controls.
+- Distribute Windows through Microsoft Store, which manages updates for Store installations.
+
 ## 2.1.1 - 2026-10-10
 
 - Windows setup handles Arabic and redirected desktop paths when creating shortcuts. If a shortcut cannot be created, setup completes with instructions for opening the app.
@@ -68,7 +88,7 @@ Loaderly 2.0 introduces a **new visual identity and a completely redesigned app 
 - Removed the extra rectangular focus border inside the download URL field.
 - Updated the Windows installer while preserving existing user media and settings during updates.
 
-Explore the [English documentation](https://loaderly-docs.voidksa.workers.dev/docs/) or [Arabic documentation](https://loaderly-docs.voidksa.workers.dev/ar/docs/).
+Explore the [English documentation](https://loaderly.app/docs/) or [Arabic documentation](https://loaderly.app/ar/docs/).
 
 ## 1.1.0 - 2026-05-23
 

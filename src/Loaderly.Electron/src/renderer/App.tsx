@@ -5,6 +5,8 @@ import {TimeField} from './editor/TimeField';
 import {formatTimecode} from '../shared/editor-timeline/timecode';
 import {SoundPresetControls} from './editor/SoundPresetControls';
 import {PlaylistPicker} from './editor/PlaylistPicker';
+import {DuplicateDownload} from './editor/DuplicateDownload';
+import {youtubeThumbnailUrl,type DuplicateDownloadPrompt} from '../shared/download-url/mediaIdentity';
 import {LibraryRemoval} from './editor/LibraryRemoval';
 import {youtubePlaylistUrl,type PlaylistEntry} from '../shared/download-url/playlist';
 import { downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
@@ -572,7 +574,7 @@ function readSavedMediaRows(): readonly MediaRow[] {
 
         const savedFileUrl = typeof row.fileUrl === 'string' && isLoaderlyMediaUrl(row.fileUrl) ? row.fileUrl : undefined;
         const savedThumbnailUrl =
-          typeof row.thumbnailUrl === 'string' && isLoaderlyMediaUrl(row.thumbnailUrl) ? row.thumbnailUrl : undefined;
+          typeof row.thumbnailUrl === 'string' && (isLoaderlyMediaUrl(row.thumbnailUrl)||row.thumbnailUrl===youtubeThumbnailUrl(source??'')) ? row.thumbnailUrl : undefined;
 
         return {
           id: typeof row.id === 'number' && Number.isFinite(row.id) ? row.id : Date.now() + index,
@@ -1074,7 +1076,7 @@ export function App() {
     | undefined
   >(undefined);
   const [preferences, setPreferences] = useState<AppPreferences>(initialPreferences);
-  const documentationUrl = `https://loaderly-docs.voidksa.workers.dev/${preferences.locale === 'ar' ? 'ar/' : ''}docs/`;
+  const documentationUrl = `https://loaderly.app/${preferences.locale === 'ar' ? 'ar/' : ''}docs/`;
   const [showDiscovery,setShowDiscovery]=useState(()=>localStorage.getItem('loaderly:discovery:2.1')!=='dismissed');
   const [activeNav, setActiveNav] = useState<NavigationKey>('library');
   const [communityCreatorOpen,setCommunityCreatorOpen]=useState(false);
@@ -1109,6 +1111,9 @@ export function App() {
   const [urlValue, setUrlValue] = useState('');
   const [librarySelecting,setLibrarySelecting]=useState(false);
   const [librarySelection,setLibrarySelection]=useState<number[]>([]);
+  const [duplicateDownload,setDuplicateDownload]=useState<DuplicateDownloadPrompt>();
+  useEffect(()=>window.loaderly?.onDuplicatePrompt(setDuplicateDownload),[]);
+  useEffect(()=>window.loaderly?.onDownloadIdentity(identity=>setMediaRows(rows=>rows.map(row=>row.id===identity.rowId?{...row,title:identity.title,thumbnailUrl:identity.thumbnailUrl??row.thumbnailUrl}:row))),[]);
   const [libraryRemoval,setLibraryRemoval]=useState<number[]>();
   const [playlistRequest,setPlaylistRequest]=useState<{url:string;resolve:(entries:PlaylistEntry[]|null)=>void}>();
   const playlistSelections=useRef(new Map<string,string[]>());
@@ -2670,6 +2675,7 @@ export function App() {
       return {
         id: allocateMediaId(),
         title,
+        thumbnailUrl:youtubeThumbnailUrl(source),
         source,
         duration: '00:00',
         status: 'queued',
@@ -2776,6 +2782,7 @@ export function App() {
       const requestedQuality = qualityOverride ?? queuedRow?.quality ?? preferences.quality;
       const shouldWriteSubtitles = preferences.subtitleDownloadMode === 'auto' && requestedQuality !== 'audio';
       const result = await window.loaderly.downloadUrl({
+        rowId,
         knownFiles:mediaRowsRef.current.flatMap(row=>row.filePath?[row.filePath]:[]),
         locale:preferences.locale,
         url: source,
@@ -9345,7 +9352,8 @@ export function App() {
           {renderActiveSurface()}
         </section>
       </div>
-      {libraryRemoval&&<LibraryRemoval ar={preferences.locale==='ar'} names={mediaRows.filter(row=>libraryRemoval.includes(row.id)).map(displayMediaTitle)} canTrash={mediaRows.some(row=>libraryRemoval.includes(row.id)&&!!row.filePath)} onCancel={()=>setLibraryRemoval(undefined)} onRemove={removeLibrarySelection}/>}
+      {duplicateDownload&&<DuplicateDownload key={duplicateDownload.id} request={duplicateDownload} ar={preferences.locale==='ar'} onChoose={choice=>{setDuplicateDownload(undefined);void window.loaderly?.duplicateChoice(duplicateDownload.id,choice);}}/>}
+      {libraryRemoval&&<LibraryRemoval ar={preferences.locale==='ar'} items={mediaRows.filter(row=>libraryRemoval.includes(row.id)).map(row=>({title:displayMediaTitle(row),source:mediaSourceLabel(row),thumbnailUrl:row.thumbnailUrl??youtubeThumbnailUrl(row.source??'')}))} canTrash={mediaRows.some(row=>libraryRemoval.includes(row.id)&&!!row.filePath)} onCancel={()=>setLibraryRemoval(undefined)} onRemove={removeLibrarySelection}/>}
       {playlistRequest&&<PlaylistPicker key={playlistRequest.url} url={playlistRequest.url} ar={preferences.locale==='ar'} initialSelection={playlistSelections.current.get(playlistRequest.url)} onRemember={ids=>playlistSelections.current.set(playlistRequest.url,ids)} onDone={entries=>{setPlaylistRequest(undefined);playlistRequest.resolve(entries);}}/>}
     </main>
   );

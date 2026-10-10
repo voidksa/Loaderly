@@ -1,0 +1,12 @@
+import {useEffect,useRef,useState} from 'react';
+import {Copy,Download,Library,X} from 'lucide-react';
+import type {DuplicateChoice,DuplicateDownloadPrompt} from '../../shared/download-url/mediaIdentity';
+import {MediaIdentity} from './MediaIdentity';
+
+export function DuplicateDownload({request,ar,onChoose}:{request:DuplicateDownloadPrompt;ar:boolean;onChoose:(choice:DuplicateChoice)=>void}) {
+  const dialog=useRef<HTMLDialogElement>(null),[choice,setChoice]=useState<DuplicateChoice>('skip');
+  const t=(en:string,a:string)=>ar?a:en;
+  useEffect(()=>{dialog.current?.showModal();},[]);
+  const options=[{id:'skip' as const,icon:Library,title:t('Keep the existing file','الاحتفاظ بالملف الموجود'),detail:t('Skip this download. Your saved file stays as it is.','تخطي هذا التنزيل والإبقاء على الملف الموجود.')},{id:'keep' as const,icon:Copy,title:t('Download another copy','تنزيل نسخة أخرى'),detail:t('Save both files with different names.','حفظ الملفين باسمين مختلفين.')},{id:'replace' as const,icon:Download,title:t('Replace the existing file','استبدال الملف الموجود'),detail:t('Download and check the new file before replacing the old one.','تنزيل الملف الجديد والتحقق منه قبل استبدال القديم.')}];
+  return <dialog ref={dialog} className="app-dialog library-removal duplicate-download" dir={ar?'rtl':'ltr'} aria-labelledby="duplicate-title" onCancel={e=>{e.preventDefault();onChoose('skip');}}><header className="app-dialog-heading"><div><h2 id="duplicate-title">{t('Already in your downloads','المقطع موجود عندك')}</h2><p>{t('Choose what to do with this copy.','اختر ما تريد عمله بهذه النسخة.')}</p></div><button className="button secondary" aria-label={t('Close','إغلاق')} onClick={()=>onChoose('skip')}><X size={17}/></button></header><MediaIdentity item={request}/><div className="dialog-choices" role="radiogroup" aria-label={t('Duplicate download','المقطع المكرر')}>{options.map(option=><label key={option.id}><input type="radio" name="duplicate" checked={choice===option.id} onChange={()=>setChoice(option.id)}/><option.icon size={18}/><span><strong>{option.title}</strong><small>{option.detail}</small></span></label>)}</div><footer><button className="button secondary" autoFocus onClick={()=>onChoose('skip')}>{t('Cancel','إلغاء')}</button><button className="button primary" onClick={()=>onChoose(choice)}>{choice==='skip'?t('Keep existing','الاحتفاظ بالموجود'):choice==='keep'?t('Download copy','تنزيل نسخة'):t('Download and replace','تنزيل واستبدال')}</button></footer></dialog>;
+}

@@ -1,11 +1,13 @@
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {PLAYLIST_LIMIT,parsePlaylist,youtubePlaylistUrl,type PlaylistResult} from '../shared/download-url/playlist';
+import {PLAYLIST_LIMIT,parsePlaylist,youtubePlaylistUrl,playlistErrorMessage,type PlaylistErrorCode,type PlaylistResult} from '../shared/download-url/playlist';
+
+const failure=(code:PlaylistErrorCode):PlaylistResult=>({ok:false,code,message:playlistErrorMessage(code)});
 
 export async function inspectPlaylist(value:unknown,toolPath:string|undefined,signal:AbortSignal):Promise<PlaylistResult> {
   const url=youtubePlaylistUrl(value);
-  if(!url)return {ok:false,message:'Enter a YouTube playlist link.'};
-  if(!toolPath)return {ok:false,message:'Install yt-dlp in Tools before opening a playlist.'};
+  if(!url)return failure('invalid_link');
+  if(!toolPath)return failure('missing_tool');
   try {
     const {stdout}=await promisify(execFile)(toolPath,[
       '--ignore-config','--no-plugin-dirs','--no-exec','--flat-playlist','--yes-playlist',
@@ -14,9 +16,9 @@ export async function inspectPlaylist(value:unknown,toolPath:string|undefined,si
       '--playlist-end',String(PLAYLIST_LIMIT+1),'--',url
     ],{windowsHide:true,timeout:90000,maxBuffer:16*1024*1024,signal});
     const playlist=parsePlaylist(JSON.parse(stdout));
-    if(!playlist.entries.length)return {ok:false,message:'No accessible videos were found. Check that the playlist is public or unlisted.'};
+    if(!playlist.entries.some(entry=>entry.available))return failure('empty');
     return {ok:true,playlist};
   } catch {
-    return {ok:false,message:signal.aborted?'Playlist loading canceled.':'Could not load this playlist. Check the link and your connection, then try again.'};
+    return failure(signal.aborted?'canceled':new URL(url).searchParams.get('list')?.startsWith('RD')?'mix_unavailable':'unavailable');
   }
 }

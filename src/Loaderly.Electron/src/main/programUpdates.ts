@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { releaseOrigin, validateRelease, newerVersion, type ReleaseAsset, type UpdateState } from '../shared/releases';
 import { updatePublicKey } from '../shared/updatePublicKey';
+import {acknowledgeMacUpdate,prepareMacUpdate,MacInstallError} from './macUpdate';
 
 export function verifiedManifest(envelope: unknown, key=updatePublicKey) {
   const e=envelope as {payload:string;signature:string};
@@ -21,6 +22,7 @@ export class ProgramUpdates {
   constructor(private directory:string, version:string, private notify:(state:UpdateState)=>void,private publicKey=updatePublicKey,private storeManaged=false) {this.state={phase:'idle',current:version,automatic:!storeManaged,...(storeManaged?{distribution:'store' as const}:{})};}
   private emit(patch:Partial<UpdateState>) {this.state={...this.state,...patch};this.notify(this.state);return this.state;}
   async initialize() {if(this.storeManaged)return this.state;try{const p=JSON.parse(await readFile(join(this.directory,'preferences.json'),'utf8'));this.state.automatic=p.automatic!==false;}catch{/* first run */}return this.state;}
+  async acknowledgeStartup() {await acknowledgeMacUpdate(this.directory,process.execPath,this.state.current);}
   async preferences(automatic:boolean) {if(this.storeManaged)return this.state;await mkdir(this.directory,{recursive:true});await writeFile(join(this.directory,'preferences.json'),JSON.stringify({automatic:automatic===true}));return this.emit({automatic:automatic===true});}
   async check() {
     if(this.storeManaged)return this.state;
@@ -69,5 +71,11 @@ export class ProgramUpdates {
     if(process.platform!=='win32')throw Error('Use the platform installer');
     const child=spawn(path,['--update','--launch'],{detached:true,stdio:'ignore',windowsHide:false});
     await new Promise<void>((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
+  }
+  async launchMacInstaller() {
+    const path=await this.verifiedFile();
+    this.emit({installIssue:undefined});
+    try {await prepareMacUpdate(path,process.execPath,this.state.version!,this.directory,this.asset!.sha256);}
+    catch(error){this.emit({installIssue:error instanceof MacInstallError?error.issue:'installation'});throw error;}
   }
 }

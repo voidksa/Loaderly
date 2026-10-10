@@ -10,6 +10,9 @@ type SubtitleCue = {
 declare const __LOADERLY_VERSION__: string;
 
 contextBridge.exposeInMainWorld('loaderly', {
+  onDuplicatePrompt:(callback:(value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt)=>void)=>{const handler=(_event:IpcRendererEvent,value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt)=>callback(value);ipcRenderer.on('loaderly:duplicate-prompt',handler);return()=>ipcRenderer.removeListener('loaderly:duplicate-prompt',handler);},
+  duplicateChoice:(id:string,choice:import('../shared/download-url/mediaIdentity').DuplicateChoice)=>ipcRenderer.invoke('loaderly:duplicate-choice',id,choice),
+  onDownloadIdentity:(callback:(value:import('../shared/download-url/mediaIdentity').DownloadIdentity)=>void)=>{const handler=(_event:IpcRendererEvent,value:import('../shared/download-url/mediaIdentity').DownloadIdentity)=>callback(value);ipcRenderer.on('loaderly:download-identity',handler);return()=>ipcRenderer.removeListener('loaderly:download-identity',handler);},
   appName: `Loaderly ${__LOADERLY_VERSION__}`,
   appVersion: __LOADERLY_VERSION__,
   trashMedia:(paths:string[])=>ipcRenderer.invoke('loaderly:trash-media',paths),
@@ -107,6 +110,7 @@ contextBridge.exposeInMainWorld('loaderly', {
     >,
   filePathForDrop: (file: File) => webUtils.getPathForFile(file),
   downloadUrl: (payload: {
+    readonly rowId?:number;
     readonly knownFiles?: readonly string[];
     readonly locale?: 'en'|'ar';
     readonly url: string;
