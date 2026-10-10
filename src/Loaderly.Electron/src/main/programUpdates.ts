@@ -18,11 +18,12 @@ export class ProgramUpdates {
   private asset?: ReleaseAsset;
   private file?: string;
   private controller?: AbortController;
-  constructor(private directory:string, version:string, private notify:(state:UpdateState)=>void,private publicKey=updatePublicKey) {this.state={phase:'idle',current:version,automatic:true};}
+  constructor(private directory:string, version:string, private notify:(state:UpdateState)=>void,private publicKey=updatePublicKey,private storeManaged=false) {this.state={phase:'idle',current:version,automatic:!storeManaged,...(storeManaged?{distribution:'store' as const}:{})};}
   private emit(patch:Partial<UpdateState>) {this.state={...this.state,...patch};this.notify(this.state);return this.state;}
-  async initialize() {try{const p=JSON.parse(await readFile(join(this.directory,'preferences.json'),'utf8'));this.state.automatic=p.automatic!==false;}catch{/* first run */}return this.state;}
-  async preferences(automatic:boolean) {await mkdir(this.directory,{recursive:true});await writeFile(join(this.directory,'preferences.json'),JSON.stringify({automatic:automatic===true}));return this.emit({automatic:automatic===true});}
+  async initialize() {if(this.storeManaged)return this.state;try{const p=JSON.parse(await readFile(join(this.directory,'preferences.json'),'utf8'));this.state.automatic=p.automatic!==false;}catch{/* first run */}return this.state;}
+  async preferences(automatic:boolean) {if(this.storeManaged)return this.state;await mkdir(this.directory,{recursive:true});await writeFile(join(this.directory,'preferences.json'),JSON.stringify({automatic:automatic===true}));return this.emit({automatic:automatic===true});}
   async check() {
+    if(this.storeManaged)return this.state;
     if(['checking','downloading','ready'].includes(this.state.phase)) return this.state;
     this.emit({phase:'checking',message:undefined});
     try {
@@ -38,6 +39,7 @@ export class ProgramUpdates {
   }
   cancel() {this.controller?.abort();}
   async download() {
+    if(this.storeManaged)return this.state;
     if(!this.asset || !['available','error'].includes(this.state.phase)) return this.state;
     const a=this.asset, controller=new AbortController();this.controller=controller;
     const timeout=setTimeout(()=>controller.abort(),30*60*1000);
@@ -56,6 +58,7 @@ export class ProgramUpdates {
     finally{clearTimeout(timeout);this.controller=undefined;await unlink(part).catch(()=>{});}
   }
   async verifiedFile() {
+    if(this.storeManaged)throw Error('Updates are managed by Microsoft Store');
     if(!this.file||!this.asset||this.state.phase!=='ready')throw Error('No verified update');
     const hash=createHash('sha256');for await(const data of createReadStream(this.file))hash.update(data);
     if(hash.digest('hex')!==this.asset.sha256) {this.emit({phase:'error',message:'The downloaded update changed. Download it again.'});throw Error('Update file changed');}

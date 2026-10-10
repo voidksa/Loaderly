@@ -1,6 +1,6 @@
 export type ReleaseAsset = { platform: string; arch: string; format: 'exe'|'zip'|'AppImage'|'deb'; url: string; size: number; sha256: string };
 export type ReleaseManifest = { schema: 1; version: string; notes: string; publishedAt: string; assets: ReleaseAsset[] };
-export type UpdateState = { phase: 'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'error'; current: string; version?: string; notes?: string; progress?: number; checkedAt?: string; message?: string; automatic: boolean };
+export type UpdateState = { phase: 'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'error'; current: string; version?: string; notes?: string; progress?: number; checkedAt?: string; message?: string; automatic: boolean; distribution?: 'store' };
 export const releaseOrigin = 'https://loaderly-docs.voidksa.workers.dev';
 export function versionParts(version: string): number[] | undefined {
   if (!/^\d+\.\d+\.\d+$/.test(version)) return;

@@ -378,6 +378,10 @@ function registerIpcHandlers() {
     throw Error('Invalid account action');
   });
   handleTrustedIpc('loaderly:program-update', async (_event, action:string, automatic?:boolean) => {
+    if(process.windowsStore){
+      if(action==='check')await shell.openExternal('ms-windows-store://pdp/?ProductId=9N1R1H10HXR7');
+      return programUpdater.state;
+    }
     if(action==='check')return programUpdater.check();
     if(action==='download')return programUpdater.download();
     if(action==='cancel'){programUpdater.cancel();return programUpdater.state;}
@@ -3114,9 +3118,9 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
       return;
     }
 
-    programUpdater=new ProgramUpdates(join(app.getPath('userData'),'Updates'),app.getVersion(),state=>{if(mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:program-update-state',state);});
+    programUpdater=new ProgramUpdates(join(app.getPath('userData'),'Updates'),app.getVersion(),state=>{if(mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:program-update-state',state);},undefined,process.windowsStore===true);
     await programUpdater.initialize();
-    if(app.isPackaged){setTimeout(()=>{if(programUpdater.state.automatic)void programUpdater.check();},30000);setInterval(()=>{if(programUpdater.state.automatic)void programUpdater.check();},12*60*60*1000).unref();}
+    if(app.isPackaged&&!process.windowsStore){setTimeout(()=>{if(programUpdater.state.automatic)void programUpdater.check();},30000);setInterval(()=>{if(programUpdater.state.automatic)void programUpdater.check();},12*60*60*1000).unref();}
     registerIpcHandlers();
     mainWindowRef = createMainWindow();
     createTray();
