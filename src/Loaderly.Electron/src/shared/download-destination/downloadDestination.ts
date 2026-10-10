@@ -25,15 +25,15 @@ export function platformFolderForSource(source: string): string {
 }
 
 export function resolveDownloadDirectory(baseDirectory: string, source: string, groupByPlatform: boolean): string {
-  const normalizedBase = baseDirectory.replace(/[\\/]+$/, '');
+  const separator = baseDirectory.includes('\\') ? '\\' : '/';
+  const strippedBase = baseDirectory.replace(/[\\/]+$/, '');
+  const normalizedBase = !strippedBase ? separator : /^[a-z]:$/i.test(strippedBase) ? strippedBase + separator : strippedBase;
 
   if (!groupByPlatform) {
     return normalizedBase;
   }
 
-  const separator = normalizedBase.includes('\\') ? '\\' : '/';
-
-  return `${normalizedBase}${separator}${platformFolderForSource(source)}`;
+  return `${normalizedBase}${/[\\/]$/.test(normalizedBase) ? '' : separator}${platformFolderForSource(source)}`;
 }
 
 export function defaultLoaderlyDownloadDirectory(downloadsDirectory: string): string {

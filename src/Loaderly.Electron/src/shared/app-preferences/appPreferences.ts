@@ -107,7 +107,7 @@ export function normalizePreferences(value: unknown): AppPreferences {
     locale: resolveAppLocale(record.locale),
     quality: resolveDownloadQuality(record.quality),
     downloadStartMode: resolveDownloadStartMode(record.downloadStartMode),
-    downloadDirectory: resolvePreferenceText(record.downloadDirectory),
+    downloadDirectory: typeof record.downloadDirectory === 'string' && record.downloadDirectory.startsWith('/') ? record.downloadDirectory : resolvePreferenceText(record.downloadDirectory),
     groupDownloadsByPlatform: record.groupDownloadsByPlatform !== false,
     subtitleDownloadMode: resolveSubtitleDownloadMode(record.subtitleDownloadMode),
     subtitleLanguageProfile: resolveSubtitleLanguageProfile(record.subtitleLanguageProfile),

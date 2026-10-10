@@ -13,7 +13,7 @@ Bring in a link or a local file, refine your clip and export it from one workspa
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10 / 11, 64-bit | [Windows installer](https://loaderly-docs.voidksa.workers.dev/download?platform=windows) |
+| Windows 10 / 11, 64-bit | [Get it from Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
 | Mac with Apple Silicon | [Apple Silicon ZIP](https://loaderly-docs.voidksa.workers.dev/download?platform=macArm) |
 | Mac with Intel | [Intel ZIP](https://loaderly-docs.voidksa.workers.dev/download?platform=macIntel) |
 | Ubuntu / Debian, 64-bit | [DEB package](https://loaderly-docs.voidksa.workers.dev/download?platform=linuxDeb) |

@@ -5,6 +5,9 @@ import {applyWindowAppearance} from './windowAppearance';
 import { CommunityRatings } from './communityRatings';
 import { ProgramUpdates } from './programUpdates';
 import { AutomaticUpdateChecks } from './automaticUpdateChecks';
+import { prepareDownloadDirectory } from './downloadDirectory';
+import { retryMediaTransfer } from './downloadRetry';
+import { downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
 import {inspectPlaylist} from './playlist';
 import {trashMediaFiles} from './trashMedia';
 import {managedDownload,missingLibraryFiles,type DuplicateChoice} from './downloadConflicts';
@@ -462,6 +465,13 @@ function registerIpcHandlers() {
     return { canceled: false, ...(await mediaFileDetails(path)) };
   });
 
+  handleTrustedIpc('loaderly:check-download-directory', async (_event, requested: unknown) => {
+    const path = typeof requested === 'string' && requested ? requested : defaultDownloadBaseDirectory();
+    if (!isAbsolute(path) || path.length > 4096) return { path, problem: 'unavailable' };
+    const result = await prepareDownloadDirectory(path, process.platform, !requested);
+    return { path, problem: result ? downloadFolderProblem(result) : undefined };
+  });
+
   handleTrustedIpc('loaderly:pick-download-directory', async (event): Promise<{ readonly canceled: true } | { readonly canceled: false; readonly path: string }> => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: OpenDialogOptions = {
@@ -647,11 +657,12 @@ async function downloadUrl(payload: DownloadUrlPayload): Promise<DownloadUrlResu
   }
 
   const outputDirectory = resolveDownloadDirectory(
-    normalizedPayload.downloadDirectory?.trim() || defaultDownloadBaseDirectory(),
+    normalizedPayload.downloadDirectory || defaultDownloadBaseDirectory(),
     normalizedPayload.url,
     normalizedPayload.groupDownloadsByPlatform !== false
   );
-  await mkdir(outputDirectory, { recursive: true });
+  const directoryError = await prepareDownloadDirectory(outputDirectory);
+  if (directoryError) return { ok: false, message: directoryError };
 
   try {
     const denoPath=resolveToolPath('deno');
@@ -729,11 +740,11 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
 
   let stdout = '';
   try {
-    const result = await execFileAsync(toolPath, args, {
+    const result = await retryMediaTransfer(() => execFileAsync(toolPath, args, {
       timeout: 1000 * 60 * 30,
       windowsHide: true,
       maxBuffer: 1024 * 1024 * 4
-    });
+    }));
     stdout = result.stdout;
   } catch (error) {
     const message = execFailureMessage(error);

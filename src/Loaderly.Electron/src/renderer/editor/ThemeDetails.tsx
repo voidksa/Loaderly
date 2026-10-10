@@ -4,8 +4,8 @@ import {appearanceVariables, opacityKeys, type Appearance} from '../../shared/ap
 
 export function ThemePreview({value,dark,ar}:{value:Appearance;dark:boolean;ar:boolean}) {
  const t=(en:string,a:string)=>ar?a:en;
- return <div className="theme-preview-wrap"><span>{t('Live preview','معاينة مباشرة')}</span><div className="theme-live-preview" style={appearanceVariables(value,dark) as CSSProperties} aria-label={t('Theme preview','معاينة الثيم')}>
-  <header><strong>Loaderly</strong><span>● ● ●</span></header>
+ return <div className="theme-preview-wrap"><div className="theme-live-preview" style={appearanceVariables(value,dark) as CSSProperties} aria-label={t('Theme preview','معاينة الثيم')}>
+  <header><strong>Loaderly</strong><span className="theme-preview-label">{t('Live preview','معاينة مباشرة')}</span><span aria-hidden="true">● ● ●</span></header>
   <div className="theme-preview-body"><aside><Library size={17}/><span>{t('Library','المكتبة')}</span><Music2 size={17}/><span>{t('Audio','الصوت')}</span><SlidersHorizontal size={17}/><span>{t('Preferences','الإعدادات')}</span></aside>
   <section><strong>{t('Make it yours','صمّمه بطريقتك')}</strong><p>{t('Your colors, your workspace.','ألوانك ومساحتك الخاصة.')}</p><div className="theme-preview-panel"><Music2 size={22}/><div><strong>{t('Evening melody','لحن المساء')}</strong><small>03:24</small></div><span className="theme-preview-action">▶</span></div><div className="theme-preview-menu">{t('Menus & tooltips','القوائم والتلميحات')}</div></section></div>
  </div></div>;

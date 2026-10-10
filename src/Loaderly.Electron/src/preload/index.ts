@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('loaderly', {
     ipcRenderer.invoke('loaderly:show-item-in-folder', path) as Promise<{ readonly ok: boolean }>,
   pickDownloadDirectory: () =>
     ipcRenderer.invoke('loaderly:pick-download-directory') as Promise<{ readonly canceled: true } | { readonly canceled: false; readonly path: string }>,
+  checkDownloadDirectory: (path: string) => ipcRenderer.invoke('loaderly:check-download-directory', path) as Promise<import('../shared/download-destination/downloadFolderError').DownloadFolderCheck>,
   pickSubtitleFile: () =>
     ipcRenderer.invoke('loaderly:pick-subtitle-file') as Promise<
       | { readonly canceled: true }

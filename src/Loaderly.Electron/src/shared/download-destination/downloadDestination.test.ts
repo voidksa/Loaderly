@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultLoaderlyDownloadDirectory, platformFolderForSource, resolveDownloadDirectory } from './downloadDestination';
+import { normalizePreferences } from '../app-preferences/appPreferences';
 
 describe('download destination', () => {
   it('groups known video platforms into stable folders', () => {
@@ -21,5 +22,12 @@ describe('download destination', () => {
   it('defaults Loaderly downloads to the user Downloads folder', () => {
     expect(defaultLoaderlyDownloadDirectory('C:\\Users\\voidk\\Downloads')).toBe('C:\\Users\\voidk\\Downloads\\Loaderly');
     expect(defaultLoaderlyDownloadDirectory('/Users/voidk/Downloads/')).toBe('/Users/voidk/Downloads/Loaderly');
+  });
+  it('keeps drive roots absolute and preserves spaces in chosen folder names', () => {
+    expect(resolveDownloadDirectory('R:\\', 'https://youtu.be/example', false)).toBe('R:\\');
+    expect(resolveDownloadDirectory('R:\\', 'https://youtu.be/example', true)).toBe('R:\\YouTube');
+    expect(resolveDownloadDirectory('/', 'https://youtu.be/example', false)).toBe('/');
+    expect(resolveDownloadDirectory('/Volumes/R play list 1 ', 'https://youtu.be/example', false)).toBe('/Volumes/R play list 1 ');
+    expect(normalizePreferences({ downloadDirectory: '/Volumes/R play list 1 ' }).downloadDirectory).toBe('/Volumes/R play list 1 ');
   });
 });

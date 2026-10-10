@@ -7,6 +7,9 @@ import {SoundPresetControls} from './editor/SoundPresetControls';
 import {PlaylistPicker} from './editor/PlaylistPicker';
 import {LibraryRemoval} from './editor/LibraryRemoval';
 import {youtubePlaylistUrl,type PlaylistEntry} from '../shared/download-url/playlist';
+import { downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
+import { friendlyDownloadError } from '../shared/download-recovery/downloadErrorMessage';
+import { DownloadFolderSetting } from './editor/DownloadFolderSetting';
 import {encodeSoundPreset} from '../shared/audioPreset';
 import { VisualizerVideoExport } from './editor/VisualizerVideoExport';
 import {videoDimensions,type VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
@@ -61,7 +64,6 @@ import {
   Film,
   FolderOpen,
   Gauge,
-  HardDrive,
   Heart,
   Users,
   Image,
@@ -109,7 +111,6 @@ import {
   ThemeMode
 } from '../shared/app-preferences/appPreferences';
 import {
-  isRecoverableDownloadFileError,
   subtitlesSkippedRateLimitMessage,
   subtitlesSkippedUnavailableMessage
 } from '../shared/download-recovery/downloadRecovery';
@@ -624,66 +625,6 @@ function formatDuration(seconds: number | undefined): string {
 
 function formatElapsed(ms: number): string {
   return formatTimecode(Math.floor(ms/1000),false);
-}
-
-function friendlyDownloadError(message: string, locale: AppLocale): string {
-  const normalized = message.replace(/\s+/g, ' ').trim();
-
-  if (/yt-dlp was not found/i.test(normalized)) {
-    return locale === 'ar' ? 'أداة yt-dlp غير موجودة. افتح الأدوات وشغل فحص الأدوات.' : 'yt-dlp was not found. Open Tools and run the tool check.';
-  }
-
-  if (/Download bridge is not available/i.test(normalized)) {
-    return locale === 'ar' ? 'جسر التنزيل غير متاح في هذه النافذة.' : 'Download bridge is not available in this window.';
-  }
-
-  if (/WinError 10013|forbidden by its access permissions/i.test(normalized)) {
-    return locale === 'ar'
-      ? 'ويندوز منع اتصال yt-dlp بالإنترنت. تأكد من السماح للبرنامج في الجدار الناري أو الحماية.'
-      : 'Windows blocked yt-dlp network access. Allow Loaderly/yt-dlp through firewall or security settings.';
-  }
-
-  if (/429|Too Many Requests/i.test(normalized)) {
-    return locale === 'ar'
-      ? 'يوتيوب حدّ الطلبات مؤقتًا لهذا الرابط. جرّب لاحقًا، أو استخدم شبكة مختلفة، أو استورد الملف محليًا إذا كان متوفرًا.'
-      : 'YouTube temporarily rate-limited this request. Try again later, use another network, or import the file locally if available.';
-  }
-
-  if (isRecoverableDownloadFileError(normalized)) {
-    return locale === 'ar'
-      ? 'ويندوز قفل ملف مؤقت أثناء التحميل. أعد المحاولة، وإذا كان الملف اكتمل سيسترجعه Loaderly تلقائياً.'
-      : 'Windows locked a temporary download file. Retry the download; if the final media finished, Loaderly will recover it automatically.';
-  }
-
-  if (/TikTok|universal data|rehydration|extract/i.test(normalized)) {
-    return locale === 'ar'
-      ? 'تعذر قراءة رابط TikTok بهذا الشكل. جرّب الرابط المختصر أو انسخ رابط المشاركة من التطبيق، أو استورد الملف محليًا إذا كان متوفرًا.'
-      : 'TikTok did not expose this video in a downloadable format. Try the short share link, copy the share URL from the app, or import the local file if available.';
-  }
-
-  if (normalized === subtitlesSkippedRateLimitMessage) {
-    return locale === 'ar'
-      ? 'نُزّل الفيديو بدون الترجمة لأن طلبات الترجمة كانت محدودة مؤقتًا.'
-      : 'The video downloaded without subtitles because subtitle requests were temporarily limited.';
-  }
-
-  if (normalized === subtitlesSkippedUnavailableMessage) {
-    return locale === 'ar'
-      ? 'نُزّل الفيديو، لكن لم تتوفر ترجمة قابلة للتنزيل لهذا الرابط.'
-      : 'The video downloaded, but no downloadable subtitles were available for this link.';
-  }
-
-  const errorLine = message
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => /^ERROR:/i.test(line));
-  const useful = errorLine ?? normalized;
-
-  if (locale === 'en' && /[\u0600-\u06ff]/.test(useful)) {
-    return 'Download failed. Retry to refresh the error details.';
-  }
-
-  return useful.length > 220 ? `${useful.slice(0, 217)}...` : useful;
 }
 
 function DownloadElapsedLabel({
@@ -1258,7 +1199,13 @@ export function App() {
   const [outputBusy, setOutputBusy] = useState<EditorOutputActionKind | undefined>(undefined);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<number | undefined>(undefined);
-  const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
+  const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>(() => {
+    try { return localStorage.getItem('loaderly:library-view') === 'grid' ? 'grid' : 'list'; }
+    catch { return 'list'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('loaderly:library-view', libraryViewMode); } catch { /* Keep the current view when storage is unavailable. */ }
+  }, [libraryViewMode]);
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
   const [librarySort, setLibrarySort] = useState<LibrarySort>('recent');
   const [librarySearch, setLibrarySearch] = useState('');
@@ -5552,6 +5499,7 @@ export function App() {
             {row.status === 'failed' && row.errorMessage ? <p className="download-entry__error">{friendlyDownloadError(row.errorMessage, preferences.locale)}</p> : null}
           </div>
           <div className="download-entry__actions">
+            {row.status === 'failed' && downloadFolderProblem(row.errorMessage ?? '') ? <button className="button secondary" onClick={() => void chooseDownloadDirectory()} type="button"><FolderOpen size={14}/>{uiText(preferences.locale, 'Choose folder', 'اختيار مجلد')}</button> : null}
             {row.status === 'queued' || row.status === 'failed' ? <DesktopMenu ariaLabel={t('quality')} options={qualityMenuOptions} value={row.quality ?? preferences.quality} valueLabel={qualityLabel(row.quality ?? preferences.quality, preferences.locale)} onChange={(quality) => updateQueuedMediaQuality(row.id, quality)} /> : null}
             {ready ? <button className="button secondary" onClick={() => { selectMediaRow(row.id); selectNavigation('library'); }} type="button"><Library size={14} />{uiText(preferences.locale, 'View in library', 'عرض في المكتبة')}</button> : !running ? <button className="button secondary" onClick={() => retryDownload(row)} type="button"><Play size={14} />{row.status === 'failed' ? uiText(preferences.locale, 'Retry', 'إعادة المحاولة') : uiText(preferences.locale, 'Start', 'بدء')}</button> : null}
             <button aria-label={uiText(preferences.locale, `Remove ${title}`, `حذف ${title}`)} data-tooltip={uiText(preferences.locale, 'Remove item', 'إزالة العنصر')} className="download-remove" disabled={running} onClick={() => requestRemoveMedia(row.id)} type="button"><X size={16} /></button>
@@ -5591,9 +5539,11 @@ export function App() {
               {row.status === 'edited' ? <span className="library-card__edited"><Scissors size={12} />{displayStatus(row.status)}</span> : null}
             </span>
             <span className="library-card__copy">
-              <strong data-tooltip={title}><bdi>{title}</bdi></strong>
-              <small data-tooltip={displayMediaSource(row)}><bdi>{mediaSourceLabel(row)}</bdi></small>
-              <span className="library-card__metadata"><span><KindIcon size={13} />{mediaKindLabel(row)}</span><span>{displayMediaSize(row)}</span><span>{mediaFormatLabel(row)}</span></span>
+              <strong data-tooltip={title} dir="auto"><bdi>{title}</bdi></strong>
+              <span className="library-card__details">
+                <small data-tooltip={displayMediaSource(row)}><bdi>{mediaSourceLabel(row)}</bdi></small>
+                <span className="library-card__metadata"><span><KindIcon size={13} />{mediaKindLabel(row)}</span><span>{displayMediaSize(row)}</span><span className="library-card__time">{displayMediaDuration(row)}</span><span>{mediaFormatLabel(row)}</span></span>
+              </span>
             </span>
           </button>
         </article>
@@ -9092,26 +9042,7 @@ export function App() {
                 valueLabel={downloadStartModeOptions.find((option) => option.value === preferences.downloadStartMode)?.label ?? 'Auto'}
               />
             </div>
-            <div className="setting-row">
-              <span>
-                <strong>{uiText(preferences.locale, 'Download folder', 'مجلد التنزيل')}</strong>
-                <small className="setting-path">
-                  {preferences.downloadDirectory || uiText(preferences.locale, 'Default Loaderly folder inside Downloads', 'المجلد الافتراضي داخل التنزيلات')}
-                </small>
-              </span>
-              <div className="setting-actions">
-                {preferences.downloadDirectory ? (
-                  <button className="button secondary" onClick={() => updatePreferences({ downloadDirectory: '' })} type="button">
-                    <X aria-hidden="true" size={15} />
-                    {uiText(preferences.locale, 'Default', 'افتراضي')}
-                  </button>
-                ) : null}
-                <button className="button secondary" onClick={() => void chooseDownloadDirectory()} type="button">
-                  <HardDrive aria-hidden="true" size={15} />
-                  {uiText(preferences.locale, 'Choose folder', 'اختيار مجلد')}
-                </button>
-              </div>
-            </div>
+            <DownloadFolderSetting folder={preferences.downloadDirectory} ar={preferences.locale === 'ar'} onChoose={chooseDownloadDirectory} onDefault={() => updatePreferences({ downloadDirectory: '' })} />
             <div className="setting-row">
               <span>
                 <strong>{uiText(preferences.locale, 'Platform folders', 'مجلدات المنصات')}</strong>

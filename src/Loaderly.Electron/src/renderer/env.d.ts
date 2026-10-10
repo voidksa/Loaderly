@@ -81,6 +81,7 @@ declare global {
       >;
       readonly showItemInFolder: (path: string) => Promise<{ readonly ok: boolean }>;
       readonly pickDownloadDirectory: () => Promise<{ readonly canceled: true } | { readonly canceled: false; readonly path: string }>;
+      readonly checkDownloadDirectory: (path: string) => Promise<import('../shared/download-destination/downloadFolderError').DownloadFolderCheck>;
       readonly pickSubtitleFile: () => Promise<
         | { readonly canceled: true }
         | {
