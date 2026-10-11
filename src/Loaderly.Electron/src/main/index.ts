@@ -2573,10 +2573,10 @@ function createMainWindow(): BrowserWindow {
     height: Math.min(920, available.height),
     minWidth: Math.min(1180, available.width),
     minHeight: Math.min(720, available.height),
-    title: 'Loaderly 2.1',
+    title: `Loaderly ${app.getVersion()}`,
     backgroundColor: '#f3f4f6',
     autoHideMenuBar: true,
-    frame: process.platform !== 'win32',
+    frame: process.platform === 'darwin',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 17 }, vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const, backgroundColor: '#00000000' } : {}),
     icon: iconPath,
     show: false,
@@ -2590,6 +2590,9 @@ function createMainWindow(): BrowserWindow {
     }
   });
   let fallbackLoaded = false;
+
+  // Keep the task switcher title tied to the installed package, including fallback pages.
+  mainWindow.on('page-title-updated', event => event.preventDefault());
 
   mainWindow.webContents.on('context-menu', (_event, params) => {
     const template = textContextMenu(params);

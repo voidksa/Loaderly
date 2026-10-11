@@ -12,8 +12,11 @@
   --font-mono: "SF Mono", Menlo, monospace;
 }
 :root:has(.app-shell[data-platform="linux"]) {
-  --font-ui: system-ui, "Ubuntu", "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-mono: "DejaVu Sans Mono", monospace;
+  --font-ui: Inter, NotoArabic, system-ui, sans-serif;
+  --font-mono: "LGMono", "DejaVu Sans Mono", monospace;
+}
+:root[lang="ar"]:has(.app-shell[data-platform="linux"]) {
+  --font-ui: NotoArabic, Inter, system-ui, sans-serif;
 }
 
 :root {
@@ -5863,7 +5866,7 @@ textarea:focus-visible,
 /* Collection shell: one library, one download queue, contextual editing. */
 .titlebar { height: 48px; min-height: 48px; padding-inline-start: 20px; }
 .titlebar__brand strong { display: flex; align-items: center; gap: 10px; font-family: var(--font-ui); font-size:calc(17px * var(--ui-font-scale,1)); letter-spacing: -.4px; }
-.titlebar__brand .brand-version { font-family: var(--font-ui); font-size:calc(10px * var(--ui-font-scale,1)); color: var(--muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
+.titlebar__brand .brand-version { display: inline-flex; font-family: var(--font-ui); font-size:calc(10px * var(--ui-font-scale,1)); color: var(--muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
 .titlebar__actions { margin-inline-start: auto; flex: 0 1 auto; }
 .titlebar__status { max-width: 480px; font-family: var(--font-ui); font-size:calc(11px * var(--ui-font-scale,1)); }
 .shell-body { display: flex; flex: 1; min-height: 0; }
@@ -5921,6 +5924,8 @@ textarea:focus-visible,
 .library-grid--list .library-card__copy strong { height:auto; min-height:calc(40px * var(--ui-font-scale,1)); }
 .library-grid--list .library-card__copy small { margin-bottom: 8px; }
 .route-inspector { align-self: stretch; background: var(--surface); overflow: auto; }
+/* Let long titles take their full height; the inspector scrolls as one column. */
+.route-inspector > * { flex-shrink: 0; }
 .route-inspector__media { background: transparent; padding: 16px; gap: 20px; }
 .route-inspector__media--large .media-thumb { height: auto; aspect-ratio: 16 / 10; background: var(--surface-muted); border: 0; }
 .route-inspector__media--large .media-thumb img { object-fit: contain; }
@@ -6233,7 +6238,6 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .app-shell[data-platform="darwin"] .product-nav { padding-top: 22px; }
 .app-shell[data-platform="darwin"] .product-nav__item,
 .app-shell[data-platform="darwin"] .product-nav__utility { border-radius: 7px; }
-.app-shell[data-platform="linux"] .titlebar { height: 40px; min-height: 40px; }
 .tool-install-progress { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 22px 18px; font-size:calc(12px * var(--ui-font-scale,1)); color: var(--muted); }
 /* Light editor surfaces must not inherit black-tinted dark-mode layers. */
 .app-shell[data-theme="light"] .editor-stage__bar { background: var(--surface); color: var(--muted); }
@@ -6618,6 +6622,7 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .app-color-label button {color:var(--muted);background:transparent;padding:2px;display:grid;place-items:center;}
 .theme-preview-wrap {margin-bottom:24px;}
 .theme-live-preview {width:100%;color:var(--foreground);border:var(--theme-border-width) solid var(--border);border-radius:var(--radius-large);overflow:hidden;background:repeating-conic-gradient(#8882 0% 25%,transparent 0% 50%) 50% / 16px 16px;}
+.app-shell[data-platform="linux"] .theme-live-preview {background:var(--background);}
 .theme-live-preview>header {display:flex;align-items:center;gap:16px;padding:10px 14px;background:var(--titlebar-fill);font-size:calc(12px * var(--ui-font-scale,1));}
 .theme-preview-label {margin-inline-start:auto;color:var(--muted);}
 .theme-preview-body {display:flex;min-height:160px;}

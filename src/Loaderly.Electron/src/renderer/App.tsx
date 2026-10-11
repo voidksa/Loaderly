@@ -9273,7 +9273,11 @@ export function App() {
       data-theme={preferences.themeMode}
       data-platform={window.loaderly?.platform ?? 'win32'}
     >
-      <header className="titlebar">
+      <header className="titlebar" onDoubleClick={event => {
+        if (window.loaderly?.platform === 'linux' && !(event.target as Element).closest('button')) {
+          void handleWindowControl('toggleMaximize');
+        }
+      }}>
         <div className="titlebar__left">
           <div className="titlebar__brand">
             <img alt="" className="brand-icon" src="./assets/loaderly-64.png" />
@@ -9284,7 +9288,7 @@ export function App() {
         <div className="titlebar__actions">
           <span aria-live="polite" className="activity-announcement" dir="auto" role="status">{activity}</span>
         </div>
-        {(!window.loaderly || window.loaderly.platform === 'win32') && <div className="window-controls" aria-label={uiText(preferences.locale, 'Window controls', 'أزرار النافذة')}>
+        {window.loaderly?.platform !== 'darwin' && <div className="window-controls" aria-label={uiText(preferences.locale, 'Window controls', 'أزرار النافذة')}>
           <button aria-label={uiText(preferences.locale, 'Minimize', 'تصغير')} className="window-control" onClick={() => void handleWindowControl('minimize')} type="button">
             <Minus aria-hidden="true" size={15} />
           </button>

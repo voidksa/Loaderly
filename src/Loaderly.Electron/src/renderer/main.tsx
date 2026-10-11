@@ -5,6 +5,8 @@ import './styles.css';
 import '../shared/ui/tooltips.css';
 import {installTooltips} from '../shared/ui/tooltips';
 
+document.title = window.loaderly?.appName ?? 'Loaderly';
+
 function Tooltips(){React.useEffect(()=>installTooltips(document),[]);return null;}
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(

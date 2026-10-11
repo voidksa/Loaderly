@@ -151,6 +151,13 @@
       ],
       "syncDesktopName": true
     },
+    "deb": {
+      "desktop": {
+        "entry": {
+          "Icon": "/opt/Loaderly/resources/assets/identity/loaderly-512.png"
+        }
+      }
+    },
     "publish": null
   },
   "description": "Download, organize and edit video and audio with Loaderly.",
