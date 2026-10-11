@@ -1,0 +1,36 @@
+.linux-welcome {
+  width: min(490px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  padding: 40px 38px 32px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  color: var(--foreground);
+  background: radial-gradient(ellipse at 50% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 64%), var(--surface);
+  box-shadow: var(--shadow-overlay);
+  text-align: center;
+}
+.linux-welcome[open] { animation: linux-welcome-enter 420ms cubic-bezier(.22,1,.36,1) both; }
+.linux-welcome::backdrop { background: #0008; animation: linux-welcome-backdrop 300ms ease-out both; }
+.linux-welcome .linux-welcome__close { position: absolute; top: 14px; inset-inline-end: 14px; padding: 7px; background: transparent; border-color: transparent; }
+.linux-welcome__heart {
+  display: grid; place-items: center; margin: 0 auto 22px;
+  width: 88px; height: 88px; border-radius: 50%; color: #e05a79;
+  background: color-mix(in srgb, #e05a79 11%, var(--surface));
+  border: 1px solid color-mix(in srgb, #e05a79 22%, transparent);
+}
+.linux-welcome__heart svg { animation: linux-welcome-heart 1100ms ease-in-out 450ms 2; }
+.linux-welcome .linux-welcome__eyebrow { margin: 0 0 10px; color: var(--accent); font-size: .78rem; font-weight: 700; letter-spacing: .15em; }
+.linux-welcome[dir=rtl] .linux-welcome__eyebrow { letter-spacing: 0; }
+.linux-welcome h2 { margin: 0 0 16px; font-size: 1.9rem; line-height: 1.4; font-weight: 700; text-wrap: balance; }
+.linux-welcome #linux-welcome-message { margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.85; text-wrap: pretty; }
+.linux-welcome .linux-welcome__signature { margin: 20px 0 28px; color: var(--muted); font-size: .86rem; }
+.linux-welcome__signature bdi { color: var(--foreground); font-weight: 600; }
+.linux-welcome .linux-welcome__start { margin: 0 auto; min-width: 190px; justify-content: center; padding: 11px 20px; }
+.linux-welcome[dir=rtl] .linux-welcome__start svg { transform: scaleX(-1); }
+@keyframes linux-welcome-enter { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes linux-welcome-backdrop { from { opacity: 0; } to { opacity: 1; } }
+@keyframes linux-welcome-heart { 0%, 45%, 100% { transform: scale(1); } 18% { transform: scale(1.12); } 30% { transform: scale(1.03); } }
+@media (prefers-reduced-motion: reduce) {
+  .linux-welcome[open], .linux-welcome::backdrop, .linux-welcome__heart svg { animation: none; }
+}

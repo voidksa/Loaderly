@@ -23,6 +23,7 @@ import { blurAmount, pixelBlockSize, blurShapeAlpha } from '../shared/editor-pro
 import { ToolManager } from './toolManager';
 import { textFontCandidates, toolCandidates } from './desktopPlatform';
 import { macApplicationMenu, textContextMenu } from './desktopMenus';
+import { hasLinuxTrayHost } from './linuxTray';
 import { pathToFileURL } from 'node:url';
 import type { ToolName, ToolStatus } from '../shared/tool-manager/toolStatus';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, powerMonitor, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
@@ -605,7 +606,7 @@ function registerIpcHandlers() {
     currentThemeMode = themeMode === 'dark' ? 'dark' : 'light';
     currentAppearance = normalizeAppearance(appearance);
     currentLocale = locale === 'ar' ? 'ar' : 'en';
-    if (process.platform === 'darwin' && trayRef) trayRef.setContextMenu(nativeTrayMenu());
+    if (process.platform !== 'win32' && trayRef) trayRef.setContextMenu(nativeTrayMenu());
 
     if (trayWindowRef) {
       void trayWindowRef.loadURL(trayHtmlUrl());
@@ -2617,14 +2618,46 @@ function createMainWindow(): BrowserWindow {
     if(!fallbackLoaded)void programUpdater?.acknowledgeStartup();
   });
 
+  let linuxClosePending = false;
+  let linuxTrayCheck: ReturnType<typeof setTimeout> | undefined;
+  const stopLinuxTrayCheck = () => { clearTimeout(linuxTrayCheck); linuxTrayCheck = undefined; };
+  const watchLinuxTray = () => {
+    stopLinuxTrayCheck();
+    linuxTrayCheck = setTimeout(async () => {
+      if (isQuitting || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+      const reachable = await hasLinuxTrayHost();
+      if (isQuitting || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+      if (reachable) watchLinuxTray();
+      else showMainWindow();
+    }, 10000);
+    linuxTrayCheck.unref();
+  };
+  mainWindow.on('show', stopLinuxTrayCheck);
+  mainWindow.on('closed', stopLinuxTrayCheck);
   mainWindow.on('close', (event) => {
     if (isQuitting) {
       return;
     }
 
-    // Linux desktops do not always provide a tray. Never strand a hidden app.
-    if (process.platform === 'linux') { isQuitting = true; app.quit(); return; }
     event.preventDefault();
+    if (process.platform === 'linux') {
+      if (linuxClosePending) return;
+      linuxClosePending = true;
+      void (async () => {
+        const reachable = trayRef && !trayRef.isDestroyed() && await hasLinuxTrayHost();
+        linuxClosePending = false;
+        if (isQuitting || mainWindow.isDestroyed()) return;
+        if (reachable) {
+          mainWindow.hide();
+          watchLinuxTray();
+        } else {
+          // Preserve normal close behavior on desktops without a working tray.
+          isQuitting = true;
+          app.quit();
+        }
+      })();
+      return;
+    }
     mainWindow.hide();
   });
 
@@ -3037,7 +3070,6 @@ function runTrayAction(action: TrayAction) {
 }
 
 function createTray() {
-  if (process.platform === 'linux') return;
   if (trayRef) {
     return;
   }
@@ -3055,11 +3087,18 @@ function createTray() {
     icon = nativeImage.createFromBitmap(bitmap, { width: 36, height: 36, scaleFactor: 2 });
     icon.setTemplateImage(true);
   }
-  const tray = new Tray(icon);
+  let tray: Tray;
+  try { tray = new Tray(icon); }
+  catch (error) {
+    if (process.platform !== 'linux') throw error;
+    safeMainError('[loaderly] Desktop tray is unavailable; closing the window will quit.');
+    return;
+  }
 
   tray.setToolTip('Loaderly');
-  if (process.platform === 'darwin') {
+  if (process.platform !== 'win32') {
     tray.setContextMenu(nativeTrayMenu());
+    if (process.platform === 'linux') tray.on('click', () => showMainWindow());
   } else {
     tray.on('click', toggleTrayWindow);
     tray.on('right-click', toggleTrayWindow);
@@ -3074,9 +3113,9 @@ function nativeTrayMenu() {
     { label: ar ? 'فتح Loaderly' : 'Open Loaderly', click: () => runTrayAction('open') },
     { label: ar ? 'التنزيلات' : 'Downloads', click: () => runTrayAction('downloads') },
     { type: 'separator' },
-    { label: ar ? 'الإعدادات…' : 'Settings…', accelerator: 'Command+,', click: () => runTrayAction('settings') },
+    { label: ar ? 'الإعدادات…' : 'Settings…', accelerator: process.platform === 'darwin' ? 'Command+,' : undefined, click: () => runTrayAction('settings') },
     { type: 'separator' },
-    { label: ar ? 'إنهاء Loaderly' : 'Quit Loaderly', accelerator: 'Command+Q', click: () => runTrayAction('exit') }
+    { label: ar ? 'إنهاء Loaderly' : 'Quit Loaderly', accelerator: process.platform === 'darwin' ? 'Command+Q' : undefined, click: () => runTrayAction('exit') }
   ]);
 }
 

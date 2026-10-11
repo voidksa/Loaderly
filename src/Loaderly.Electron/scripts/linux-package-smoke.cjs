@@ -27,6 +27,8 @@ const { execFileSync } = require('node:child_process');
     page.setDefaultTimeout(20000);
     page.on('pageerror', error => errors.push(error.message));
     await page.waitForSelector('.product-nav');
+    const welcome = page.locator('.linux-welcome[open]');
+    if (await welcome.count()) await welcome.locator('.linux-welcome__start').click();
     const win = await app.browserWindow(page);
     assert.equal(await page.evaluate(() => window.loaderly.appVersion), '2.1.3');
     assert.equal(await win.evaluate(w => w.getTitle()), 'Loaderly 2.1.3');

@@ -18,6 +18,7 @@ import {videoDimensions,type VisualizerVideoOptions} from '../shared/editor-proj
 import { CommunityLibrary } from './editor/CommunityLibrary';
 import { ProgramUpdates } from './editor/ProgramUpdates';
 import { ProgramUpdateNotice } from './editor/ProgramUpdateNotice';
+import { LinuxWelcome } from './editor/LinuxWelcome';
 import { SpeedControls } from './editor/SpeedControls';
 import { flushSync } from 'react-dom';
 import { DesktopMenu, type MenuOption } from './editor/DesktopMenu';
@@ -9359,6 +9360,7 @@ export function App() {
       {duplicateDownload&&<DuplicateDownload key={duplicateDownload.id} request={duplicateDownload} ar={preferences.locale==='ar'} onChoose={choice=>{setDuplicateDownload(undefined);void window.loaderly?.duplicateChoice(duplicateDownload.id,choice);}}/>}
       {libraryRemoval&&<LibraryRemoval ar={preferences.locale==='ar'} items={mediaRows.filter(row=>libraryRemoval.includes(row.id)).map(row=>({title:displayMediaTitle(row),source:mediaSourceLabel(row),thumbnailUrl:row.thumbnailUrl??youtubeThumbnailUrl(row.source??'')}))} canTrash={mediaRows.some(row=>libraryRemoval.includes(row.id)&&!!row.filePath)} onCancel={()=>setLibraryRemoval(undefined)} onRemove={removeLibrarySelection}/>}
       {playlistRequest&&<PlaylistPicker key={playlistRequest.url} url={playlistRequest.url} ar={preferences.locale==='ar'} initialSelection={playlistSelections.current.get(playlistRequest.url)} onRemember={ids=>playlistSelections.current.set(playlistRequest.url,ids)} onDone={entries=>{setPlaylistRequest(undefined);playlistRequest.resolve(entries);}}/>}
+      <LinuxWelcome ar={preferences.locale === 'ar'} />
     </main>
   );
 }
