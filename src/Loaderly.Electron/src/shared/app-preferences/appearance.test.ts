@@ -1,6 +1,114 @@
 import {describe,it,expect} from 'vitest';
-import {appearanceVariables,decodeTheme,encodeTheme,normalizeAppearance} from './appearance';
+import {appearanceOpacity,appearanceVariables,decodeTheme,encodeTheme,normalizeAppearance,opacityKeys,themePresets} from './appearance';
+const tintPercent=(fill:string)=>Number(fill.match(/ ([\d.]+)%/)![1]);
 describe('portable themes',()=>{
+ it('keeps glass control labels readable across presets, states and extreme desktop backgrounds',()=>{
+  const rgb=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+  const lum=(channels:number[])=>channels.reduce((sum,v,i)=>{v/=255;return sum+(v<=.04045?v/12.92:((v+.055)/1.055)**2.4)*[.2126,.7152,.0722][i];},0);
+  const over=(fill:string,background:number[])=>{const match=fill.match(/(#[a-f\d]{6}) ([\d.]+)%/i);if(!match)return rgb(fill);const alpha=Number(match[2])/100;return rgb(match[1]).map((v,i)=>v*alpha+background[i]*(1-alpha));};
+  for(const preset of themePresets)for(const dark of [true,false])for(const opacity of [0,50,100]){
+   const css=appearanceVariables(normalizeAppearance({preset:preset.id,glass:true,opacity:{background:opacity,surface:opacity}}),dark);
+   for(const backdrop of [0,255])for(const state of ['fill','hover','selected','pressed']){
+    const surface=over(css['--background-glass-fill'],[backdrop,backdrop,backdrop]);
+    const ink=lum(rgb(css['--foreground'])),background=lum(over(css['--control-'+state],surface));
+    expect((Math.max(ink,background)+.05)/(Math.min(ink,background)+.05),`${preset.id}/${dark}/${opacity}/${state}/${backdrop}`).toBeGreaterThanOrEqual(4.5);
+   }
+  }
+ });
+ it('keeps default glass text readable over bright and dark desktops across every preset',()=>{
+  const lum=(rgb:number[])=>rgb.reduce((sum,n,i)=>{n/=255;return sum+(n<=.04045?n/12.92:((n+.055)/1.055)**2.4)*[.2126,.7152,.0722][i]},0);
+  const channels=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+  for(const preset of themePresets)for(const dark of [true,false]){
+   const css=appearanceVariables(normalizeAppearance({preset:preset.id,glass:true,opacity:{background:0,sidebar:0,titlebar:0,editor:0,popover:0}}),dark);
+   for(const key of ['background','sidebar','titlebar','editor','popover']){
+    const fill=css[`--${key}-${key==='popover'?'fill':'glass-fill'}`];
+    const [,hex,percent]=fill.match(/(#[a-f\d]{6}) ([\d.]+)%/i)!;
+    const alpha=Number(percent)/100;
+    if(key==='popover')expect(alpha).toBeGreaterThanOrEqual(.84);
+    // Readability must not be achieved by making default light glass opaque.
+    if(!dark)expect(alpha).toBeLessThanOrEqual(key==='popover'?.84:.8);
+    for(const ink of [css['--foreground'],css['--muted']])for(const backdrop of [0,64,128,192,255]){
+     const text=lum(channels(ink)),background=lum(channels(hex).map(n=>n*alpha+backdrop*(1-alpha)));
+     expect((Math.max(text,background)+.05)/(Math.min(text,background)+.05),`${preset.id}/${dark}/${key}/${backdrop}`).toBeGreaterThanOrEqual(4.5);
+    }
+   }
+  }
+ });
+ it('keeps raw blending portable and scales popup tint continuously without rewriting saved opacity',()=>{
+  const opacities=[0,25,50,75,100];
+  const alphas=opacities.map(popover=>{
+   const value=normalizeAppearance({opacity:{popover,background:popover}}),css=appearanceVariables(value,true);
+   expect(decodeTheme(encodeTheme(value)).opacity?.popover).toBe(popover);
+   expect(css['--background-fill']).toContain(` ${popover}%`);
+   return Number(css['--popover-fill'].match(/ ([\d.]+)%/)![1]);
+  });
+  expect(alphas).toEqual([84,88,92,96,100]);
+ });
+ it('gives every glass surface effective defaults without adding saved overrides',()=>{
+  const plain=normalizeAppearance({}),glass=normalizeAppearance({...plain,glass:true});
+  const before=encodeTheme(glass);
+  const defaults={background:15,sidebar:15,titlebar:15,surface:0,editor:15,popover:0};
+  for(const key of opacityKeys){
+   expect(appearanceOpacity(plain,key)).toBe(100);
+   expect(appearanceOpacity(glass,key)).toBe(defaults[key]);
+  }
+  const light=appearanceVariables(glass,false),dark=appearanceVariables(glass,true);
+  expect(tintPercent(light['--background-glass-fill'])).toBe(79.6);
+  expect(tintPercent(light['--sidebar-glass-fill'])).toBe(77.05);
+  expect(tintPercent(light['--editor-glass-fill'])).toBe(79.6);
+  expect(tintPercent(light['--popover-fill'])).toBe(84);
+  expect(tintPercent(dark['--background-glass-fill'])).toBe(83);
+  expect(tintPercent(dark['--popover-fill'])).toBe(84);
+  expect(tintPercent(light['--surface-fill'])).toBe(0);
+  expect(encodeTheme(glass)).toBe(before);
+  expect(decodeTheme(before)).toEqual(glass);
+  expect(glass.opacity).toBeUndefined();
+ });
+ it('keeps explicit transparent and opaque choices when toggling glass',()=>{
+  for(const opacity of [0,100]){
+   const choices=Object.fromEntries(opacityKeys.map(key=>[key,opacity]));
+   const value=normalizeAppearance({opacity:choices});
+   for(const glass of [true,false,true]){
+    const next={...value,glass};
+    for(const key of opacityKeys)expect(appearanceOpacity(next,key)).toBe(opacity);
+    for(const dark of [true,false]){
+     const css=appearanceVariables(next,dark);
+     for(const key of opacityKeys){
+      expect(tintPercent(css[`--${key}-fill`])).toBe(key==='popover'&&opacity===0?(dark||glass?84:93):opacity);
+      if(opacity===100&&key!=='surface'&&key!=='popover')expect(tintPercent(css[`--${key}-glass-fill`])).toBe(100);
+     }
+    }
+    expect(decodeTheme(encodeTheme(next)).opacity).toEqual(choices);
+   }
+  }
+ });
+ it('keeps a useful continuous transparency range across every light palette',()=>{
+  for(const preset of themePresets)for(const key of ['background','sidebar','titlebar','editor','popover'] as const){
+   const amounts=[0,25,50,75,100].map(opacity=>{
+    const css=appearanceVariables(normalizeAppearance({preset:preset.id,glass:true,opacity:{[key]:opacity}}),false);
+    return tintPercent(css[`--${key}-${key==='popover'?'fill':'glass-fill'}`]);
+   });
+   expect(amounts[0]).toBeLessThanOrEqual(key==='popover'?84:80);
+   expect(amounts[4]).toBe(100);
+   expect(amounts[4]-amounts[0]).toBeGreaterThanOrEqual(key==='popover'?16:20);
+   for(let i=1;i<amounts.length;i++)expect(amounts[i]-amounts[i-1]).toBeCloseTo((100-amounts[0])/4,2);
+  }
+ });
+ it('uses darker default light secondary text only for glass and preserves custom ink',()=>{
+  const plain=appearanceVariables(normalizeAppearance({}),false);
+  const glass=appearanceVariables(normalizeAppearance({glass:true}),false);
+  expect(plain['--muted']).toBe('#646b76');
+  expect(glass['--muted']).toBe('#434a55');
+  for(const key of ['--foreground','--titlebar-ink','--accent','--accent-ink','--ui-font-scale'])expect(glass[key]).toBe(plain[key]);
+  const custom=normalizeAppearance({glass:true,colors:{light:{text:'#25272c',muted:'#646b76'}},opacity:{background:0,popover:0}});
+  const css=appearanceVariables(custom,false);
+  expect(css['--foreground']).toBe('#25272c');
+  expect(css['--muted']).toBe('#646b76');
+  // An explicitly lighter ink retains the stronger tint it needs for contrast.
+  expect(tintPercent(css['--background-glass-fill'])).toBe(97);
+  expect(tintPercent(css['--popover-fill'])).toBe(93);
+  expect(decodeTheme(encodeTheme(custom))).toEqual(custom);
+ });
  it('preserves independent surfaces, transparency and layout through sharing',()=>{
   const value=normalizeAppearance({preset:'ocean',glass:true,density:'spacious',colors:{dark:{sidebar:'#123456',popover:'#223344',editor:'#334455',titlebar:'#445566',selection:'#556677',buttonText:'#ffffff'}},opacity:{background:30,sidebar:0,titlebar:80,surface:70,editor:65,popover:90},textScale:115,sidebarWidth:244,panelRadius:18,borderWidth:.5});
   expect(decodeTheme(encodeTheme(value))).toEqual(value);

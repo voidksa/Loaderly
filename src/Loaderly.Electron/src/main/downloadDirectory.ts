@@ -1,4 +1,4 @@
-import { mkdir, open, stat, unlink } from 'node:fs/promises';
+import { mkdir, open, stat, unlink, readFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -8,6 +8,14 @@ export async function prepareDownloadDirectory(directory: string, platform: Node
     if (platform === 'darwin') {
       const volume = posix.resolve(directory).match(/^\/Volumes\/[^/]+/);
       if (volume && !(await stat(volume[0])).isDirectory()) return 'DOWNLOAD_FOLDER_UNAVAILABLE';
+    }
+    if (platform === 'linux') {
+      const volume=posix.resolve(directory).match(/^\/(?:run\/)?media\/[^/]+\/[^/]+/)?.[0];
+      if(volume){
+        const mounts=await readFile('/proc/self/mountinfo','utf8');
+        const mounted=mounts.split('\n').some(line=>line.split(' ')[4]?.replace(/\\([0-7]{3})/g,(_,octal:string)=>String.fromCharCode(parseInt(octal,8)))===volume);
+        if(!mounted)return 'DOWNLOAD_FOLDER_UNAVAILABLE';
+      }
     }
     if (create) await mkdir(directory, { recursive: true });
     else if (!(await stat(directory)).isDirectory()) return 'DOWNLOAD_FOLDER_UNAVAILABLE';

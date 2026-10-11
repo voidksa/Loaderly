@@ -1,3 +1,4 @@
+import { normalizeDownloadLocations, type DownloadLocation } from '../download-destination/downloadLocations';
 import { defaultAppearance, normalizeAppearance, type Appearance } from './appearance';
 export type ThemeMode = 'light' | 'dark';
 export type AppLocale = 'en' | 'ar';
@@ -14,6 +15,9 @@ export type AppPreferences = {
   readonly quality: DownloadQuality;
   readonly downloadStartMode: DownloadStartMode;
   readonly downloadDirectory: string;
+  readonly downloadLocations: readonly DownloadLocation[];
+  readonly audioLocationId: string;
+  readonly videoLocationId: string;
   readonly groupDownloadsByPlatform: boolean;
   readonly subtitleDownloadMode: SubtitleDownloadMode;
   readonly subtitleLanguageProfile: SubtitleLanguageProfile;
@@ -31,6 +35,7 @@ export const defaultPreferences: AppPreferences = {
   quality: 'best',
   downloadStartMode: 'auto',
   downloadDirectory: '',
+  downloadLocations: [], audioLocationId: '', videoLocationId: '',
   groupDownloadsByPlatform: true,
   subtitleDownloadMode: 'off',
   subtitleLanguageProfile: 'available',
@@ -108,6 +113,9 @@ export function normalizePreferences(value: unknown): AppPreferences {
     quality: resolveDownloadQuality(record.quality),
     downloadStartMode: resolveDownloadStartMode(record.downloadStartMode),
     downloadDirectory: typeof record.downloadDirectory === 'string' && record.downloadDirectory.startsWith('/') ? record.downloadDirectory : resolvePreferenceText(record.downloadDirectory),
+    downloadLocations: normalizeDownloadLocations(record.downloadLocations),
+    audioLocationId: resolvePreferenceText(record.audioLocationId),
+    videoLocationId: resolvePreferenceText(record.videoLocationId),
     groupDownloadsByPlatform: record.groupDownloadsByPlatform !== false,
     subtitleDownloadMode: resolveSubtitleDownloadMode(record.subtitleDownloadMode),
     subtitleLanguageProfile: resolveSubtitleLanguageProfile(record.subtitleLanguageProfile),

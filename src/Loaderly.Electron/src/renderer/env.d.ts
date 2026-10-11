@@ -12,13 +12,15 @@ declare global {
       readonly onDuplicatePrompt:(callback:(value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt)=>void)=>()=>void;
       readonly duplicateChoice:(id:string,choice:import('../shared/download-url/mediaIdentity').DuplicateChoice)=>Promise<{ok:boolean}>;
       readonly onDownloadIdentity:(callback:(value:import('../shared/download-url/mediaIdentity').DownloadIdentity)=>void)=>()=>void;
+      readonly onDownloadProgress:(callback:(value:import('../shared/downloadProgress').DownloadProgress)=>void)=>()=>void;
       readonly appName: string;
       readonly appVersion: string;
+      readonly appBuild: string;
       readonly trashMedia:(paths:string[])=>Promise<{removed:string[];failed:string[]}>;
       readonly missingLibraryFiles:(paths:string[])=>Promise<string[]>;
       readonly playlistPreview:(url:string)=>Promise<import('../shared/download-url/playlist').PlaylistResult>;
       readonly cancelPlaylist:()=>Promise<{ok:boolean}>;
-      readonly exportVisualizerVideo:(payload:Parameters<NonNullable<Window['loaderly']>['saveMediaOutput']>[0]&{options:import('../shared/editor-project/visualizerVideo').VisualizerVideoOptions;whole:boolean})=>Promise<{ok:boolean;path?:string;message?:string}>;
+      readonly exportVisualizerVideo:(payload:Parameters<NonNullable<Window['loaderly']>['saveMediaOutput']>[0]&{options:import('../shared/editor-project/visualizerVideo').VisualizerVideoOptions;whole:boolean})=>Promise<{ok:boolean;canceled?:boolean;path?:string;message?:string}>;
       readonly cancelVisualizerExport:()=>Promise<void>;
       readonly onVisualizerExport:(callback:(state:import('../shared/editor-project/visualizerVideo').VisualizerExportProgress)=>void)=>()=>void;
       readonly communityCatalog: ()=>Promise<import('../shared/community').CommunityCatalog>;
@@ -30,7 +32,7 @@ declare global {
       readonly discoverModels: (connection:import('../shared/app-preferences/aiProviders').AiConnection) => Promise<{ok:boolean;models?:string[];message?:string}>;
       readonly translateSubtitles: (input:import('../shared/app-preferences/aiProviders').TranslationInput) => Promise<{ok:boolean;cues?:LoaderlySubtitleCue[];message?:string}>;
       readonly cancelTranslation: () => Promise<{ok:boolean}>;
-      readonly extractAudio: (path:string) => ReturnType<NonNullable<Window['loaderly']>['openMediaFile']>;
+      readonly extractAudio: (request:import('../shared/audioExtraction').ExtractAudioRequest) => Promise<import('../shared/audioExtraction').ExtractAudioResult>;
       readonly platform: NodeJS.Platform;
       readonly supportsClipboardFiles: boolean;
       readonly arch: NodeJS.Architecture;
@@ -209,6 +211,7 @@ declare global {
       }>;
       readonly saveMediaOutput: (payload: {
         readonly sourcePath: string;
+    readonly saveMode?: 'beside' | 'replace' | 'choose';
         readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
         readonly audio?: import('../shared/editor-project/audioProcessing').AudioSettings;
         readonly audioSections?: import('../shared/editor-project/audioSections').AudioSection[];
@@ -284,6 +287,11 @@ declare global {
         };
       }) => Promise<{
         readonly ok: boolean;
+      readonly canceled?: boolean;
+      readonly replacedSource?: boolean;
+      readonly durationSeconds?: number;
+      readonly sizeBytes?: number;
+      readonly fileUrl?: string;
         readonly path?: string;
         readonly message?: string;
       }>;
@@ -318,6 +326,10 @@ declare global {
           readonly checkError?: string;
         };
       }>;
+      readonly getWindowState: () => Promise<{ok:boolean;maximized:boolean}>;
+      readonly onWindowState: (callback:(state:{maximized:boolean})=>void) => () => void;
+      readonly getWindowAppearanceSupport: () => Promise<{supported:boolean;reduced:boolean}>;
+      readonly onWindowAppearanceChanged: (callback:(state:{desktopGlass:boolean;supported:boolean;reduced:boolean})=>void) => () => void;
       readonly setTitlebarTheme: (themeMode: 'light' | 'dark', locale?: 'en' | 'ar', appearance?: unknown) => Promise<{ readonly ok: boolean; readonly desktopGlass?: boolean }>;
       readonly trayAction: (action: 'open' | 'downloads' | 'editor' | 'settings' | 'exit') => Promise<{ readonly ok: boolean }>;
       readonly windowControl: (action: 'minimize' | 'toggleMaximize' | 'close') => Promise<{

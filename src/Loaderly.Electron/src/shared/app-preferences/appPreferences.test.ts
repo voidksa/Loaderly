@@ -72,6 +72,7 @@ describe('app preferences', () => {
         sidebarCollapsed: true
       })
     ).toEqual({
+      downloadLocations: [], audioLocationId: '', videoLocationId: '',
       appearance: {preset:'graphite',accent:'',density:'comfortable',corners:'rounded'},
       themeMode: 'dark',
       locale: 'ar',

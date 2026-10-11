@@ -14,6 +14,11 @@ const { createRequire, isBuiltin } = require('node:module');
     const source = fs.readFileSync(main, 'utf8');
     const external = new Set([...source.matchAll(/(?:from\s*|import\s*\(|require\s*\()\s*['"]([^'"]+)['"]/g)]
       .map(match => match[1]).filter(name => name !== 'electron' && !isBuiltin(name) && !name.startsWith('.')));
+    const targetPlatform = process.argv[3] || process.platform;
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    if (targetPlatform === 'darwin' && manifest.optionalDependencies?.['electron-liquid-glass']) {
+      external.add('electron-liquid-glass');
+    }
     const visited = new Set();
     function check(name, from) {
       const req = createRequire(from);
@@ -30,6 +35,16 @@ const { createRequire, isBuiltin } = require('node:module');
       for (const dependency of Object.keys(JSON.parse(fs.readFileSync(manifest, 'utf8')).dependencies || {})) check(dependency, manifest);
     }
     for (const name of external) check(name, main);
+    if (external.has('electron-liquid-glass')) {
+      const nativeEntry = createRequire(main).resolve('electron-liquid-glass');
+      check('node-gyp-build', nativeEntry);
+      const targetArch = process.argv[4];
+      if (targetArch) {
+        assert.ok(['arm64', 'x64'].includes(targetArch), 'Unsupported Mac architecture');
+        const prebuild = path.join(path.dirname(nativeEntry), '..', 'prebuilds', 'darwin-' + targetArch);
+        assert.ok(fs.readdirSync(prebuild).some(file => file.endsWith('.node')), 'Missing native glass binary');
+      }
+    }
     const yauzl = createRequire(main)('yauzl');
     await new Promise((resolve, reject) => yauzl.fromBuffer(Buffer.from('504b0506000000000000000000000000000000000000', 'hex'),
       (error, archive) => { if (error) reject(error); else { archive.close(); resolve(); } }));

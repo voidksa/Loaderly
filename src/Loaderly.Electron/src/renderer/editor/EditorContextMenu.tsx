@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { Captions, Clipboard, Eye, Layers3, RefreshCcw, Square, X } from 'lucide-react';
 
 export type EditorContextMenuAction =
@@ -20,6 +20,7 @@ type EditorContextMenuProps = {
   readonly canToggleState: boolean;
   readonly locale: 'en' | 'ar';
   readonly onAction: (action: EditorContextMenuAction) => void;
+  readonly onClose: () => void;
   readonly x: number;
   readonly y: number;
 };
@@ -31,9 +32,22 @@ export function EditorContextMenu({
   canToggleState,
   locale,
   onAction,
+  onClose,
   x,
   y
 }: EditorContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null), restoreFocus = useRef(false);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement;
+    const frame = requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true }));
+    const outside = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) closeRef.current(); };
+    window.addEventListener('pointerdown', outside);
+    return () => {
+      cancelAnimationFrame(frame); window.removeEventListener('pointerdown', outside);
+      if (restoreFocus.current && previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, []);
   const text = locale === 'ar'
     ? {
         editText: 'تعديل النص',
@@ -65,7 +79,18 @@ export function EditorContextMenu({
   const safeY = typeof window === 'undefined' ? y : Math.min(y, Math.max(8, window.innerHeight - menuHeight - 8));
 
   return (
-    <div className="editor-context-menu" role="menu" style={{ left: safeX, top: safeY } as CSSProperties}>
+    <div className="editor-context-menu" ref={menuRef} role="menu" aria-label={locale === 'ar' ? 'تعديل العنصر' : 'Edit item'} style={{ left: safeX, top: safeY } as CSSProperties}
+      onClickCapture={event => { restoreFocus.current = event.detail === 0; }}
+      onKeyDown={event => {
+        if (event.key === 'Escape' || event.key === 'Tab') {
+          if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); restoreFocus.current = true; }
+          onClose(); return;
+        }
+        const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'ArrowDown' ? (current + 1) % items.length : event.key === 'ArrowUp' ? (current - 1 + items.length) % items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : undefined;
+        if (next !== undefined && items[next]) { event.preventDefault(); event.stopPropagation(); items[next].focus(); }
+      }}>
       <button disabled={!canEditText} onClick={() => onAction('edit-text')} role="menuitem" type="button">
         <Captions aria-hidden="true" size={14} />
         {text.editText}

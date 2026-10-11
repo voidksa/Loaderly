@@ -8,13 +8,16 @@ type SubtitleCue = {
 };
 
 declare const __LOADERLY_VERSION__: string;
+declare const __LOADERLY_BUILD__: string;
 
 contextBridge.exposeInMainWorld('loaderly', {
   onDuplicatePrompt:(callback:(value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt)=>void)=>{const handler=(_event:IpcRendererEvent,value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt)=>callback(value);ipcRenderer.on('loaderly:duplicate-prompt',handler);return()=>ipcRenderer.removeListener('loaderly:duplicate-prompt',handler);},
   duplicateChoice:(id:string,choice:import('../shared/download-url/mediaIdentity').DuplicateChoice)=>ipcRenderer.invoke('loaderly:duplicate-choice',id,choice),
   onDownloadIdentity:(callback:(value:import('../shared/download-url/mediaIdentity').DownloadIdentity)=>void)=>{const handler=(_event:IpcRendererEvent,value:import('../shared/download-url/mediaIdentity').DownloadIdentity)=>callback(value);ipcRenderer.on('loaderly:download-identity',handler);return()=>ipcRenderer.removeListener('loaderly:download-identity',handler);},
+  onDownloadProgress:(callback:(value:import('../shared/downloadProgress').DownloadProgress)=>void)=>{const handler=(_event:IpcRendererEvent,value:import('../shared/downloadProgress').DownloadProgress)=>callback(value);ipcRenderer.on('loaderly:download-progress',handler);return()=>ipcRenderer.removeListener('loaderly:download-progress',handler);},
   appName: `Loaderly ${__LOADERLY_VERSION__}`,
   appVersion: __LOADERLY_VERSION__,
+  appBuild: __LOADERLY_BUILD__,
   trashMedia:(paths:string[])=>ipcRenderer.invoke('loaderly:trash-media',paths),
   missingLibraryFiles:(paths:string[])=>ipcRenderer.invoke('loaderly:missing-library-files',paths) as Promise<string[]>,
   playlistPreview:(url:string)=>ipcRenderer.invoke('loaderly:playlist-preview',url),
@@ -37,7 +40,7 @@ contextBridge.exposeInMainWorld('loaderly', {
   discoverModels: (connection:AiConnection) => ipcRenderer.invoke('loaderly:ai-models',connection),
   translateSubtitles: (input:TranslationInput) => ipcRenderer.invoke('loaderly:ai-translate',input),
   cancelTranslation: () => ipcRenderer.invoke('loaderly:ai-cancel'),
-  extractAudio: (path: string) => ipcRenderer.invoke('loaderly:extract-audio', path),
+  extractAudio: (request: import('../shared/audioExtraction').ExtractAudioRequest) => ipcRenderer.invoke('loaderly:extract-audio', request) as Promise<import('../shared/audioExtraction').ExtractAudioResult>,
   platform: process.platform,
   arch: process.arch,
   supportsClipboardFiles: process.platform === 'win32' || process.platform === 'darwin',
@@ -222,6 +225,7 @@ contextBridge.exposeInMainWorld('loaderly', {
     }>,
   saveMediaOutput: (payload: {
     readonly sourcePath: string;
+    readonly saveMode?: 'beside' | 'replace' | 'choose';
     readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
     readonly label: string;
     readonly startSeconds: number;
@@ -304,6 +308,11 @@ contextBridge.exposeInMainWorld('loaderly', {
   }) =>
     ipcRenderer.invoke('loaderly:save-media-output', payload) as Promise<{
       readonly ok: boolean;
+      readonly canceled?: boolean;
+      readonly replacedSource?: boolean;
+      readonly durationSeconds?: number;
+      readonly sizeBytes?: number;
+      readonly fileUrl?: string;
       readonly path?: string;
       readonly message?: string;
     }>,
@@ -332,8 +341,16 @@ contextBridge.exposeInMainWorld('loaderly', {
         readonly updateSupported?: boolean;
       };
     }>,
+  getWindowState: () => ipcRenderer.invoke('loaderly:window-control','state') as Promise<{ok:boolean;maximized:boolean}>,
+  onWindowState: (callback:(state:{maximized:boolean})=>void) => {const handler=(_event:IpcRendererEvent,state:{maximized:boolean})=>callback(state);ipcRenderer.on('loaderly:window-state',handler);return()=>ipcRenderer.removeListener('loaderly:window-state',handler);},
+  getWindowAppearanceSupport: () => ipcRenderer.invoke('loaderly:window-appearance-support') as Promise<{supported:boolean;reduced:boolean}>,
+  onWindowAppearanceChanged: (callback:(state:{desktopGlass:boolean;supported:boolean;reduced:boolean})=>void) => {
+    const handler=(_event:IpcRendererEvent,state:{desktopGlass:boolean;supported:boolean;reduced:boolean})=>callback(state);
+    ipcRenderer.on('loaderly:window-appearance-changed',handler);
+    return()=>ipcRenderer.removeListener('loaderly:window-appearance-changed',handler);
+  },
   setTitlebarTheme: (themeMode: 'light' | 'dark', locale?: 'en' | 'ar', appearance?: unknown) =>
-    ipcRenderer.invoke('loaderly:set-titlebar-theme', themeMode, locale, appearance) as Promise<{ readonly ok: boolean }>,
+    ipcRenderer.invoke('loaderly:set-titlebar-theme', themeMode, locale, appearance) as Promise<{ readonly ok: boolean; readonly desktopGlass: boolean }>,
   trayAction: (action: 'open' | 'downloads' | 'editor' | 'settings' | 'exit') =>
     ipcRenderer.invoke('loaderly:tray-action', action) as Promise<{ readonly ok: boolean }>,
   windowControl: (action: 'minimize' | 'toggleMaximize' | 'close') =>

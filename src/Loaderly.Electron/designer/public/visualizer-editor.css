@@ -95,6 +95,8 @@ html.v-designer-open,html.v-designer-open body { overflow:hidden; }
 .visualizer-lab button[aria-pressed=true] { border-color:var(--muted); background:var(--soft); color:var(--text); }
 .v-preview-tools button { font-size:11px!important; padding:6px 9px!important; }
 .v-edit-overlay { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
+.v-preview.v-editing-points .v-display {left:50%!important;top:50%!important;width:100%!important;height:100%!important;gap:0;}
+.v-preview.v-editing-points .v-display>strong,.v-preview.v-editing-points .v-display>small {display:none;}
 .v-word-form { display:grid; gap:13px; margin-top:20px; }
 .v-word-form input[type=text] { width:100%; font-size:20px; }
 .v-word-form small,.v-geometry-tools small { display:block; color:var(--muted); font-size:11px; line-height:1.7; }

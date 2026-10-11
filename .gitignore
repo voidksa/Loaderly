@@ -53,3 +53,10 @@ tmp/
 
 # Generated from the bundled offline designer sources
 /src/Loaderly.Electron/public/studio/
+
+# Public documentation allowlist
+/docs/*
+!/docs/INSTALLATION.md
+!/docs/2.2.0-RELEASE-NOTES.md
+!/docs/images/
+!/docs/community/

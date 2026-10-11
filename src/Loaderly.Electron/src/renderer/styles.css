@@ -6571,15 +6571,11 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .editor-inspector .inspector-section {border:0;background:transparent;border-radius:0;padding:0;margin:0;gap:8px;align-content:start;}
 .editor-inspector .inspector-section>strong {margin:0;}
 .editor-inspector .control-grid {gap:20px;}
-.editor-inspector .control-deck__tabs {flex-wrap:nowrap;align-items:stretch;border:0;background:transparent;padding:0;gap:4px;margin-bottom:14px;}
-.editor-inspector .control-deck__tabs button {flex:1 1 0;padding:7px 5px;font-size:calc(11px * var(--ui-font-scale,1));line-height:1.4;gap:5px;}
-.editor-inspector .control-deck__tabs button span {min-width:0;overflow-wrap:anywhere;}
-.editor-inspector .audio-settings>.control-deck>.control-deck__tabs {flex-wrap:wrap;}
-.editor-inspector .audio-settings>.control-deck>.control-deck__tabs button {flex:1 0 auto;}
-.editor-inspector .audio-settings>.control-deck>.control-deck__tabs button span {white-space:nowrap;overflow-wrap:normal;}
+.editor-inspector .control-deck__tabs {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));align-items:stretch;border:0;background:transparent;padding:0;gap:6px;margin-bottom:14px;}
+.editor-inspector .control-deck__tabs button {min-width:0;min-height:36px;padding:8px 10px;font-size:calc(12px * var(--ui-font-scale,1));line-height:1.5;gap:7px;}
+.editor-inspector .control-deck__tabs button span {min-width:0;white-space:normal;overflow-wrap:normal;word-break:normal;}
 .editor-inspector .control-deck__tabs button[aria-selected=true] {box-shadow:none;background:var(--accent-soft);}
-.editor-inspector .visualizer-controls .control-deck__tabs {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}
-.editor-inspector .visualizer-controls .control-deck__tabs button {min-height:34px;}
+.editor-inspector .visualizer-controls .control-deck__tabs {grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));}
 .editor-inspector .audio-control {padding:2px 0;}
 .editor-inspector .audio-toggle {padding:3px 0;}
 .editor-inspector .audio-reset {margin-top:16px;}
@@ -6588,6 +6584,9 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .editor-inspector .speed-controls>strong:not(:first-child) {margin-top:6px;}
 .editor-inspector details.inspector-section:not([open]) {display:block;}
 .editor-inspector .sound-preset-controls summary {font-size:calc(12px * var(--ui-font-scale,1));}
+.editor-inspector .sound-preset-controls {grid-template-columns:minmax(0,1fr);}
+.editor-inspector .sound-preset-controls>* {min-width:0;}
+.editor-inspector .preset-library-toggle {white-space:normal;text-align:start;}
 .editor-inspector .audio-section-scope {margin-bottom:8px;}
 .editor-inspector .audio-sections>p {font-size:calc(11px * var(--ui-font-scale,1));margin:8px 0 12px;}
 .editor-inspector .audio-sections>.inspector-section {margin-bottom:16px;}

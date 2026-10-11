@@ -115,7 +115,7 @@ describe('editor output actions', () => {
     });
 
     expect(actions.find((action) => action.kind === 'save-video')?.disabledReason).toBe(
-      'This range contains Overlapping Zoom effects cannot be exported yet. Move or shorten one zoom item; sequential zooms are supported. Unsupported effects: custom effect.'
+      'This range contains Overlapping Zoom effects cannot be exported yet. Move or shorten one zoom item. Sequential zooms are supported. Unsupported effects: custom effect.'
     );
   });
 });

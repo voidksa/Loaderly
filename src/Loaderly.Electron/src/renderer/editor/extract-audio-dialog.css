@@ -1,0 +1,17 @@
+.app-dialog.extract-audio-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+.extract-audio-dialog > header,
+.extract-audio-dialog > footer { flex: 0 0 auto; }
+.extract-audio-dialog > .extract-audio-content {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding-inline: 4px 10px;
+}
+.extract-audio-dialog > footer { flex-wrap: wrap; }

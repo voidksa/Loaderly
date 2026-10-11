@@ -18,17 +18,19 @@ export function ProgramUpdates({ ar, busy, beforeInstall }: { ar: boolean; busy:
   };
   const downloading = state?.phase === 'downloading', checking = state?.phase === 'checking';
   const progress = Math.min(100, Math.max(0, Math.round(state?.progress ?? 0)));
+  const checkedAt = state?.checkedAt ? new Date(state.checkedAt) : undefined;
+  const checkedLabel = checkedAt && Number.isFinite(checkedAt.getTime()) ? new Intl.DateTimeFormat(ar ? 'ar' : 'en', {dateStyle:'medium',timeStyle:'short'}).format(checkedAt) : undefined;
   if (state?.distribution === 'store') return <section className="program-updates" aria-label={t('Loaderly updates', 'تحديثات Loaderly')}>
-    <div className="setting-row"><span><strong>Loaderly · {state.current}</strong><small>{t('Microsoft Store manages updates for this copy of Loaderly.', 'يتولى متجر Microsoft تحديث هذه النسخة من Loaderly.')}</small></span><button className="button secondary" onClick={() => void action('check')}><ExternalLink size={15} aria-hidden="true" />{t('Open Microsoft Store', 'فتح متجر Microsoft')}</button></div>
+    <div className="setting-row"><span><strong>{t('Updates', 'التحديثات')}</strong><small>{t('Updates are managed by Microsoft Store.', 'يتولى متجر Microsoft التحديثات.')}</small></span><button className="button secondary" onClick={() => void action('check')}><ExternalLink size={15} aria-hidden="true" />{t('Open Microsoft Store', 'فتح متجر Microsoft')}</button></div>
     {error && <p role="status">{t('Could not open Microsoft Store. Open it from the Start menu.', 'تعذّر فتح متجر Microsoft. افتحه من قائمة ابدأ.')}</p>}
   </section>;
   return <section className="program-updates" aria-label={t('Loaderly updates', 'تحديثات Loaderly')}>
     <div className="setting-row">
-      <span><strong>{t('Installed version', 'الإصدار المثبّت')} · <bdi>{state?.current ?? '…'}</bdi></strong><small>{state?.checkedAt ? t('Last checked: ', 'آخر فحص: ') + new Date(state.checkedAt).toLocaleString(ar ? 'ar' : 'en') : t('Check for a newer release.', 'تحقق من توفر إصدار أحدث.')}</small></span>
+      <span><strong>{t('Updates', 'التحديثات')}</strong>{checkedLabel && <small className="update-checked"><span>{t('Last checked:', 'آخر فحص:')}</span><time dateTime={state!.checkedAt}><bdi dir={ar ? 'rtl' : 'ltr'}>{checkedLabel}</bdi></time></small>}</span>
       <button className="button secondary" disabled={!state || checking || downloading || state.phase === 'ready'} onClick={() => void action('check')}><RefreshCcw size={15} aria-hidden="true" />{t(checking ? 'Checking…' : 'Check for updates', checking ? 'جارٍ الفحص…' : 'التحقق من التحديثات')}</button>
     </div>
-    <label className="update-automatic"><input type="checkbox" disabled={!state} checked={state?.automatic ?? true} onChange={e => void action('automatic', e.target.checked)} />{t('Check automatically while Loaderly is open', 'التحقق تلقائيًا أثناء فتح Loaderly')}</label>
-    {state?.phase === 'current' && <p role="status">{t('You have the latest available version for this device.', 'لديك أحدث نسخة متاحة لهذا الجهاز.')}</p>}
+    <label className="update-automatic"><input type="checkbox" disabled={!state} checked={state?.automatic ?? true} onChange={e => void action('automatic', e.target.checked)} />{t('Check automatically', 'التحقق تلقائيًا')}</label>
+    {state?.phase === 'current' && <p role="status">{t('You’re up to date.', 'لديك أحدث إصدار.')}</p>}
     {['available', 'downloading', 'ready'].includes(state?.phase ?? '') && <div className="update-release">
       <div className="update-release__heading"><ArrowUpCircle size={19} aria-hidden="true" /><strong>{state?.phase === 'ready' ? t('Ready to install', 'جاهز للتثبيت') : t('Update available', 'تحديث متاح')}</strong><span><bdi>Loaderly {state?.version}</bdi></span></div>
       {state?.notes && <p className="update-release__notes" dir="auto">{ar && state.notesAr ? state.notesAr : state.notes}</p>}

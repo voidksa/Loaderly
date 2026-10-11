@@ -43,8 +43,8 @@ export type AudioVisualizerSettings = {
 export const defaultVisualizer: AudioVisualizerSettings = {
   style:'mirror', color:'#c4cbd3', secondColor:'#ffffff', gradient:false,
   background:'#151515', backgroundEnd:'#242424', backgroundGradient:false,
-  width:78, height:44, positionX:50, positionY:50, count:80, gap:4, roundness:3,
-  sensitivity:1, smoothing:.8, glow:0, opacity:1,
+  width:78, height:44, positionX:50, positionY:50, count:64, gap:6, roundness:5,
+  sensitivity:1.25, smoothing:.72, glow:0, opacity:1,
   showTitle:true, showSubtitle:false, showBadges:false, title:'', subtitle:'', textColor:'#eef1f5', textSize:16,
   shape:defaultVisualizerShape
 };
@@ -81,6 +81,9 @@ export const visualizerPresets = [
   {id:'aurora',en:'Aurora',ar:'شفق',settings:{...defaultVisualizer,style:'wave',color:'#77e6cb',secondColor:'#ad9bf7',gradient:true,background:'#111820',glow:8,showTitle:false}},
   {id:'halo',en:'Halo',ar:'هالة',settings:{...defaultVisualizer,style:'ring',color:'#e7c895',secondColor:'#ee9bba',gradient:true,background:'#191619',height:65,showTitle:false}},
   {id:'studio',en:'Studio',ar:'استوديو',settings:{...defaultVisualizer,style:'bars',color:'#26323e',background:'#f3f2ef',textColor:'#26323e',count:48,gap:6}},
+  {id:'silk',en:'Silk',ar:'حرير',settings:{...defaultVisualizer,style:'path',color:'#93dccf',secondColor:'#aab8ff',gradient:true,background:'#101c24',showTitle:false,count:120,glow:3,shape:{points:[[.08,.58],[.28,.36],[.5,.58],[.72,.36],[.92,.58]],closed:false,smooth:true,mirror:false,stroke:'line',thickness:3,amplitude:.7,aspect:2}}},
+  {id:'ember-ring',en:'Ember ring',ar:'حلقة متوهجة',settings:{...defaultVisualizer,style:'ring',color:'#ffc98c',secondColor:'#f18fae',gradient:true,background:'#1c141c',height:65,count:64,gap:7,glow:4,showTitle:false}},
+  {id:'starlight',en:'Starlight',ar:'نجوم',settings:{...defaultVisualizer,style:'dots',color:'#b9b0ef',secondColor:'#83d9ed',gradient:true,background:'#161523',count:48,gap:7,glow:2,showTitle:false}},
 ] as const;
 
 export const visualizerShapePresets: {id:string;en:string;ar:string;shape:VisualizerShape}[] = [
@@ -88,4 +91,8 @@ export const visualizerShapePresets: {id:string;en:string;ar:string;shape:Visual
   {id:'heart',en:'Heart',ar:'قلب',shape:{points:[[.5,.27],[.27,.13],[.12,.32],[.2,.53],[.5,.87],[.8,.53],[.88,.32],[.73,.13]],closed:true,smooth:true,mirror:false}},
   {id:'orbit',en:'Orbit',ar:'مدار',shape:{points:[[.15,.5],[.28,.23],[.5,.12],[.72,.23],[.85,.5],[.72,.77],[.5,.88],[.28,.77]],closed:true,smooth:true,mirror:true}},
   {id:'ribbon',en:'Ribbon',ar:'شريط',shape:{points:[[.08,.65],[.27,.28],[.5,.65],[.73,.28],[.92,.65]],closed:false,smooth:true,mirror:true}},
+  {id:'infinity',en:'Infinity',ar:'لانهاية',shape:{points:[[.5,.5],[.28,.2],[.08,.28],[.08,.72],[.28,.8],[.5,.5],[.72,.2],[.92,.28],[.92,.72],[.72,.8]],closed:true,smooth:true,mirror:false,stroke:'line',thickness:3,amplitude:.28,aspect:1.7}},
+  {id:'arch',en:'Arch',ar:'قوس',shape:{points:[[.08,.8],[.13,.48],[.28,.21],[.5,.1],[.72,.21],[.87,.48],[.92,.8]],closed:false,smooth:true,mirror:false,amplitude:.35,aspect:1.4}},
+  {id:'hexagon',en:'Hexagon',ar:'سداسي',shape:{points:[[.5,.1],[.85,.3],[.85,.7],[.5,.9],[.15,.7],[.15,.3]],closed:true,smooth:false,mirror:false,stroke:'line',thickness:3,amplitude:.3}},
+  {id:'oval',en:'Oval',ar:'بيضاوي',shape:{points:[[.5,.15],[.78,.25],[.9,.5],[.78,.75],[.5,.85],[.22,.75],[.1,.5],[.22,.25]],closed:true,smooth:true,mirror:false,stroke:'dots',thickness:4,amplitude:.35,aspect:1.8}},
 ];

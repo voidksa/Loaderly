@@ -1,5 +1,4 @@
 import {Children, Fragment, isValidElement, type ReactNode} from 'react';
-import {SlidersHorizontal} from 'lucide-react';
 import {ControlDeck, type ControlPage} from './ControlDeck';
 
 function flattenSections(children:ReactNode):ReactNode[] {
@@ -17,7 +16,7 @@ function InspectorSections({children,label}:{children:ReactNode;label:string}) {
       if(isValidElement<{children?:ReactNode}>(heading)) {
         const contents=nodes.filter(node=>node!==heading);
         // Render the section content directly: the tab supplies its heading.
-        pages.push({id:`section-${pages.length}`,label:heading.props.children,icon:<SlidersHorizontal size={14}/>,content:<div className="inspector-section">{contents}</div>});
+        pages.push({id:`section-${pages.length}`,label:heading.props.children,content:<div className="inspector-section">{contents}</div>});
         continue;
       }
     }

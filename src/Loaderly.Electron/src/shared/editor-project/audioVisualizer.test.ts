@@ -11,7 +11,7 @@ describe('shareable visualizer appearance',()=>{
   });
   it('bounds rendering work and excludes unknown fields and unsafe colors',()=>{
     const value=normalizeVisualizer({count:999999,width:-1,sensitivity:Infinity,color:'url(https://example.test)',style:'script',title:'a'.repeat(500),apiKey:'private'});
-    expect(value.count).toBe(160);expect(value.width).toBe(20);expect(value.sensitivity).toBe(1);expect(value.color).toBe(defaultVisualizer.color);expect(value.title).toHaveLength(160);expect(value).not.toHaveProperty('apiKey');
+    expect(value.count).toBe(160);expect(value.width).toBe(20);expect(value.sensitivity).toBe(defaultVisualizer.sensitivity);expect(value.color).toBe(defaultVisualizer.color);expect(value.title).toHaveLength(160);expect(value).not.toHaveProperty('apiKey');
   });
   it('imports version 1 looks without changing their original style',()=>{
     const value=decodeVisualizer(JSON.stringify({format:'loaderly-visualizer',version:1,settings:{style:'wave',color:'#123456'}}));
@@ -22,7 +22,8 @@ describe('shareable visualizer appearance',()=>{
       const value=normalizeVisualizer({...defaultVisualizer,style:'path',shape:preset.shape});
       expect(decodeVisualizer(encodeVisualizer(value))).toEqual(value);
       const samples=sampleShape(value.shape,160);expect(samples).toHaveLength(160);
-      for(const {point,normal} of samples){expect(point.every(n=>Number.isFinite(n)&&n>=0&&n<=1)).toBe(true);expect(Math.hypot(...normal)).toBeCloseTo(1,5);}
+      expect(shapeCurve(value.shape).every(point=>point.every(n=>Number.isFinite(n)&&n>=0&&n<=1))).toBe(true);
+      for(const {point,normal} of samples){expect(point.every((n,i)=>Number.isFinite(n)&&n>=0&&n<=(i===0?(value.shape.aspect??1):1))).toBe(true);expect(Math.hypot(...normal)).toBeCloseTo(1,5);}
     }
   });
   it('bounds imported points and keeps degenerate paths safe to render',()=>{

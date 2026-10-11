@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, open, stat, unlink } from 'node:fs/promises';
+import { mkdir, open, stat, unlink, readFile } from 'node:fs/promises';
 import { prepareDownloadDirectory } from './downloadDirectory';
 import { downloadFolderMessage, downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
 
-vi.mock('node:fs/promises', () => ({ mkdir: vi.fn(), stat: vi.fn(), open: vi.fn(), unlink: vi.fn() }));
+vi.mock('node:fs/promises', () => ({ readFile: vi.fn(), mkdir: vi.fn(), stat: vi.fn(), open: vi.fn(), unlink: vi.fn() }));
 const handle = { writeFile: vi.fn(), close: vi.fn() };
 beforeEach(() => {
   vi.resetAllMocks();
@@ -55,4 +55,14 @@ describe('download destination recovery', () => {
     expect(mkdir).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });
+});
+
+it.each(['/media/void/Travel drive/Clips','/run/media/void/Travel drive/Clips'])('does not recreate a disconnected Linux USB path: %s',async directory=>{
+ vi.mocked(readFile).mockResolvedValue('20 1 0:1 / / rw - ext4 /dev/root rw');
+ expect(await prepareDownloadDirectory(directory,'linux')).toBe('DOWNLOAD_FOLDER_UNAVAILABLE');
+ expect(mkdir).not.toHaveBeenCalled();expect(open).not.toHaveBeenCalled();
+});
+it('accepts a mounted Linux USB volume with escaped spaces',async()=>{
+ vi.mocked(readFile).mockResolvedValue('20 1 8:1 / /media/void/Travel\\040drive rw - vfat /dev/sdb1 rw');
+ expect(await prepareDownloadDirectory('/media/void/Travel drive/Clips','linux')).toBeUndefined();
 });

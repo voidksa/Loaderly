@@ -16,7 +16,7 @@ export function SpeedControls({ rate, mode, ar, onRate, onMode }: {
     if (next !== rate) onRate(next);
   };
   const options = [
-    {value:'normal',label:ar?'الطبقة تتبع السرعة':'Follow speed',description:ar?'التبطيء يخفض طبقة الصوت والتسريع يرفعها.':'Slower playback lowers pitch; faster playback raises it.'},
+    {value:'normal',label:ar?'الطبقة تتبع السرعة':'Follow speed',description:ar?'التبطيء يخفض طبقة الصوت والتسريع يرفعها.':'Slower playback lowers pitch. Faster playback raises it.'},
     {value:'preserve-pitch',label:ar?'الحفاظ على الطبقة':'Keep pitch',description:ar?'تتغير السرعة مع الحفاظ على طبقة الصوت الأصلية.':'Change speed while keeping the original pitch.'},
     {value:'warm',label:ar?'نبرة دافئة':'Warm',description:ar?'ترددات منخفضة أوضح وترددات عالية أهدأ، مع الحفاظ على الطبقة.':'Fuller bass and softer highs, with the original pitch.'},
     {value:'bright',label:ar?'نبرة مشرقة':'Bright',description:ar?'إبراز الترددات العالية مع الحفاظ على الطبقة.':'More prominent high frequencies, with the original pitch.'},

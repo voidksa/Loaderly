@@ -9,6 +9,7 @@ export type MenuOption<Value extends string> = {
 };
 export function DesktopMenu<Value extends string>({
   ariaLabel,
+  disabled = false,
   icon,
   options,
   placement = 'bottom',
@@ -17,6 +18,7 @@ export function DesktopMenu<Value extends string>({
   onChange
 }: {
   readonly ariaLabel: string;
+  readonly disabled?: boolean;
   readonly icon?: ReactNode;
   readonly options: readonly MenuOption<Value>[];
   readonly placement?: 'bottom' | 'top';
@@ -25,6 +27,7 @@ export function DesktopMenu<Value extends string>({
   readonly onChange: (value: Value) => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
   const hasIcons = options.some(option => option.icon);
   const menuRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -101,6 +104,7 @@ export function DesktopMenu<Value extends string>({
         aria-haspopup="menu"
         aria-label={ariaLabel}
         className="desktop-menu__trigger"
+        disabled={disabled}
         onClick={(event) => { restoreFocusRef.current = event.detail === 0; setOpen((value) => !value); }}
         ref={triggerRef}
         type="button"

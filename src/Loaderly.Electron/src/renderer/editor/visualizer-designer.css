@@ -1,0 +1,4 @@
+.app-dialog.native-designer[open] {display:flex;flex-direction:column;min-height:0;}
+.app-dialog.native-designer>header {height:auto;flex:none;min-height:66px;}
+.app-dialog.native-designer>iframe {height:auto;min-height:0;flex:1;}
+.app-dialog.native-designer>footer {display:flex;justify-content:flex-end;gap:10px;flex:none;padding:12px 18px;border-top:1px solid var(--border);}

@@ -1,0 +1,9 @@
+.settings-page .settings-list[data-section=about] .loaderly-about {gap:14px;padding:0;}
+.settings-page .settings-list[data-section=about] .about-meta {display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;max-width:none;margin-block-start:5px;}
+.settings-page .settings-list[data-section=about] .about-version {color:var(--foreground);font-variant-numeric:tabular-nums;}
+.settings-page .settings-list[data-section=about] .program-updates {gap:14px;}
+.settings-page .settings-list[data-section=about] .program-updates .setting-row {align-items:center;gap:20px;flex-wrap:wrap;}
+.program-updates .update-checked {display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;}
+.program-updates .update-checked time {font-variant-numeric:tabular-nums;}
+.settings-page .settings-list[data-section=about] .about-links {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 24px;padding-block-start:6px;text-align:start;}
+.settings-page .settings-list[data-section=about] .about-links nav {display:flex;align-items:center;flex-wrap:wrap;gap:12px 20px;}

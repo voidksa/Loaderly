@@ -243,7 +243,7 @@ const text = {
     fallbackLocalVideo: 'استُورد فيديو محلي إلى مساحة العمل.',
     addedToQueue: 'أُضيف "{title}" إلى قائمة الانتظار.',
     selectedMedia: 'حُدد "{title}".',
-    openedSection: 'فُتح {section}.',
+    openedSection: 'تم فتح {section}.',
     layerSelected: 'حُدد طبقة {layer}.',
     qualitySet: 'ضُبط جودة التنزيل على {quality}.',
     themeSet: 'تغيّر المظهر إلى {theme}.',

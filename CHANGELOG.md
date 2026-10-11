@@ -2,6 +2,63 @@
 
 Features, improvements and fixes in each Loaderly release.
 
+## 2.2.0 - 2026-10-11
+
+More control over where your files go, easier reuse of your designs, and a clearer desktop workspace.
+
+### Saving & exporting
+
+- **Extract audio without unwanted duplicates:** When audio from the same source is already in your library, choose to open it, replace it or keep both. This works from the library and the editor, even when the files are in different folders.
+- **Choose how to save your edits:** Keep an edited copy beside the original, replace the original when the format matches, or choose another location. The file picker starts in the original folder.
+- **Keep your originals safe:** Edited copies keep a recognizable filename and get a separate name if one already exists. Replacing an original waits until the finished export is ready.
+- **Clearer results and cancellation:** Save confirmations show the output location with Show in folder. Canceling a save or visualizer export no longer appears as a failure, and retrying clears the previous progress.
+
+### Downloads & locations
+
+- **See real download progress:** Follow the downloaded size, percentage, speed and time remaining when available. Estimated totals are marked, and downloading is shown separately from preparing and processing the file.
+- **Name and reuse your folders:** Add named locations on your computer or a connected external drive. Choose separate default locations for audio and video, or a location for an individual download.
+- **Organize each location your way:** Limit a location to audio, video or both, and choose whether to create a folder for each website. Your existing default download folder remains available.
+- **Know where your download will go:** Queued downloads keep their chosen location. See folder readiness and the complete path on hover. If a selected drive is unavailable, Loaderly explains the problem instead of silently saving somewhere else.
+
+### Your sound presets
+
+- **Save the sound you like:** Name and save your current sound settings on this device. Search your saved presets from either the audio or video editor and reuse them on another clip.
+- **Apply with control:** See which clip or section will receive the settings, then use Undo to restore its previous sound. Choose whether to include speed and pitch settings when working with a speed region.
+- **Keep or share a settings file:** Import and export sound presets as files, or open the saved preset in community sharing. Only the settings are shared. Your audio stays on your device.
+
+### Your designs & community
+
+- **Smoother, more expressive visualizers:** Refined spectrum response and softer default bars, with new Silk, Ember ring and Starlight presets. Build custom shapes from Infinity, Arch, Hexagon or Oval and adjust sensitivity and smoothing to your sound.
+- **Review before deleting a design:** Deleting a saved design or removing it from the public library asks for confirmation, names the design and explains which copies are affected.
+- **More room to shape your visualizer:** Move and add points across the drawing canvas without being confined to the original shape’s small box. Apply design and Cancel stay at the bottom, and Undo lets you try changes freely.
+- **A library for your own designs:** Keep multiple themes, visualizers and sound presets on this device, including your existing drafts. Find them by name or type and see where each design is saved.
+- **Browse without losing your place:** Open a design in its own editing view and return to the same search and filters. Opening a design or saving it unchanged no longer moves it to the top or changes its edit date.
+- **Easier theme and visualizer reuse:** Save named designs from their controls and apply them again later. Import or export a settings file, and open a specific saved design when you want to share it.
+- **Clearer community browsing:** Choose a list or grid view and keep your preferred view. Previews, ratings and actions stay together. Design types and saved items are easier to find, with cleaner spacing and previews that keep their proportions. Rating scores and counts are clearer in Arabic.
+- **Simpler sign-in and sharing:** The sign-in code, copy action, browser link and waiting state are grouped in two clear steps. Device saving, private account copies and community publishing have clearer, separate actions.
+
+### A clearer workspace
+
+- **Readable editing controls:** Blur, zoom, canvas and other inspector tabs wrap into clear rows without breaking words into letters. Subtitle timing controls stay available while you adjust the current cue, and the timeline menu supports keyboard navigation and Escape.
+- **Roomier Preferences and Tools:** A larger 120% text size is now the default and stays adjustable. Related settings sit together and adapt to the window width. Preferences navigation stays visible while its content scrolls, and switching sections starts at the top.
+- **A more organized editor:** The media title and source stay together, with editing and output actions in a separate row. Mixed Arabic and English titles follow the interface direction, and controls remain accessible in smaller windows.
+- **Less clutter while you work:** Slim themed scrollbars, fewer nested scrolling areas and clearer spacing across design and preset controls. Library details scroll while their action buttons stay visible. Save and status notices now appear at the top center of the window.
+
+### Glass & appearance
+
+- **Native Liquid Glass on supported Macs:** macOS 26 and later use the native system glass effect, with the existing vibrancy fallback on older Macs. Turning glass off or enabling reduced transparency restores an opaque background.
+- **Consistent glass controls:** Buttons and selection states use the same translucent material across Preferences, the editor, design sharing and quick actions. Expandable sections use matching arrows in English and Arabic.
+- **A more even editor background:** Reduced stacked tinting that made editor toolbars look like separate dark blocks. Your glass preference stays in place when you switch between Loaderly and other apps.
+- **Readable glass throughout the app:** Improved glass backgrounds across the library, community, settings and editor, including the timeline. Menus, tooltips, color pickers and dialogs keep a readable background instead of letting text underneath show through.
+- **Clearer appearance controls:** Transparency and layout sliders have visible tracks, and the theme preview reflects your appearance without a checkerboard. Even at maximum transparency, the background keeps text readable.
+- **Adapts to your system settings:** Glass responds to reduced-transparency and contrast settings while Loaderly is open. When desktop glass is unavailable, the app keeps a solid background with your chosen colors.
+
+### Desktop details
+
+- **Window controls that fit your desktop:** Refined Windows and Linux window buttons follow Loaderly’s theme, with distinct maximize and restore states. macOS keeps its familiar window controls.
+- **A cleaner quick-actions menu:** The tray popup uses a continuous background and corners that follow your theme, and shows the installed version. Arabic actions fit without clipping, and keyboard navigation makes its commands easier to reach.
+- **A consistent identity and update notes:** Updated Windows app and shortcut icons use Loaderly’s current identity. A notice introduces what changed after an update, and you can reopen these notes from Preferences → About.
+
 ## 2.1.3 - 2026-10-10
 
 - Preserve the starting video when opening a YouTube Mix, so the playlist picker can read the mix instead of an unsupported playlist page.
@@ -34,9 +91,9 @@ Features, improvements and fixes in each Loaderly release.
 ## 2.1.0 - 2026-10-10
 
 - Loaderly is available for Windows, macOS and Linux, with English and Arabic interfaces and illustrated guides.
-- Publish themes, visualizers and sound presets directly from the app. Keep private drafts, view your posts, publish updates or remove a design from the community. Sign in with GitHub; published designs appear in both the app and the community website.
+- Publish themes, visualizers and sound presets directly from the app. Keep private drafts, view your posts, publish updates or remove a design from the community. Sign in with GitHub. Published designs appear in both the app and the community website.
 - Import a saved design code or file. Try sound presets with your own audio and compare the original with the edited sound before applying them.
-- Customize individual interface colors, surface transparency, text size, spacing, sidebar width, outlines and corners. Menus, color pickers, tooltips and the editor follow your theme. Shared themes work across systems; desktop glass adapts to support.
+- Customize individual interface colors, surface transparency, text size, spacing, sidebar width, outlines and corners. Menus, color pickers, tooltips and the editor follow your theme. Shared themes work across systems. Desktop glass adapts to support.
 - Create visualizers inside Loaderly and turn audio into an MP4 with animated artwork, titles, a cover or a logo.
 - Add echo and reverb, adjust individual sound sections and keep preview and export in sync. Visualizer captions move with the artwork.
 - Read and enter familiar timecodes throughout the editor. Move segments from the middle and resize them from either edge, including short sections.

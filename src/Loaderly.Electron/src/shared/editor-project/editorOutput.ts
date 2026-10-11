@@ -146,10 +146,10 @@ export function resolveEditorOutputActions(input: ResolveEditorOutputActionsInpu
 function unsupportedEffectsReason(effects: readonly string[], scope: 'range' | 'frame'): string {
   const actionableMessages = effects.flatMap((effect) => {
     if (effect === 'overlapping zoom effects') {
-      return ['Overlapping Zoom effects cannot be exported yet. Move or shorten one zoom item; sequential zooms are supported.'];
+      return ['Overlapping Zoom effects cannot be exported yet. Move or shorten one zoom item. Sequential zooms are supported.'];
     }
 
-    if (effect === 'overlapping speed effects') return ['Overlapping speed effects cannot be exported. Move or shorten one interval; sequential rates are supported.'];
+    if (effect === 'overlapping speed effects') return ['Overlapping speed effects cannot be exported. Move or shorten one interval. Sequential rates are supported.'];
     if (effect === 'multiple canvas sizes') return ['Use one canvas size per export. Hide or remove additional canvas items.'];
     return [];
   });

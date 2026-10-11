@@ -13,6 +13,12 @@ export function visualizerBands(spectrum:Uint8Array,count:number):number[]{
     return Math.sqrt(energy/Math.max(1,stop-start))/255;
   });
 }
+// FFT bytes already encode a logarithmic dB range. A linear pixel mapping lifts
+// quiet bins into a solid wall. This perceptual curve restores headroom without
+// normalizing every frame to full height or creating motion during silence.
+export function visualizerLevel(band:number,sensitivity:number):number {
+  return Math.min(1,Math.max(0,band)**2.2*sensitivity);
+}
 const cache = new WeakMap<VisualizerContour,Point[]>();
 export function shapeCurve(shape:VisualizerContour):Point[] {
   const previous=cache.get(shape);if(previous)return previous;
@@ -58,7 +64,7 @@ export function drawVisualizer(ctx:CanvasRenderingContext2D,width:number,height:
   const gradient=ctx.createLinearGradient(0,0,width,height);gradient.addColorStop(0,s.color);gradient.addColorStop(1,s.secondColor);
   ctx.fillStyle=ctx.strokeStyle=s.gradient?gradient:s.color;ctx.globalAlpha=s.opacity;ctx.shadowBlur=s.glow;ctx.shadowColor=s.color;
   const bands=visualizerBands(spectrum,s.count);
-  const magnitude=(i:number)=>Math.min(1,(bands[Math.min(bands.length-1,i)]??0)*s.sensitivity);
+  const magnitude=(i:number)=>visualizerLevel(bands[Math.min(bands.length-1,i)]??0,s.sensitivity);
   if(s.style==='path'){
     let entries=samples.get(s.shape);if(!entries){entries=new Map();samples.set(s.shape,entries);}
     let contours=entries.get(s.count);if(!contours){contours=sampleContours(s.shape,s.count);entries.set(s.count,contours);}

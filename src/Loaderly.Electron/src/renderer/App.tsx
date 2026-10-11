@@ -1,12 +1,20 @@
+import { WhatsNew } from './editor/WhatsNew';
+import { announceSupportOpened } from './editor/SupportNotice';
+import { DownloadLocationsSettings } from './editor/DownloadLocationsSettings';
+import { downloadLocationFor } from '../shared/download-destination/downloadLocations';
+import { SaveOutputDialog, type SaveMode } from './editor/SaveOutputDialog';
 import {createMediaIdAllocator} from '../shared/mediaIdentity';
 import {AudioSectionControls} from './editor/AudioSectionControls';
 import {normalizeAudioSections,audioSectionsForOutput,adjustAudioSectionWindow,type AudioSection} from '../shared/editor-project/audioSections';
 import {TimeField} from './editor/TimeField';
 import {formatTimecode} from '../shared/editor-timeline/timecode';
-import {SoundPresetControls} from './editor/SoundPresetControls';
+import {SoundPresetControls} from './editor/SoundPresetLibrary';
 import {PlaylistPicker} from './editor/PlaylistPicker';
 import {DuplicateDownload} from './editor/DuplicateDownload';
+import {ExtractAudioDialog} from './editor/ExtractAudioDialog';
+import type {ExtractAudioChoice,ExtractAudioRequest} from '../shared/audioExtraction';
 import {youtubeThumbnailUrl,type DuplicateDownloadPrompt} from '../shared/download-url/mediaIdentity';
+import {localFileKindForInput} from '../shared/download-url/downloadInput';
 import {LibraryRemoval} from './editor/LibraryRemoval';
 import {youtubePlaylistUrl,type PlaylistEntry} from '../shared/download-url/playlist';
 import { downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
@@ -17,6 +25,7 @@ import { VisualizerVideoExport } from './editor/VisualizerVideoExport';
 import {videoDimensions,type VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
 import { CommunityLibrary } from './editor/CommunityLibrary';
 import { ProgramUpdates } from './editor/ProgramUpdates';
+import './about.css';
 import { ProgramUpdateNotice } from './editor/ProgramUpdateNotice';
 import { LinuxWelcome } from './editor/LinuxWelcome';
 import { SpeedControls } from './editor/SpeedControls';
@@ -92,6 +101,7 @@ import {
   Settings,
   SlidersHorizontal,
   Square,
+  Copy,
   Sun,
   Trash2,
   Undo2,
@@ -213,12 +223,13 @@ type MediaSourceType = 'download' | 'local';
 type MediaKind = 'video' | 'audio';
 type WindowControlAction = 'minimize' | 'toggleMaximize' | 'close';
 type AutosaveState = 'idle' | 'saving' | 'saved' | 'failed';
-type DownloadPhase = 'preparing' | 'downloading' | 'processing' | 'completed' | 'failed';
+type DownloadPhase = 'preparing' | 'downloading' | 'processing' | 'subtitles' | 'finalizing' | 'completed' | 'failed';
 type LibraryFilter = 'all' | 'video' | 'audio';
 type LibrarySort = 'recent' | 'name' | 'duration';
 type DownloadFilter = 'all' | 'active' | 'queued' | 'completed' | 'failed';
 
 type MediaRow = {
+  readonly downloadTarget?: {path:string;groupByPlatform:boolean;name:string};
   readonly id: number;
   readonly titleKey?: TextKey;
   readonly title?: string;
@@ -233,6 +244,9 @@ type MediaRow = {
   readonly downloadedBytes?: number;
   readonly totalBytes?: number;
   readonly downloadSpeedBytesPerSecond?: number;
+  readonly downloadEtaSeconds?: number;
+  readonly downloadEstimated?: boolean;
+  readonly downloadStream?: 'audio' | 'video' | 'media';
   readonly size: string;
   readonly quality?: DownloadQuality;
   readonly sourceType?: MediaSourceType;
@@ -589,6 +603,7 @@ function readSavedMediaRows(): readonly MediaRow[] {
           downloadPhase: ready ? 'completed' : failed ? 'failed' : 'preparing',
           size: typeof row.size === 'string' ? row.size : '0 MB',
           quality,
+          downloadTarget: row.downloadTarget && typeof row.downloadTarget.path === "string" ? {path:row.downloadTarget.path,name:typeof row.downloadTarget.name === "string"?row.downloadTarget.name:"",groupByPlatform:row.downloadTarget.groupByPlatform===true}:undefined,
           sourceType,
           mediaKind: row.mediaKind === 'audio' ? 'audio' : mediaKindForPath(filePath ?? source, quality),
           filePath,
@@ -673,7 +688,15 @@ function DownloadElapsedLabel({
       : (locale === 'ar' ? 'جاهز محليًا' : 'Ready locally');
   }
 
-  return <small dir="auto">{label}</small>;
+  const transfer = row.status === 'downloading' && row.downloadPhase === 'downloading';
+  const details: string[] = [];
+  if(transfer){
+    if(row.progressKnown) details.push(`${row.downloadEstimated ? '≈ ' : ''}${Math.floor(row.progress)}%`);
+    if(row.downloadedBytes!==undefined)details.push(row.totalBytes?`${formatBytes(row.downloadedBytes)} / ${row.downloadEstimated?'≈ ':''}${formatBytes(row.totalBytes)}`:formatBytes(row.downloadedBytes));
+    if(row.downloadSpeedBytesPerSecond)details.push(`${formatBytes(row.downloadSpeedBytesPerSecond)}${locale==='ar'?'/ث':'/s'}`);
+    if(row.downloadEtaSeconds!==undefined)details.push(locale==='ar'?`المتبقي نحو ${formatElapsed(row.downloadEtaSeconds*1000)}`:`About ${formatElapsed(row.downloadEtaSeconds*1000)} left`);
+  }
+  return <span className="download-progress-details">{details.map((detail,index)=><bdi key={index}>{detail}</bdi>)}<bdi>{label}</bdi></span>;
 }
 
 function friendlyDownloadNotice(message: string | undefined, locale: AppLocale): string | undefined {
@@ -723,20 +746,6 @@ function splitBatchSources(value: string): readonly string[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-}
-
-function fileKindForPath(path: string): 'media' | 'subtitle' | 'unknown' {
-  const normalized = path.toLowerCase();
-
-  if (/\.(srt|vtt)$/.test(normalized)) {
-    return 'subtitle';
-  }
-
-  if (/\.(mp4|mov|mkv|webm|avi|m4v|mp3|wav|flac|m4a|aac|ogg|opus)$/.test(normalized)) {
-    return 'media';
-  }
-
-  return 'unknown';
 }
 
 function mediaKindForPath(path: string | undefined, quality?: DownloadQuality): MediaKind {
@@ -1080,11 +1089,14 @@ export function App() {
   const documentationUrl = `https://loaderly.app/${preferences.locale === 'ar' ? 'ar/' : ''}docs/`;
   const [showDiscovery,setShowDiscovery]=useState(()=>localStorage.getItem('loaderly:discovery:2.1')!=='dismissed');
   const [activeNav, setActiveNav] = useState<NavigationKey>('library');
+  const [communityDraftId,setCommunityDraftId]=useState<string>();
   const [communityCreatorOpen,setCommunityCreatorOpen]=useState(false);
   const [pendingSoundCode,setPendingSoundCode]=useState<string>();
+  const [windowMaximized,setWindowMaximized]=useState(false);
+  useEffect(()=>{void window.loaderly?.getWindowState().then(state=>setWindowMaximized(state.maximized)).catch(()=>{});return window.loaderly?.onWindowState(state=>setWindowMaximized(state.maximized));},[]);
   const communityOpen = activeNav === 'community';
   useEffect(() => {
-    const open = (event:Event) => {setCommunityCreatorOpen((event as CustomEvent).detail?.create===true);selectNavigation('community');};
+    const open = (event:Event) => {setCommunityCreatorOpen((event as CustomEvent).detail?.create===true);setCommunityDraftId((event as CustomEvent).detail?.draftId);selectNavigation('community');};
     window.addEventListener('loaderly:community', open);
     return () => window.removeEventListener('loaderly:community', open);
   });
@@ -1115,6 +1127,11 @@ export function App() {
   const [duplicateDownload,setDuplicateDownload]=useState<DuplicateDownloadPrompt>();
   useEffect(()=>window.loaderly?.onDuplicatePrompt(setDuplicateDownload),[]);
   useEffect(()=>window.loaderly?.onDownloadIdentity(identity=>setMediaRows(rows=>rows.map(row=>row.id===identity.rowId?{...row,title:identity.title,thumbnailUrl:identity.thumbnailUrl??row.thumbnailUrl}:row))),[]);
+  useEffect(()=>window.loaderly?.onDownloadProgress?.(state=>setMediaRows(rows=>rows.map(row=>row.id===state.rowId&&row.status==='downloading'?{
+    ...row,downloadPhase:state.phase,progress:state.percent??0,progressKnown:state.percent!==undefined,
+    downloadedBytes:state.downloadedBytes,totalBytes:state.totalBytes,downloadEstimated:state.estimated,
+    downloadSpeedBytesPerSecond:state.speedBytesPerSecond,downloadEtaSeconds:state.etaSeconds,downloadStream:state.stream
+  }:row))),[]);
   const [libraryRemoval,setLibraryRemoval]=useState<number[]>();
   const [playlistRequest,setPlaylistRequest]=useState<{url:string;resolve:(entries:PlaylistEntry[]|null)=>void}>();
   const playlistSelections=useRef(new Map<string,string[]>());
@@ -1192,6 +1209,7 @@ export function App() {
   }
 
   const [extractingAudio,setExtractingAudio]=useState(false);
+  const [extractAudioChoice,setExtractAudioChoice]=useState<{name:string;path:string;resolve:(choice:ExtractAudioChoice)=>void}>();
   const [modelChoices,setModelChoices]=useState<string[]>([]);
   const [modelsBusy,setModelsBusy]=useState(false);
   const [aiMessage,setAiMessage]=useState('');
@@ -1215,12 +1233,17 @@ export function App() {
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
   const [librarySort, setLibrarySort] = useState<LibrarySort>('recent');
   const [librarySearch, setLibrarySearch] = useState('');
+  const [downloadLocationId, setDownloadLocationId] = useState('');
+  useEffect(()=>{if(downloadLocationId&&!preferences.downloadLocations.some(l=>l.id===downloadLocationId&&(l.kind==='all'||l.kind===(preferences.quality==='audio'?'audio':'video'))))setDownloadLocationId('');},[downloadLocationId,preferences.downloadLocations,preferences.quality]);
   const [downloadFilter, setDownloadFilter] = useState<DownloadFilter>('all');
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | undefined>(undefined);
   const [activity, setActivity] = useState(() => createText(initialPreferences.locale)('ready'));
   const [activityNotice, setActivityNotice] = useState('');
+  const [savedOutputPath, setSavedOutputPath] = useState('');
+  const [saveRequest, setSaveRequest] = useState<{sourcePath:string;extension:string;resolve:(mode:SaveMode|null)=>void}>();
+  useEffect(() => { if (!activityNotice) return; const timer = setTimeout(() => setActivityNotice(''), 12000); return () => clearTimeout(timer); }, [activityNotice]);
   useEffect(() => {
-    if (/failed|could not|not available|unavailable|lost the target|target was lost|no clear|تعذّر|تعذر|فشل|غير متاح|فُقد|لا يوجد وجه/i.test(activity)) setActivityNotice(activity);
+    if (/failed|could not|not available|unavailable|lost the target|target was lost|no clear|تعذّر|تعذر|فشل|غير متاح|فُقد|لا يوجد وجه/i.test(activity)) { setSavedOutputPath(''); setActivityNotice(activity); }
   }, [activity]);
 
   const [previewResult, setPreviewResult] = useState(false);
@@ -1285,12 +1308,12 @@ export function App() {
       unlocked: uiText(preferences.locale, 'Unlock', 'فتح القفل'),
       zoomConflict: uiText(
         preferences.locale,
-        'Overlapping Zoom effects cannot be exported yet. Move or shorten one zoom item; sequential zooms are supported.',
-        'لا يمكن تصدير زوم متداخل حالياً. حرّك أو قصّر أحد عناصر التقريب؛ التقريب المتتابع مدعوم.'
+        'Overlapping Zoom effects cannot be exported yet. Move or shorten one zoom item. Sequential zooms are supported.',
+        'لا يمكن تصدير زوم متداخل حالياً. حرّك أو قصّر أحد عناصر التقريب. التقريب المتتابع مدعوم.'
       ),
       zoomEmptyDetail: uiText(
         preferences.locale,
-        'Zooms are timeline items. Sequential zooms export; overlapping zooms are blocked.',
+        'Zooms are timeline items. Sequential zooms export. Overlapping zooms are blocked.',
         'التقريب عنصر على الخط الزمني. التقريب المتتابع يتصدر، والمتداخل محجوب حالياً.'
       ),
       zoomHint: uiText(preferences.locale, 'Drag the zoom region on the preview and resize it from the handles.', 'اسحب منطقة التقريب فوق المعاينة وغيّر حجمها من المقابض.'),
@@ -1632,12 +1655,22 @@ export function App() {
     const syncTitlebarTheme = () => {
       void window.loaderly?.setTitlebarTheme?.(preferences.themeMode, preferences.locale, preferences.appearance).then(result=>{
         if(!canceled) document.documentElement.dataset.desktopGlass=String(!!result.desktopGlass);
-      });
+      }).catch(()=>{/* Keep the last confirmed material through a transient IPC failure. */});
     };
     syncTitlebarTheme();
-    const frame = window.requestAnimationFrame(syncTitlebarTheme);
+    window.addEventListener('focus',syncTitlebarTheme);
+    const reducedTransparency = window.matchMedia('(prefers-reduced-transparency: reduce)');
+    reducedTransparency.addEventListener('change',syncTitlebarTheme);
+    const removeAppearanceListener = window.loaderly?.onWindowAppearanceChanged?.(state => {
+      if (!canceled) document.documentElement.dataset.desktopGlass = String(state.desktopGlass);
+    });
 
-    return () => {canceled=true;window.cancelAnimationFrame(frame);};
+    return () => {
+      canceled=true;
+      window.removeEventListener('focus',syncTitlebarTheme);
+      reducedTransparency.removeEventListener('change',syncTitlebarTheme);
+      removeAppearanceListener?.();
+    };
   }, [preferences.locale, preferences.themeMode, preferences.appearance]);
 
   useEffect(() => {
@@ -2100,8 +2133,9 @@ export function App() {
 
   useEffect(() => {
     return window.loaderly?.onNavigate?.((route) => {
-      setActiveNav(route);
-      setActivity(t('openedSection', { section: t(navigationLabels[route]) }));
+      const section = route === 'workspace' ? 'library' : route;
+      setActiveNav(section);
+      setActivity(t('openedSection', { section: t(navigationLabels[section]) }));
     });
   }, [t]);
 
@@ -2180,9 +2214,13 @@ export function App() {
       case 'preparing':
         return uiText(preferences.locale, 'Preparing', 'تجهيز');
       case 'downloading':
-        return uiText(preferences.locale, 'Downloading', 'تنزيل');
+        return row.downloadStream==='audio'?uiText(preferences.locale,'Downloading audio','تنزيل الصوت'):row.downloadStream==='video'?uiText(preferences.locale,'Downloading video','تنزيل الفيديو'):uiText(preferences.locale, 'Downloading', 'تنزيل');
       case 'processing':
-        return uiText(preferences.locale, 'Processing', 'معالجة');
+        return uiText(preferences.locale, 'Processing media', 'معالجة المقطع');
+      case 'subtitles':
+        return uiText(preferences.locale, 'Downloading subtitles', 'تنزيل الترجمة');
+      case 'finalizing':
+        return uiText(preferences.locale, 'Finishing & checking file', 'إنهاء الحفظ والتحقق من الملف');
       case 'completed':
         return uiText(preferences.locale, 'Completed', 'اكتمل');
       case 'failed':
@@ -2497,7 +2535,7 @@ export function App() {
 
   function updateQueuedMediaQuality(rowId: number, quality: DownloadQuality) {
     setMediaRows((rows) =>
-      rows.map((row) => (row.id === rowId && (row.status === 'queued' || row.status === 'failed') ? { ...row, quality } : row))
+      rows.map((row) => (row.id === rowId && (row.status === 'queued' || row.status === 'failed') ? { ...row, quality, downloadTarget:downloadLocationFor(preferences, quality) } : row))
     );
   }
 
@@ -2509,7 +2547,7 @@ export function App() {
         nextIndex += 1;
 
         if (row?.source) {
-          await startUrlDownload(row.id, row.source, row.quality);
+          await startUrlDownload(row.id, row.source, row.quality, row.downloadTarget);
         }
       }
     };
@@ -2641,7 +2679,7 @@ export function App() {
 
     for (const source of sources) {
       const localPath = normalizeLocalFileSource(source);
-      const kind = fileKindForPath(localPath);
+      const kind = localFileKindForInput(localPath);
 
       if (kind === 'media' && window.loaderly?.openMediaFile) {
         await importDroppedMedia(localPath);
@@ -2685,6 +2723,7 @@ export function App() {
         downloadPhase: 'preparing',
         size: '0 MB',
         quality: preferences.quality,
+        downloadTarget: downloadLocationFor(preferences, preferences.quality, downloadLocationId),
         sourceType: 'download',
         mediaKind: mediaKindForPath(undefined, preferences.quality),
         createdAtMs: Date.now() + index
@@ -2721,7 +2760,7 @@ export function App() {
     }
   }
 
-  async function startUrlDownload(rowId: number, sourceOverride?: string, qualityOverride?: DownloadQuality) {
+  async function startUrlDownload(rowId: number, sourceOverride?: string, qualityOverride?: DownloadQuality, targetOverride?: MediaRow['downloadTarget']) {
     const queuedRow = mediaRows.find((row) => row.id === rowId);
     const source = normalizeRemoteSourceUrl(sourceOverride ?? queuedRow?.source ?? queuedRow?.title ?? '');
 
@@ -2769,7 +2808,11 @@ export function App() {
               status: 'downloading',
               progress: 0,
               progressKnown: false,
-              downloadPhase: 'downloading',
+              downloadPhase: 'preparing',
+              downloadedBytes: undefined,
+              totalBytes: undefined,
+              downloadSpeedBytesPerSecond: undefined,
+              downloadEtaSeconds: undefined,
               startedAtMs,
               completedAtMs: undefined,
               errorMessage: undefined
@@ -2781,6 +2824,7 @@ export function App() {
 
     try {
       const requestedQuality = qualityOverride ?? queuedRow?.quality ?? preferences.quality;
+      const target = targetOverride ?? queuedRow?.downloadTarget ?? downloadLocationFor(preferences, requestedQuality);
       const shouldWriteSubtitles = preferences.subtitleDownloadMode === 'auto' && requestedQuality !== 'audio';
       const result = await window.loaderly.downloadUrl({
         rowId,
@@ -2788,8 +2832,8 @@ export function App() {
         locale:preferences.locale,
         url: source,
         quality: requestedQuality,
-        downloadDirectory: preferences.downloadDirectory,
-        groupDownloadsByPlatform: preferences.groupDownloadsByPlatform,
+        downloadDirectory: target.path,
+        groupDownloadsByPlatform: target.groupByPlatform,
         writeSubtitles: shouldWriteSubtitles,
         subtitleLanguages: shouldWriteSubtitles ? subtitleLanguagesForProfile(preferences.subtitleLanguageProfile) : undefined
       });
@@ -3079,11 +3123,32 @@ export function App() {
 
   async function extractAudioForEditing(row: MediaRow) {
     if (!row.filePath || !window.loaderly?.extractAudio || extractingAudio) return;
-    setExtractingAudio(true);setActivity(uiText(preferences.locale,'Extracting audio…','جارٍ استخراج الصوت…'));
-    try { const result=await window.loaderly.extractAudio(row.filePath);if(result.canceled)return;
-      const next:MediaRow={id:allocateMediaId(),title:result.name,source:result.path,sourceType:'local',mediaKind:'audio',status:'ready',progress:100,progressKnown:true,downloadPhase:'completed',duration:formatDuration(result.durationSeconds),durationSeconds:result.durationSeconds,size:formatBytes(result.sizeBytes),filePath:result.path,fileUrl:result.fileUrl,createdAtMs:Date.now(),completedAtMs:Date.now()};
-      setMediaRows(rows=>[next,...rows]);openSelectedMediaEditor(next);setAudioInspectorOpen(true);
-      setActivity(uiText(preferences.locale,'Audio extracted. Your video is unchanged.','استُخرج الصوت. بقي الفيديو الأصلي كما هو.'));
+    setExtractingAudio(true);setActivity(uiText(preferences.locale,'Checking your saved audio…','جارٍ التحقق من الصوت المحفوظ…'));
+    try {
+      const request:ExtractAudioRequest={sourcePath:row.filePath,source:row.source||row.filePath,knownAudio:mediaRowsRef.current.flatMap(item=>item.mediaKind==='audio'&&item.filePath&&(item.status==='ready'||item.status==='edited')?[{path:item.filePath,source:item.source}]:[])};
+      let result=await window.loaderly.extractAudio(request);
+      if(!result.canceled&&'existing' in result){
+        const existing=result.existing;
+        const choice=await new Promise<ExtractAudioChoice>(resolve=>setExtractAudioChoice({...existing,resolve}));
+        if(choice==='cancel'){setActivity(uiText(preferences.locale,'Audio extraction canceled. Your files are unchanged.','أُلغي استخراج الصوت. بقيت ملفاتك كما هي.'));return;}
+        setActivity(uiText(preferences.locale,choice==='use'?'Opening saved audio…':'Extracting audio…',choice==='use'?'جارٍ فتح الصوت المحفوظ…':'جارٍ استخراج الصوت…'));
+        result=await window.loaderly.extractAudio({...request,choice,existingPath:existing.path});
+      }
+      if(result.canceled||'existing' in result)return;
+      const completed=result;
+      const existingRow=mediaRowsRef.current.find(item=>item.filePath===(completed.replacedPath||completed.path));
+      const next:MediaRow={...(existingRow??{}),id:existingRow?.id??allocateMediaId(),title:result.name,source:existingRow?.source||row.source||row.filePath,sourceType:existingRow?.sourceType??'local',mediaKind:'audio',status:result.reused&&existingRow?.status==='edited'?'edited':'ready',progress:100,progressKnown:true,downloadPhase:'completed',duration:formatDuration(result.durationSeconds),durationSeconds:result.durationSeconds,size:formatBytes(result.sizeBytes),filePath:result.path,fileUrl:result.reused?result.fileUrl:`${result.fileUrl}?extracted=${Date.now()}`,thumbnailUrl:existingRow?.thumbnailUrl??row.thumbnailUrl,createdAtMs:existingRow?.createdAtMs??Date.now(),completedAtMs:Date.now()};
+      setMediaRows(rows=>existingRow?rows.map(item=>item.id===existingRow.id?next:item):[next,...rows]);openSelectedMediaEditor(next);setAudioInspectorOpen(true);
+      if(completed.replacedPath){
+        const duration=completed.durationSeconds??row.durationSeconds??0;
+        const clean:EditorUiSnapshot={...(readSavedEditorSnapshot(existingRow??next)??captureEditorSnapshot()),selectedLayerId:'cuts',audioSettings:defaultAudioSettings,audioSections:[],blurItems:[],zoomItems:[],speedItems:[],reframeItems:[],textOverlays:[],cutOutRanges:[],subtitleFile:undefined,subtitlesVisible:false,selectedEffectItemId:undefined,selectedTextOverlayId:undefined,selectedCutOutId:undefined,trimStartSeconds:0,trimEndSeconds:duration,playheadSeconds:0,blurStrength:0,zoomScale:1,speedRate:1,blurWindow:{startSeconds:0,endSeconds:duration},zoomWindow:{startSeconds:0,endSeconds:duration},speedWindow:{startSeconds:0,endSeconds:duration},reframeWindow:{startSeconds:0,endSeconds:duration}};
+        try{
+          for(const key of new Set([...editorSessionStorageKeys(completed.replacedPath),...editorSessionStorageKeys(completed.path)]))localStorage.removeItem(key);
+          for(const key of editorSessionStorageKeys(completed.path))localStorage.setItem(key,JSON.stringify(clean));
+        }catch{/* The verified replacement remains usable when local session storage is unavailable. */}
+        applyEditorSnapshot(clean);setEditorUndoStack([]);setEditorRedoStack([]);setSelectedAudioSectionId(undefined);setIsPlaying(false);
+      }
+      setActivity(uiText(preferences.locale,result.reused?'Opened your saved audio. No extra file was created.':result.replacedPath?'Audio replaced. Your video is unchanged.':'Audio extracted. Your video is unchanged.',result.reused?'فُتح الصوت المحفوظ دون إنشاء ملف آخر.':result.replacedPath?'استُبدل الصوت. بقي الفيديو الأصلي كما هو.':'استُخرج الصوت. بقي الفيديو الأصلي كما هو.'));
     } catch(error) {setActivity(uiText(preferences.locale,`Could not extract audio: ${error instanceof Error?error.message:'Unknown error'}`,'تعذّر استخراج الصوت. تحقق من وجود مسار صوتي وأداة FFmpeg.'));} finally {setExtractingAudio(false)}
   }
 
@@ -3209,6 +3274,8 @@ export function App() {
     let status: QuickCopyJob['status'] = 'failed';
     let finalActivity = uiText(preferences.locale, 'Output failed.', 'فشل الإخراج.');
 
+    setActivityNotice(''); setSavedOutputPath('');
+    let canceled = false;
     setCopyJobs((jobs) => [renderingJob, ...jobs.filter((item) => item.id !== renderingJob.id)].slice(0, 50));
     setJobCounter((value) => value + 1);
 
@@ -3223,7 +3290,24 @@ export function App() {
         if (!window.loaderly?.saveMediaOutput) {
           finalActivity = uiText(preferences.locale, 'Saving output is unavailable in this window.', 'حفظ الإخراج غير متاح في هذه النافذة.');
         } else {
-          const result = await window.loaderly.saveMediaOutput(mediaOutputPayload(kind, label));
+          const mode = await new Promise<SaveMode|null>(resolve => setSaveRequest({sourcePath:selectedMedia.filePath!,extension:kind==='audio'?'mp3':kind==='video'?'mp4':kind==='gif'?'gif':'png',resolve}));
+          if (!mode) { canceled = true; finalActivity = uiText(preferences.locale, 'Save canceled.', 'أُلغي الحفظ.'); return; }
+          const player = videoRef.current;
+          const source = player?.getAttribute('src');
+          const position = player?.currentTime ?? 0;
+          if (player) { player.pause(); player.removeAttribute('src'); player.load(); }
+          let result:Awaited<ReturnType<NonNullable<Window['loaderly']>['saveMediaOutput']>>|undefined;
+          try { result = await window.loaderly.saveMediaOutput({...mediaOutputPayload(kind, label), saveMode:mode}); }
+          finally { if (!result?.replacedSource && player && source) { player.src = source; player.load(); player.currentTime = position; } }
+          if (result.ok && result.replacedSource) {
+            const duration=result.durationSeconds??Math.max(.1,effectiveTrimEnd-trimStartSeconds);
+            const clean:EditorUiSnapshot={...captureEditorSnapshot(),audioSettings:defaultAudioSettings,audioSections:[],blurItems:[],zoomItems:[],speedItems:[],reframeItems:[],textOverlays:[],cutOutRanges:[],subtitleFile:undefined,subtitlesVisible:false,selectedEffectItemId:undefined,selectedTextOverlayId:undefined,selectedCutOutId:undefined,trimStartSeconds:0,trimEndSeconds:duration,playheadSeconds:0,blurStrength:0,zoomScale:1,speedRate:1,blurWindow:{startSeconds:0,endSeconds:duration},zoomWindow:{startSeconds:0,endSeconds:duration},speedWindow:{startSeconds:0,endSeconds:duration},reframeWindow:{startSeconds:0,endSeconds:duration}};
+            try { for(const key of editorSessionStorageKeys(selectedMedia.filePath))localStorage.setItem(key,JSON.stringify(clean)); } catch { /* The media was saved; storage failure must not report an export failure. */ }
+            applyEditorSnapshot(clean);setEditorUndoStack([]);setEditorRedoStack([]);setSelectedAudioSectionId(undefined);setIsPlaying(false);
+            setMediaRows(rows=>rows.map(row=>row.id===selectedMedia.id?{...row,durationSeconds:duration,duration:formatDuration(duration),size:result!.sizeBytes!==undefined?formatBytes(result!.sizeBytes):row.size,fileUrl:`${(result!.fileUrl||row.fileUrl||source||'').split('?')[0]}?saved=${Date.now()}`,status:'ready'}:row));
+          }
+          if (result.canceled) { canceled = true; finalActivity = uiText(preferences.locale, 'Save canceled.', 'أُلغي الحفظ.'); return; }
+          if (result.ok && result.path) { setSavedOutputPath(result.path); setActivityNotice(uiText(preferences.locale, `Saved to ${result.path}`, `حُفظ في ${result.path}`)); }
           status = result.ok ? 'saved' : 'failed';
           finalActivity = result.ok
             ? uiText(preferences.locale, `${label} saved.`, `حُفظ ${label}.`)
@@ -3252,7 +3336,7 @@ export function App() {
       status = 'failed';
       finalActivity = t('outputFailed', { message: error instanceof Error ? error.message : 'unknown error' });
     } finally {
-      setCopyJobs((jobs) => jobs.map((item) => (item.id === renderingJob.id ? { ...item, status } : item)).slice(0, 50));
+      setCopyJobs((jobs) => canceled ? jobs.filter(item => item.id !== renderingJob.id) : jobs.map((item) => (item.id === renderingJob.id ? { ...item, status } : item)).slice(0, 50));
       setActivity(finalActivity);
     }
   }
@@ -4081,6 +4165,7 @@ export function App() {
   function openEditorContextMenu(event: ReactPointerEvent<HTMLElement> | ReactMouseEvent<HTMLElement>, target: EditorContextMenuState['target']) {
     event.preventDefault();
     event.stopPropagation();
+    event.currentTarget.focus({ preventScroll: true });
     setEditorContextMenu({ x: event.clientX, y: event.clientY, target });
   }
 
@@ -4242,6 +4327,13 @@ export function App() {
     pushEditorHistory();
     const cues = updateSubtitleCue(subtitleFile.cues, activeSubtitleCueIndex, patch, timelineDuration);
     setSubtitleFile({ ...subtitleFile, cues, edited: true });
+    // Keep the edited cue in view when its timing moves past the playhead.
+    // Otherwise the timing fields disappear halfway through keyboard editing.
+    const editedCue = cues[activeSubtitleCueIndex];
+    if (editedCue && (patch.startSeconds !== undefined || patch.endSeconds !== undefined) &&
+        (playheadSeconds < editedCue.startSeconds || playheadSeconds > editedCue.endSeconds)) {
+      updatePlayhead(editedCue.startSeconds);
+    }
     setSubtitlesVisible(true);
     setSelectedLayerId('subtitles');
   }
@@ -4715,7 +4807,7 @@ export function App() {
 
     if (file && window.loaderly?.filePathForDrop) {
       const path = window.loaderly.filePathForDrop(file);
-      const kind = fileKindForPath(path);
+      const kind = localFileKindForInput(path);
 
       if (kind === 'media') {
         await importDroppedMedia(path);
@@ -5502,13 +5594,14 @@ export function App() {
           <div className="download-entry__thumbnail">{renderMediaThumbnail(row)}</div>
           <div className="download-entry__body">
             <strong className="download-entry__title" data-tooltip={title}><bdi>{title}</bdi></strong>
-            <div className="download-entry__metadata"><span className={`download-entry__state ${statusClass(row.status)}`}>{running ? <Download size={12}/> : ready ? <Check size={12}/> : row.status==='failed' ? <AlertTriangle size={12}/> : <Clock3 size={12}/>} {running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : displayStatus(row.status)}</span><span data-tooltip={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
-            {running ? <div className="download-entry__progress"><div className={`download-progress${row.progressKnown === false ? ' indeterminate' : ''}`} role="progressbar" aria-label={uiText(preferences.locale, 'Download progress', 'تقدم التنزيل')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progressKnown === false ? undefined : row.progress}><span style={{inlineSize: `${Math.max(0, Math.min(100, row.progress))}%`}} /></div><small><DownloadElapsedLabel fallbackDownloadingLabel={downloadPhaseLabel(row)} locale={preferences.locale} row={row} /></small></div> : null}
+            <div className="download-entry__metadata"><span className={`download-entry__state ${statusClass(row.status)}`}>{running ? <Download size={12}/> : ready ? <Check size={12}/> : row.status==='failed' ? <AlertTriangle size={12}/> : <Clock3 size={12}/>} {running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : displayStatus(row.status)}</span><span data-tooltip={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{row.downloadTarget?.path && <span data-tooltip={row.downloadTarget.path}>{row.downloadTarget.name || row.downloadTarget.path}</span>}{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
+            {running ? <div className="download-entry__progress"><div className={`download-progress${row.progressKnown === false ? ' indeterminate' : ''}`} role="progressbar" dir={preferences.locale === 'ar' ? 'rtl' : 'ltr'} aria-valuetext={mediaProgressLabel(row)} aria-label={uiText(preferences.locale, 'Download progress', 'تقدم التنزيل')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progressKnown === false ? undefined : row.progress}><span style={{inlineSize: `${Math.max(0, Math.min(100, row.progress))}%`}} /></div><small><DownloadElapsedLabel fallbackDownloadingLabel={downloadPhaseLabel(row)} locale={preferences.locale} row={row} /></small></div> : null}
             {row.status === 'failed' && row.errorMessage ? <p className="download-entry__error">{friendlyDownloadError(row.errorMessage, preferences.locale)}</p> : null}
           </div>
           <div className="download-entry__actions">
-            {row.status === 'failed' && downloadFolderProblem(row.errorMessage ?? '') ? <button className="button secondary" onClick={() => void chooseDownloadDirectory()} type="button"><FolderOpen size={14}/>{uiText(preferences.locale, 'Choose folder', 'اختيار مجلد')}</button> : null}
+            {row.status === 'failed' && downloadFolderProblem(row.errorMessage ?? '') ? <button className="button secondary" onClick={async()=>{const picked=await window.loaderly?.pickDownloadDirectory();if(picked&&!picked.canceled&&picked.path)setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:{path:picked.path!,groupByPlatform:item.downloadTarget?.groupByPlatform??false,name:''}}:item));}} type="button"><FolderOpen size={14}/>{uiText(preferences.locale, 'Choose folder', 'اختيار مجلد')}</button> : null}
             {row.status === 'queued' || row.status === 'failed' ? <DesktopMenu ariaLabel={t('quality')} options={qualityMenuOptions} value={row.quality ?? preferences.quality} valueLabel={qualityLabel(row.quality ?? preferences.quality, preferences.locale)} onChange={(quality) => updateQueuedMediaQuality(row.id, quality)} /> : null}
+            {row.status==='queued'||row.status==='failed'?<DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={preferences.downloadLocations.find(l=>l.path===row.downloadTarget?.path)?.id??''} valueLabel={row.downloadTarget?.name||row.downloadTarget?.path||uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===((row.quality??preferences.quality)==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={id=>setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:downloadLocationFor(preferences,item.quality??preferences.quality,id)}:item))}/>:null}
             {ready ? <button className="button secondary" onClick={() => { selectMediaRow(row.id); selectNavigation('library'); }} type="button"><Library size={14} />{uiText(preferences.locale, 'View in library', 'عرض في المكتبة')}</button> : !running ? <button className="button secondary" onClick={() => retryDownload(row)} type="button"><Play size={14} />{row.status === 'failed' ? uiText(preferences.locale, 'Retry', 'إعادة المحاولة') : uiText(preferences.locale, 'Start', 'بدء')}</button> : null}
             <button aria-label={uiText(preferences.locale, `Remove ${title}`, `حذف ${title}`)} data-tooltip={uiText(preferences.locale, 'Remove item', 'إزالة العنصر')} className="download-remove" disabled={running} onClick={() => requestRemoveMedia(row.id)} type="button"><X size={16} /></button>
           </div>
@@ -7189,7 +7282,7 @@ export function App() {
   }
 
   function renderSoundPresets() {
-    return <SoundPresetControls ar={preferences.locale==='ar'} value={{audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}} initialCode={pendingSoundCode} speedAvailable={!!selectedSpeedItem&&!selectedSpeedItem.locked} onApply={(preset,includeSpeed)=>{pushEditorHistory();if(audioSections.some(section=>section.id===selectedAudioSectionId))setAudioSections(sections=>sections.map(section=>section.id===selectedAudioSectionId?{...section,settings:{...preset.audio,fadeIn:0,fadeOut:0}}:section));else setAudioSettings(preset.audio);if(includeSpeed&&preset.speed&&selectedSpeedItem&&!selectedSpeedItem.locked)updateSpeedItem(selectedSpeedItem.id,preset.speed);setPendingSoundCode(undefined);}}/>;
+    return <SoundPresetControls targetLabel={audioSections.some(section=>section.id===selectedAudioSectionId)?uiText(preferences.locale,'Selected audio section','القسم الصوتي المحدد'):displayMediaTitle(selectedMedia)} ar={preferences.locale==='ar'} value={{audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}} initialCode={pendingSoundCode} speedAvailable={!!selectedSpeedItem&&!selectedSpeedItem.locked} onApply={(preset,includeSpeed)=>{pushEditorHistory();if(audioSections.some(section=>section.id===selectedAudioSectionId))setAudioSections(sections=>sections.map(section=>section.id===selectedAudioSectionId?{...section,settings:{...preset.audio,fadeIn:0,fadeOut:0}}:section));else setAudioSettings(preset.audio);if(includeSpeed&&preset.speed&&selectedSpeedItem&&!selectedSpeedItem.locked)updateSpeedItem(selectedSpeedItem.id,preset.speed);setPendingSoundCode(undefined);}}/>;
   }
 
   function renderSpeedInspector() {
@@ -7754,7 +7847,7 @@ export function App() {
     const tools: EditorToolRailItem[] = items.filter(item => availableToolIds.has(item.id)).map(item => ({
       ...item, active: !audioInspectorOpen && activeEditorTool === item.id, onSelect: () => openEditorTool(item.id)
     }));
-    return <ToolRail items={[...tools, {id:'audio',label:uiText(preferences.locale,'Audio','الصوت'),detail:uiText(preferences.locale,'Volume, fades and tone','المستوى والتدرّج والترددات'),icon:AudioLines,active:audioInspectorOpen,onSelect:()=>setAudioInspectorOpen(true)}]} />;
+    return <ToolRail label={uiText(preferences.locale,'Editor tools','أدوات المحرر')} items={[...tools, {id:'audio',label:uiText(preferences.locale,'Audio','الصوت'),detail:uiText(preferences.locale,'Volume, fades and tone','المستوى والتدرّج والترددات'),icon:AudioLines,active:audioInspectorOpen,onSelect:()=>setAudioInspectorOpen(true)}]} />;
   }
 
   function renderEditorContextMenu() {
@@ -7781,6 +7874,7 @@ export function App() {
         canToggleState={canToggleState}
         locale={preferences.locale}
         onAction={runEditorContextAction}
+        onClose={() => setEditorContextMenu(undefined)}
         x={editorContextMenu.x}
         y={editorContextMenu.y}
       />
@@ -7867,7 +7961,7 @@ export function App() {
             <span aria-live="polite" className={`autosave-status autosave-status--${autosaveState}`} role="status" data-tooltip={autosaveLabel()}>{autosaveState==='saved'?<><Check size={13} aria-hidden="true"/>{uiText(preferences.locale,'Saved','محفوظ')}</>:autosaveLabel()}</span>
           </div>
           <div className="panel-actions">
-            <a className="button secondary editor-guide-link" href={`${documentationUrl}${isAudioEditor ? 'audio' : 'editor'}/`} target="_blank" rel="noopener noreferrer" data-tooltip={uiText(preferences.locale, 'Open the editor guide', 'فتح دليل المحرر')}>
+            <div className="editor-edit-actions"><a className="button secondary editor-guide-link" href={`${documentationUrl}${isAudioEditor ? 'audio' : 'editor'}/`} target="_blank" rel="noopener noreferrer" data-tooltip={uiText(preferences.locale, 'Open the editor guide', 'فتح دليل المحرر')}>
               <BookOpen aria-hidden="true" size={15} />
               {uiText(preferences.locale, 'Help', 'مساعدة')}
             </a>
@@ -7879,9 +7973,10 @@ export function App() {
               <Redo2 aria-hidden="true" size={15} />
               {uiText(preferences.locale, 'Redo', 'إعادة')}
             </button>
-            {!isAudioEditor ? <button className="button secondary" disabled={extractingAudio} onClick={()=>void extractAudioForEditing(selectedMedia)}><AudioLines size={15}/>{uiText(preferences.locale,extractingAudio?'Extracting…':'Extract audio',extractingAudio?'جارٍ الاستخراج…':'استخراج الصوت')}</button> : null}
+            </div><div className="editor-output-actions">{!isAudioEditor ? <button className="button secondary" disabled={extractingAudio} onClick={()=>void extractAudioForEditing(selectedMedia)}><AudioLines size={15}/>{uiText(preferences.locale,extractingAudio?'Extracting…':'Extract audio',extractingAudio?'جارٍ الاستخراج…':'استخراج الصوت')}</button> : null}
             {isAudioEditor&&<button className="button secondary" onClick={()=>{setAudioInspectorOpen(true);setAudioPanelTab('video');setTimeout(()=>document.querySelector('.visualizer-video-export')?.scrollIntoView({block:'nearest',behavior:'smooth'}),50);}} type="button"><Film size={15}/>{uiText(preferences.locale,'Export video','تصدير فيديو')}</button>}
             {renderOutputMenu()}
+            </div>
           </div>
         </div>
 
@@ -8390,7 +8485,7 @@ export function App() {
 
           {audioInspectorOpen ? <InspectorPanel title={uiText(preferences.locale,'Audio','الصوت')} subtitle={uiText(preferences.locale,'Sound and visualizer settings','إعدادات الصوت والطيف')}>
             {isAudioEditor ? <div className="segmented-control audio-panel-tabs">{(['sound','visualizer','video'] as const).map(tab=><button key={tab} type="button" aria-pressed={audioPanelTab===tab} className={audioPanelTab===tab?'active':''} onClick={()=>setAudioPanelTab(tab)}>{tab==='sound'?<SlidersHorizontal size={14} aria-hidden="true"/>:tab==='video'?<Film size={14} aria-hidden="true"/>:<AudioLines size={14} aria-hidden="true"/>}{tab==='sound'?uiText(preferences.locale,'Sound','الصوت'):tab==='video'?uiText(preferences.locale,'Video','الفيديو'):uiText(preferences.locale,'Visualizer','الطيف')}</button>)}</div> : null}
-            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : isAudioEditor && audioPanelTab==='video' ? <VisualizerVideoExport busy={videoExportBusy} ar={preferences.locale==='ar'} analyser={audioAnalyser} playing={isPlaying} onBusy={setVideoExportBusy} options={{...visualizerVideo,scene:{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}} onChange={value=>setVisualizerVideo({size:value.size,resolution:value.resolution,image:value.scene.image,imageMode:value.scene.imageMode,logoSize:value.scene.logoSize,logoX:value.scene.logoX,logoY:value.scene.logoY})} payload={whole=>mediaOutputPayload(QuickCopyOutputKind.Audio,'Visualizer video',whole)}/> : <><AudioSectionControls base={audioSettings} sections={audioSections} selectedId={selectedAudioSectionId} onSelect={setSelectedAudioSectionId} onBase={value=>{pushEditorHistory();setAudioSettings(value);}} onSections={value=>{pushEditorHistory();setAudioSections(value);}} duration={timelineDuration} playhead={playheadSeconds} onSeek={updatePlayhead} ar={preferences.locale==='ar'} loop={isAudioEditor?loopPlayback:undefined} onLoopChange={setLoopPlayback}/>{renderSoundPresets()}</>}
+            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : isAudioEditor && audioPanelTab==='video' ? <VisualizerVideoExport busy={videoExportBusy} ar={preferences.locale==='ar'} analyser={audioAnalyser} playing={isPlaying} onBusy={setVideoExportBusy} options={{...visualizerVideo,scene:{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}} onChange={value=>setVisualizerVideo({size:value.size,resolution:value.resolution,image:value.scene.image,imageMode:value.scene.imageMode,logoSize:value.scene.logoSize,logoX:value.scene.logoX,logoY:value.scene.logoY})} payload={whole=>mediaOutputPayload(QuickCopyOutputKind.Audio,'Visualizer video',whole)}/> : <>{renderSoundPresets()}<AudioSectionControls base={audioSettings} sections={audioSections} selectedId={selectedAudioSectionId} onSelect={setSelectedAudioSectionId} onBase={value=>{pushEditorHistory();setAudioSettings(value);}} onSections={value=>{pushEditorHistory();setAudioSections(value);}} duration={timelineDuration} playhead={playheadSeconds} onSeek={updatePlayhead} ar={preferences.locale==='ar'} loop={isAudioEditor?loopPlayback:undefined} onLoopChange={setLoopPlayback}/></>}
           </InspectorPanel> : renderEditorInspector()}
         </div>
 
@@ -8452,6 +8547,7 @@ export function App() {
                 />
               </label>
               <div className="command-bar__actions">
+                <DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={downloadLocationId} valueLabel={downloadLocationId ? preferences.downloadLocations.find(l=>l.id===downloadLocationId)?.name ?? uiText(preferences.locale,'Automatic location','المكان التلقائي') : uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===(preferences.quality==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={setDownloadLocationId}/>
                 <DesktopMenu
                   ariaLabel={t('quality')}
                   onChange={(quality) => {
@@ -8515,7 +8611,7 @@ export function App() {
       { value: 'audio', label: uiText(preferences.locale, 'Audio', 'الصوت') }
     ];
     const librarySortOptions: readonly MenuOption<LibrarySort>[] = [
-      { value: 'recent', label: uiText(preferences.locale, 'Recently added', 'الأحدث إضافة'), icon: Clock3 },
+      { value: 'recent', label: uiText(preferences.locale, 'Recently added', 'أحدث الإضافات'), icon: Clock3 },
       { value: 'name', label: uiText(preferences.locale, 'Name', 'الاسم'), icon: List },
       { value: 'duration', label: uiText(preferences.locale, 'Longest first', 'الأطول أولًا'), icon: Gauge }
     ];
@@ -8630,6 +8726,7 @@ export function App() {
 
           {selectedLibraryItem.id > 0 ? <aside className="card-panel route-panel route-inspector">
                 <div className="selection-heading"><span>{t('selectedItem')}</span><button className="download-remove" type="button" aria-label={uiText(preferences.locale, 'Close details', 'إغلاق التفاصيل')} onClick={() => { persistEditorSnapshotNow(); setSelectedMediaId(undefined); }}><X size={16} /></button></div>
+                <div className="route-inspector__content" tabIndex={0} role="region" aria-label={uiText(preferences.locale,'File details','تفاصيل الملف')}>
                 <div className="route-inspector__media route-inspector__media--large">
                   {renderMediaThumbnail(selectedLibraryItem)}
                   <div>
@@ -8647,8 +8744,9 @@ export function App() {
                   <span>{t('status')}</span>
                   <strong>{displayStatus(selectedLibraryItem.status)}</strong>
                 </div>
-                <div className="route-actions route-actions--stack">
                   {selectedLibraryItem.mediaKind === 'audio' && mediaFormatLabel(selectedLibraryItem) === 'MP4' && selectedLibraryItem.sourceType === 'download' ? <div className="legacy-audio-notice"><p>{uiText(preferences.locale, 'This older audio download is in an MP4 container. Download an MP3 copy to use the corrected format.', 'هذا التنزيل الصوتي القديم محفوظ داخل MP4. نزّل نسخة MP3 للحصول على الصيغة الصحيحة.')}</p><button className="button secondary button-wide" type="button" onClick={() => { retryDownload({ ...selectedLibraryItem, quality: 'audio' }); setDownloadFilter('active'); selectNavigation('downloads'); }}><Download size={14} />{uiText(preferences.locale, 'Download MP3 copy', 'تنزيل نسخة MP3')}</button></div> : null}
+                </div>
+                <div className="route-actions route-actions--stack">
                   <button className="button secondary button-wide" onClick={() => void showSelectedMediaInFolder(selectedLibraryItem)} type="button"><FolderOpen size={15} />{uiText(preferences.locale, "Show in folder", "عرض في المجلد")}</button>
                   <button className="button primary button-wide" onClick={() => openSelectedMediaEditor(selectedLibraryItem)} type="button">
                     <Scissors aria-hidden="true" size={15} />
@@ -8833,7 +8931,7 @@ export function App() {
                   <div className="tool-entry__versions"><span data-tooltip={status?.path}>{uiText(preferences.locale, 'Installed', 'المثبت')}: <b>{status?.available ? parseToolVersion(status.version ?? '') ?? status.version : 'N/A'}</b></span>
                   <span>{uiText(preferences.locale, 'Latest', 'الأحدث')}: <b>{status?.latestVersion ?? 'N/A'}</b></span></div>
                   {status?.checkError ? <small className="tool-entry__error" dir="auto">{uiText(preferences.locale, status.checkError, status.checkError.includes('limited requests') ? 'خدمة التحديثات حدّت الطلبات مؤقتًا. أعد المحاولة لاحقًا.' : status.checkError.includes('too long') ? 'تأخرت استجابة خدمة التحديثات. أعد المحاولة بعد دقيقة.' : status.checkError.includes('reach the update service') ? 'تعذر الاتصال بخدمة التحديثات. تحقق من اتصالك وأعد المحاولة بعد دقيقة.' : 'تعذر فحص التحديثات الآن. أعد المحاولة لاحقًا.')}</small> : null}
-                  {status?.message && !status.available && status.path ? <small className="tool-entry__error" dir="auto">{status.message}</small> : null}
+                  {status?.message && !status.available && status.path ? <small className="tool-entry__error" dir="auto">{uiText(preferences.locale,status.message,'تعذّر تشغيل الأداة. أعد تثبيتها من هنا ثم حاول مجددًا.')}</small> : null}
                 </div>
                 <button className={`button ${missing || update ? 'primary' : 'secondary'}`} disabled={!status?.updateSupported || toolCheckBusy || Boolean(updatingToolName) || (!missing && !update)} onClick={() => void updateBundledTool(tool.name)} type="button">
                   {working ? <RefreshCcw className="spin" size={15} /> : missing || update ? <Download size={15} /> : <Check size={15} />}
@@ -8955,11 +9053,13 @@ export function App() {
       { id: 'about', label: uiText(preferences.locale, 'About', 'حول البرنامج'), icon: Wrench }
     ] as const;
     return <section className="route-page settings-page">
+      <div className="settings-heading">
       <header className="page-heading"><div><h1>{t('preferences')}</h1><p>{uiText(preferences.locale, 'Make Loaderly work your way. Changes are saved automatically.', 'اضبط Loaderly على طريقتك. تُحفظ تغييراتك تلقائيًا.')}</p></div></header>
       <nav className="settings-tabs" aria-label={uiText(preferences.locale, 'Settings sections', 'أقسام الإعدادات')}>
-        {tabs.map(tab => <button aria-pressed={settingsTab === tab.id} className={settingsTab === tab.id ? 'active' : ''} key={tab.id} onClick={() => setSettingsTab(tab.id)} type="button"><tab.icon size={16} />{tab.label}</button>)}
+        {tabs.map(tab => <button aria-pressed={settingsTab === tab.id} className={settingsTab === tab.id ? 'active' : ''} key={tab.id} onClick={event => { setSettingsTab(tab.id); event.currentTarget.closest('.settings-page')?.querySelector('.settings-panel')?.scrollTo({top:0}); }} type="button"><tab.icon size={16} />{tab.label}</button>)}
       </nav>
-      <article className="card-panel settings-panel"><div className="settings-list" key={settingsTab}>
+      </div>
+      <article className="card-panel settings-panel"><div className="settings-list" data-section={settingsTab} key={settingsTab}>
         {settingsTab === 'general' ? <>
             <div className="setting-section-heading">
               <Sun aria-hidden="true" size={17} />
@@ -8985,7 +9085,6 @@ export function App() {
                 valueLabel={themeLabel(preferences.themeMode, preferences.locale)}
               />
             </div>
-            <AppearanceSettings value={preferences.appearance} onChange={appearance => updatePreferences({appearance})} ar={preferences.locale === 'ar'} dark={preferences.themeMode === 'dark'} />
             <div className="setting-row">
               <span>
                 <strong>{t('language')}</strong>
@@ -9005,6 +9104,7 @@ export function App() {
                 valueLabel={localeLabel(preferences.locale)}
               />
             </div>
+            <AppearanceSettings value={preferences.appearance} onChange={appearance => updatePreferences({appearance})} ar={preferences.locale === 'ar'} dark={preferences.themeMode === 'dark'} />
         </> : null}
         {settingsTab === 'downloads' ? <>
             <div className="setting-section-heading">
@@ -9050,6 +9150,11 @@ export function App() {
                 valueLabel={downloadStartModeOptions.find((option) => option.value === preferences.downloadStartMode)?.label ?? 'Auto'}
               />
             </div>
+            <DownloadLocationsSettings preferences={preferences} onChange={updatePreferences}/>
+            <details className="default-download-location" open={!preferences.audioLocationId||!preferences.videoLocationId?true:undefined}>
+            <summary>{uiText(preferences.locale, 'Default location', 'المكان الافتراضي')}</summary>
+            <p>{uiText(preferences.locale, 'Used when no audio or video location is selected above.', 'يُستخدم عندما لا تختار مكانًا للصوت أو الفيديو أعلاه.')}</p>
+            <div className="default-download-location__fields">
             <DownloadFolderSetting folder={preferences.downloadDirectory} ar={preferences.locale === 'ar'} onChoose={chooseDownloadDirectory} onDefault={() => updatePreferences({ downloadDirectory: '' })} />
             <div className="setting-row">
               <span>
@@ -9083,6 +9188,7 @@ export function App() {
                 }
               />
             </div>
+            </div></details>
         </> : null}
         {settingsTab === 'translation' ? <>
             <div className="setting-section-heading">
@@ -9214,35 +9320,23 @@ export function App() {
           <div className="loaderly-about">
             <img alt="Loaderly" src="./assets/loaderly-64.png" />
             <div>
-              <strong>{window.loaderly?.appName ?? 'Loaderly'}</strong>
-              <p>{uiText(preferences.locale, 'Your media, from the first download to the final edit.', 'وسائطك، من أول تنزيل إلى آخر تعديل.')}</p>
+              <strong><bdi dir="ltr">Loaderly</bdi></strong>
+              <p className="about-meta"><bdi className="about-version" dir="ltr">{window.loaderly?.appVersion ?? '…'}</bdi><span aria-hidden="true">·</span><bdi dir="ltr">{platformDisplayLabel(window.loaderly?.platform, window.loaderly?.arch)}</bdi></p>
             </div>
+            <button className="button secondary whats-new-button" onClick={()=>window.dispatchEvent(new Event('loaderly:whats-new'))}>{uiText(preferences.locale,"What’s new","ما الجديد؟")}</button>
           </div>
-          <div className="detail-list">
-            <span>{t('appInfo')}</span>
-            <strong>{window.loaderly?.appName ?? 'Loaderly'}</strong>
-            <span>{t('platform')}</span>
-            <strong>{platformDisplayLabel(window.loaderly?.platform, window.loaderly?.arch)}</strong>
-          </div>
-          <p className="loaderly-copyright"><a className="text-link" href={documentationUrl} target="_blank" rel="noopener noreferrer">{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</a> · © 2026 VOIDKSA · <a className="text-link" href="https://github.com/voidksa/Loaderly" target="_blank" rel="noreferrer">GitHub / voidksa</a></p>
-            <div className="setting-section-heading">
-              <RefreshCcw aria-hidden="true" size={17} />
-              <span>
-                <strong>{uiText(preferences.locale, 'Updates', 'التحديثات')}</strong>
-                <small>{uiText(preferences.locale, 'Loaderly and bundled component updates', 'تحديث Loaderly والمكونات المدمجة')}</small>
-              </span>
-            </div>
-            <ProgramUpdates beforeInstall={()=>!hasRealMedia||persistEditorSnapshotNow()} ar={preferences.locale==='ar'} busy={videoExportBusy||Boolean(outputBusy)||mediaRows.some(row=>row.status==='downloading')||copyJobs.some(job=>job.status==='rendering')}/>
+          <ProgramUpdates beforeInstall={()=>!hasRealMedia||persistEditorSnapshotNow()} ar={preferences.locale==='ar'} busy={videoExportBusy||Boolean(outputBusy)||mediaRows.some(row=>row.status==='downloading')||copyJobs.some(job=>job.status==='rendering')}/>
+          <footer className="loaderly-copyright about-links"><nav aria-label={uiText(preferences.locale,'Help & project links','روابط المساعدة والمشروع')}><a className="text-link" href={documentationUrl} target="_blank" rel="noopener noreferrer">{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</a><a className="text-link" href="https://github.com/voidksa/Loaderly" target="_blank" rel="noopener noreferrer"><bdi dir="ltr">GitHub</bdi></a></nav><bdi dir="ltr">© 2026 VOIDKSA</bdi></footer>
         </> : null}
       </div></article>
     </section>;
   }
 
   function renderActiveSurface() {
-    if(communityOpen)return <CommunityLibrary initialStudio={communityCreatorOpen} ar={preferences.locale==='ar'} dark={preferences.themeMode==='dark'} currentCode={kind=>kind==='sound'?encodeSoundPreset({audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}):kind==='theme'?encodeTheme(preferences.appearance):encodeVisualizer(visualizerSettings)} onApply={look=>{
-      if(look.kind==='sound'){const previous=pendingSoundCode;setPendingSoundCode(look.code);return()=>setPendingSoundCode(previous);}
+    if(communityOpen)return <CommunityLibrary initialDraftId={communityDraftId} initialStudio={communityCreatorOpen} ar={preferences.locale==='ar'} dark={preferences.themeMode==='dark'} currentCode={kind=>kind==='sound'?encodeSoundPreset({audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}):kind==='theme'?encodeTheme(preferences.appearance):encodeVisualizer(visualizerSettings)} onApply={look=>{
+      if(look.kind==='sound'){const previous=pendingSoundCode;setPendingSoundCode(look.code);if(isMediaReadyForEditor(selectedMedia)){setOpenedEditorMediaId(selectedMediaId);selectNavigation('editor');setAudioPanelTab('sound');setAudioInspectorOpen(true);}return()=>setPendingSoundCode(previous);}
       if(look.kind==='theme'){const previous=preferences.appearance;updatePreferences({appearance:decodeTheme(look.code)});return()=>updatePreferences({appearance:previous});}
-      const previous=visualizerSettings,value=decodeVisualizer(look.code);if(value)setVisualizerSettings(value);return()=>setVisualizerSettings(previous);
+      const previous=visualizerSettings,value=decodeVisualizer(look.code);if(value){setVisualizerSettings(value);if(isMediaReadyForEditor(selectedMedia)&&selectedMedia.mediaKind==='audio'){setOpenedEditorMediaId(selectedMediaId);selectNavigation('editor');setAudioPanelTab('visualizer');setAudioInspectorOpen(true);}}return()=>setVisualizerSettings(previous);
     }}/>;
     switch (activeNav) {
       case 'workspace':
@@ -9282,7 +9376,7 @@ export function App() {
         <div className="titlebar__left">
           <div className="titlebar__brand">
             <img alt="" className="brand-icon" src="./assets/loaderly-64.png" />
-            <strong>Loaderly<span className="brand-version">{window.loaderly?.appVersion}</span></strong>
+            <strong>Loaderly<span className="brand-version"><bdi dir="ltr">{window.loaderly?.appVersion}</bdi></span></strong>
 
           </div>
         </div>
@@ -9293,16 +9387,18 @@ export function App() {
           <button aria-label={uiText(preferences.locale, 'Minimize', 'تصغير')} className="window-control" onClick={() => void handleWindowControl('minimize')} type="button">
             <Minus aria-hidden="true" size={15} />
           </button>
-          <button aria-label={uiText(preferences.locale, 'Maximize', 'تكبير')} className="window-control" onClick={() => void handleWindowControl('toggleMaximize')} type="button">
-            <Square aria-hidden="true" size={13} />
+          <button aria-label={windowMaximized?uiText(preferences.locale,'Restore window','استعادة النافذة'):uiText(preferences.locale, 'Maximize', 'تكبير')} className="window-control" onClick={() => void handleWindowControl('toggleMaximize')} type="button">
+            {window.loaderly?.platform==='linux'?(windowMaximized?<Minimize2 aria-hidden="true" size={14}/>:<Maximize2 aria-hidden="true" size={14}/>):(windowMaximized?<Copy aria-hidden="true" size={13}/>:<Square aria-hidden="true" size={13}/>)}
           </button>
           <button aria-label={uiText(preferences.locale, 'Close', 'إغلاق')} className="window-control window-control--close" onClick={() => void handleWindowControl('close')} type="button">
             <X aria-hidden="true" size={15} />
           </button>
         </div>}
       </header>
-          {activityNotice && <div className="activity-notice" role="alert" dir="auto"><span>{activityNotice}</span><button type="button" aria-label={preferences.locale==='ar'?'إغلاق':'Dismiss'} onClick={()=>setActivityNotice('')}><X size={15}/></button></div>}
+          {activityNotice && <div className="activity-notice" role={savedOutputPath?"status":"alert"} dir="auto"><span>{activityNotice}</span>{savedOutputPath && <button className="notice-folder" onClick={() => void window.loaderly?.showItemInFolder(savedOutputPath)}>{uiText(preferences.locale, "Show in folder", "عرض في المجلد")}</button>}<button type="button" aria-label={preferences.locale==='ar'?'إغلاق':'Dismiss'} onClick={()=>setActivityNotice('')}><X size={15}/></button></div>}
 
+      {saveRequest && <SaveOutputDialog sourcePath={saveRequest.sourcePath} extension={saveRequest.extension} ar={preferences.locale === "ar"} onChoose={mode => { saveRequest.resolve(mode); setSaveRequest(undefined); }}/>}
+      <WhatsNew ar={preferences.locale === "ar"} noticeVisible={!!activityNotice} supportBusy={isPlaying||isPreviewFocusMode||extractingAudio||videoExportBusy||Boolean(outputBusy)||mediaRows.some(row=>row.status==='downloading')||copyJobs.some(job=>job.status==='rendering')}/>
       <div className="shell-body">
         <aside className="product-nav" aria-label={uiText(preferences.locale, 'Primary navigation', 'التنقل الرئيسي')}>
           <span className="nav-section-label">{uiText(preferences.locale, 'YOUR WORKSPACE', 'مساحة عملك')}</span>
@@ -9340,7 +9436,7 @@ export function App() {
             <a className="product-nav__utility documentation-link" href={documentationUrl} target="_blank" rel="noopener noreferrer" data-tooltip={uiText(preferences.locale, 'Open documentation and troubleshooting', 'فتح أدلة الاستخدام وحل المشكلات')}>
               <BookOpen aria-hidden="true" size={15} /><span>{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</span>
             </a>
-            <a className="product-nav__utility support-link" href={preferences.locale === 'ar' ? 'https://creators.sa/ar/voidksa' : 'https://creators.sa/en/voidksa'} target="_blank" rel="noopener noreferrer">
+            <a className="product-nav__utility support-link" href={preferences.locale === 'ar' ? 'https://creators.sa/ar/voidksa' : 'https://creators.sa/en/voidksa'} target="_blank" rel="noopener noreferrer" onClick={announceSupportOpened}>
               <Heart aria-hidden="true" size={15} /><span>{uiText(preferences.locale, 'Support Loaderly', 'دعم البرنامج')}</span>
             </a>
           </div>
@@ -9358,6 +9454,7 @@ export function App() {
         </section>
       </div>
       {duplicateDownload&&<DuplicateDownload key={duplicateDownload.id} request={duplicateDownload} ar={preferences.locale==='ar'} onChoose={choice=>{setDuplicateDownload(undefined);void window.loaderly?.duplicateChoice(duplicateDownload.id,choice);}}/>}
+      {extractAudioChoice&&<ExtractAudioDialog name={extractAudioChoice.name} path={extractAudioChoice.path} ar={preferences.locale==='ar'} onChoose={choice=>{const pending=extractAudioChoice;setExtractAudioChoice(undefined);pending.resolve(choice);}}/>}
       {libraryRemoval&&<LibraryRemoval ar={preferences.locale==='ar'} items={mediaRows.filter(row=>libraryRemoval.includes(row.id)).map(row=>({title:displayMediaTitle(row),source:mediaSourceLabel(row),thumbnailUrl:row.thumbnailUrl??youtubeThumbnailUrl(row.source??'')}))} canTrash={mediaRows.some(row=>libraryRemoval.includes(row.id)&&!!row.filePath)} onCancel={()=>setLibraryRemoval(undefined)} onRemove={removeLibrarySelection}/>}
       {playlistRequest&&<PlaylistPicker key={playlistRequest.url} url={playlistRequest.url} ar={preferences.locale==='ar'} initialSelection={playlistSelections.current.get(playlistRequest.url)} onRemember={ids=>playlistSelections.current.set(playlistRequest.url,ids)} onDone={entries=>{setPlaylistRequest(undefined);playlistRequest.resolve(entries);}}/>}
       <LinuxWelcome ar={preferences.locale === 'ar'} />

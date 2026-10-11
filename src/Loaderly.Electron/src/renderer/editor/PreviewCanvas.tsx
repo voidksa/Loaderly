@@ -32,6 +32,7 @@ export function PreviewCanvas({
         onDrop={onDrop}
         onPointerDown={onPointerDown}
         ref={previewRef}
+        tabIndex={-1}
       >
         {children}
       </div>

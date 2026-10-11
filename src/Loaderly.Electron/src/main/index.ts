@@ -1,12 +1,21 @@
+import { release as hostRelease } from 'node:os';
 import {exportVisualizerVideo,runEncoder} from './visualizerExport';
 import type {VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
 import { communityCatalog } from './communityCatalog';
-import {applyWindowAppearance} from './windowAppearance';
+import {applyWindowAppearance,retainInactiveWindowGlass,supportsDesktopGlass} from './windowAppearance';
+import {macLiquidGlass} from './macLiquidGlass';
+import {buildTrayPopupHtml,fitTrayPopupContentSize,supportsNativeTrayCorners,trayPopupRadius,trayPopupShape} from './trayPopup';
 import { CommunityRatings } from './communityRatings';
 import { ProgramUpdates } from './programUpdates';
 import { AutomaticUpdateChecks } from './automaticUpdateChecks';
 import { prepareDownloadDirectory } from './downloadDirectory';
+import { suggestedMediaOutputFileName } from './mediaOutputFileName';
+import { reserveEditedCopy, saveMediaFile } from './saveMediaFile';
+import { extractAudioFile } from './extractAudio';
+import type { ExtractAudioRequest, ExtractAudioResult } from '../shared/audioExtraction';
 import { retryMediaTransfer } from './downloadRetry';
+import { downloadProgressArgs, runDownloadProcess } from './downloadProgress';
+import type { TransferProgress } from '../shared/downloadProgress';
 import { downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
 import {inspectPlaylist} from './playlist';
 import {trashMediaFiles} from './trashMedia';
@@ -26,12 +35,12 @@ import { macApplicationMenu, textContextMenu } from './desktopMenus';
 import { hasLinuxTrayHost } from './linuxTray';
 import { pathToFileURL } from 'node:url';
 import type { ToolName, ToolStatus } from '../shared/tool-manager/toolStatus';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, powerMonitor, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile, rename, unlink } from 'node:fs/promises';
-import { basename, dirname, extname, isAbsolute, join, parse } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, parse, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
@@ -271,6 +280,7 @@ type MediaEffectsPayload = {
 };
 
 type CopyMediaOutputPayload = {
+  readonly saveMode?: 'beside' | 'replace' | 'choose';
   readonly sourcePath: string;
   readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
   readonly audio?: AudioSettings;
@@ -287,6 +297,11 @@ type CopyMediaOutputPayload = {
 };
 
 type CopyMediaOutputResult = {
+  readonly canceled?: boolean;
+  readonly replacedSource?: boolean;
+  readonly durationSeconds?: number;
+  readonly sizeBytes?: number;
+  readonly fileUrl?: string;
   readonly ok: boolean;
   readonly path?: string;
   readonly message?: string;
@@ -306,7 +321,7 @@ type ToolUpdateResult = {
   readonly status?: ToolStatus;
 };
 
-type WindowControlAction = 'minimize' | 'toggleMaximize' | 'close';
+type WindowControlAction = 'minimize' | 'toggleMaximize' | 'close' | 'state';
 type ThemeMode = 'light' | 'dark';
 type AppLocale = 'en' | 'ar';
 type SpeedEffectMode = 'normal' | 'preserve-pitch' | 'warm' | 'bright' | 'radio';
@@ -364,7 +379,10 @@ function registerIpcHandlers() {
       const start=payload.whole?0:Math.max(0,Math.min(duration,payload.startSeconds)),end=payload.whole?duration:Math.min(duration,payload.endSeconds);
       if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw Error('Select a valid range');
       const choice=await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender)!,{title:'Export audio as video',defaultPath:join(app.getPath('videos'),parse(payload.sourcePath).name+'-visualizer.mp4'),filters:[{name:'MP4 video',extensions:['mp4']}]});
-      if(choice.canceled||!choice.filePath)return {ok:false,message:'Save canceled.'};
+      if(choice.canceled||!choice.filePath){
+        if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',{phase:'canceled',percent:0});
+        return {ok:false,canceled:true};
+      }
       return await exportVisualizerVideo({sourcePath:payload.sourcePath,outputPath:choice.filePath,options:payload.options,ffmpeg,signal:controller.signal,
         notify:state=>{if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',state);},
         prepareAudio:async(path,signal)=>{
@@ -374,7 +392,7 @@ function registerIpcHandlers() {
           await runEncoder(ffmpeg,args,signal);
           if(payload.audio){const length=await probeDurationSeconds(path)??end-start;if(needsAudioEffects(payload.audio,length,payload.audioSections)){const processed=path+'.processed.wav';await applyAudioEffects(ffmpeg,path,processed,payload.audio,length,'pcm_s16le',signal,payload.audioSections);await rename(processed,path);}}
         }});
-    }catch(error){const canceled=controller.signal.aborted;if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',{phase:canceled?'canceled':'error',percent:0});return {ok:false,message:canceled?'Export canceled.':error instanceof Error?error.message:'Export failed.'};}
+    }catch(error){const canceled=controller.signal.aborted;if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',{phase:canceled?'canceled':'error',percent:0});return canceled?{ok:false,canceled:true}:{ok:false,message:error instanceof Error?error.message:'Export failed.'};}
     finally{visualizerExportController=undefined;}
   });
   handleTrustedIpc('loaderly:community-catalog',()=>communityCatalog(app.getPath('userData')));
@@ -425,7 +443,7 @@ function registerIpcHandlers() {
         <text x="96" y="148" fill="#f6f7ff" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">${escapeSvgText(payload.label)}</text>
         <text x="96" y="206" fill="#f3f4f6" font-family="Segoe UI, Arial, sans-serif" font-size="24">${escapeSvgText(safeTitle)}</text>
         <text x="96" y="254" fill="#d6dae0" font-family="Segoe UI, Arial, sans-serif" font-size="20">${escapeSvgText(safeRange)}</text>
-        <text x="120" y="408" fill="#f6f7ff" font-family="Segoe UI, Arial, sans-serif" font-size="18">Copied from Loaderly 2.0 preview</text>
+        <text x="120" y="408" fill="#f6f7ff" font-family="Segoe UI, Arial, sans-serif" font-size="18">Copied from Loaderly ${app.getVersion()}</text>
       </svg>
     `;
     const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
@@ -552,8 +570,10 @@ function registerIpcHandlers() {
     return getToolManager().install(toolName, progress => { if (!event.sender.isDestroyed()) event.sender.send('loaderly:tool-install-progress', progress); });
   });
 
-  handleTrustedIpc('loaderly:download-url', async (_event, payload: DownloadUrlPayload): Promise<DownloadUrlResult> => {
-    return downloadUrl(payload);
+  handleTrustedIpc('loaderly:download-url', async (event, payload: DownloadUrlPayload): Promise<DownloadUrlResult> => {
+    return downloadUrl(payload,state=>{
+      if(Number.isSafeInteger(payload?.rowId)&&!event.sender.isDestroyed())event.sender.send('loaderly:download-progress',{rowId:payload.rowId,...state});
+    });
   });
   handleTrustedIpc('loaderly:missing-library-files',(_event,paths:unknown)=>missingLibraryFiles(paths));
 
@@ -580,17 +600,21 @@ function registerIpcHandlers() {
   });
   handleTrustedIpc('loaderly:ai-cancel', (event) => {translationJobs.get(event.sender.id)?.abort();return {ok:true};});
 
-  handleTrustedIpc('loaderly:extract-audio', async (_event, sourcePath: string) => {
-    if (typeof sourcePath !== 'string' || !existsSync(sourcePath) || !isMediaPath(sourcePath)) throw new Error('Source file was not found.');
-    if (!await hasAudioStream(sourcePath)) throw new Error('This video has no audio track.');
-    const directory = join(app.getPath('music'), 'Loaderly');
-    await mkdir(directory, { recursive: true });
-    const outputPath = join(directory, `${parse(sourcePath).name}-audio-${Date.now()}.mp3`);
-    const duration = await probeDurationSeconds(sourcePath);
-    if (!duration) throw new Error('Could not read the source duration.');
-    const result = await renderMediaOutput({ sourcePath, kind:'audio', label:'Extract audio', startSeconds:0, endSeconds:duration, frameSeconds:0 }, 'file', outputPath);
-    if (!result.ok) { await unlink(outputPath).catch(()=>{}); throw new Error(result.message); }
-    return { canceled:false, ...(await mediaFileDetails(outputPath)) };
+  handleTrustedIpc('loaderly:extract-audio', async (_event, request: ExtractAudioRequest): Promise<ExtractAudioResult> => {
+    if (!request || typeof request.sourcePath !== 'string' || !existsSync(request.sourcePath) || !isMediaPath(request.sourcePath)) throw new Error('Source file was not found.');
+    const result = await extractAudioFile(request, {
+      directory: join(app.getPath('music'), 'Loaderly'),
+      playableAudio: async path => Boolean(await probeDurationSeconds(path)) && await hasAudioStream(path),
+      render: async (sourcePath, outputPath) => {
+        if (!await hasAudioStream(sourcePath)) throw new Error('This video has no audio track.');
+        const duration = await probeDurationSeconds(sourcePath);
+        if (!duration) throw new Error('Could not read the source duration.');
+        return renderMediaOutput({ sourcePath, kind: 'audio', label: 'Extract audio', startSeconds: 0, endSeconds: duration, frameSeconds: 0 }, 'file', outputPath);
+      }
+    });
+    if ('canceled' in result) return result;
+    if ('existingPath' in result) return { canceled: false, existing: { path: result.existingPath, name: basename(result.existingPath) } };
+    return { canceled: false, reused: result.reused, replacedPath: result.replacedPath, ...(await mediaFileDetails(result.path)) };
   });
 
   handleTrustedIpc('loaderly:copy-media-output', async (_event, payload: CopyMediaOutputPayload): Promise<CopyMediaOutputResult> => {
@@ -602,18 +626,21 @@ function registerIpcHandlers() {
     return saveMediaOutput(payload, owner ?? undefined);
   });
 
+  handleTrustedIpc('loaderly:window-appearance-support', () => ({supported:supportsDesktopGlass(process.platform,hostRelease()),reduced:nativeTheme.prefersReducedTransparency||nativeTheme.shouldUseHighContrastColors}));
+
   handleTrustedIpc('loaderly:set-titlebar-theme', (event, themeMode: ThemeMode, locale?: AppLocale, appearance?: unknown) => {
     currentThemeMode = themeMode === 'dark' ? 'dark' : 'light';
     currentAppearance = normalizeAppearance(appearance);
     currentLocale = locale === 'ar' ? 'ar' : 'en';
+    nativeTheme.themeSource=currentThemeMode;
     if (process.platform !== 'win32' && trayRef) trayRef.setContextMenu(nativeTrayMenu());
 
     if (trayWindowRef) {
-      void trayWindowRef.loadURL(trayHtmlUrl());
+      refreshTrayWindowAppearance(trayWindowRef);
     }
 
     const owner=BrowserWindow.fromWebContents(event.sender);
-    const desktopGlass=owner?applyWindowAppearance(owner,currentAppearance,currentThemeMode==='dark'):false;
+    const desktopGlass=owner?applyWindowAppearance(owner,currentAppearance,currentThemeMode==='dark',{platform:process.platform,release:hostRelease(),reduceTransparency:nativeTheme.prefersReducedTransparency||nativeTheme.shouldUseHighContrastColors}):false;
     return { ok: true, desktopGlass };
   });
 
@@ -650,7 +677,7 @@ function registerIpcHandlers() {
   });
 }
 
-async function downloadUrl(payload: DownloadUrlPayload): Promise<DownloadUrlResult> {
+async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferProgress)=>void=()=>{}): Promise<DownloadUrlResult> {
   const normalizedUrl = normalizeDownloadUrl(payload?.url);
 
   if (normalizedUrl === undefined) {
@@ -658,6 +685,7 @@ async function downloadUrl(payload: DownloadUrlPayload): Promise<DownloadUrlResu
   }
 
   const normalizedPayload: DownloadUrlPayload = { ...payload, url: normalizedUrl };
+  notify({phase:'preparing'});
   const toolPath = resolveToolPath('yt-dlp');
 
   if (toolPath === undefined) {
@@ -681,7 +709,7 @@ async function downloadUrl(payload: DownloadUrlPayload): Promise<DownloadUrlResu
     const result=await managedDownload({directory:outputDirectory,title:metadata.title,identity:metadata.id,kind:payload.quality==='audio'?'audio':'video',knownFiles:Array.isArray(payload.knownFiles)?payload.knownFiles.filter((p):p is string=>typeof p==='string'):[],
       classify:async path=>{const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)return undefined;try{const {stdout}=await execFileAsync(ffprobe,['-v','error','-show_streams','-of','json',path],{timeout:15_000,windowsHide:true,maxBuffer:1024*1024});const streams=JSON.parse(stdout).streams as {codec_type:string;disposition?:{attached_pic?:number}}[];return streams.some(s=>s.codec_type==='video'&&!s.disposition?.attached_pic)?'video':streams.some(s=>s.codec_type==='audio')?'audio':undefined;}catch{return undefined;}},
       choose:path=>confirmDuplicateDownload(path,metadata.title!,normalizedUrl),
-      download:stage=>runYtDlpDownload(toolPath,stage,normalizedPayload)});
+      download:stage=>runYtDlpDownload(toolPath,stage,normalizedPayload,notify)});
     if(!result.ok||!result.path)return result;
     return {...result,...await mediaFileDetails(result.path),subtitlePath:result.subtitlePath};
   } catch (error) {
@@ -711,7 +739,7 @@ function defaultDownloadBaseDirectory(): string {
   return defaultLoaderlyDownloadDirectory(app.getPath('downloads'));
 }
 
-async function runYtDlpDownload(toolPath: string, outputDirectory: string, payload: DownloadUrlPayload): Promise<DownloadUrlResult> {
+async function runYtDlpDownload(toolPath: string, outputDirectory: string, payload: DownloadUrlPayload, notify:(state:TransferProgress)=>void): Promise<DownloadUrlResult> {
   const startedAtMs = Date.now() - 2000;
   const existingMediaPaths = new Set(await listMediaFiles(outputDirectory).catch(() => []));
   const sourceIdentity = sourceIdentityFromUrl(payload.url);
@@ -719,6 +747,7 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
   const denoPath = resolveToolPath('deno');
   const args = [
     ...ytDlpIsolationArgs,
+    ...downloadProgressArgs,
     '--no-playlist',
     '--continue',
     '--no-mtime',
@@ -752,12 +781,12 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
 
   let stdout = '';
   try {
-    const result = await retryMediaTransfer(() => execFileAsync(toolPath, args, {
-      timeout: 1000 * 60 * 30,
-      windowsHide: true,
-      maxBuffer: 1024 * 1024 * 4
-    }));
+    const result = await retryMediaTransfer(() => {
+      notify({phase:'preparing'});
+      return runDownloadProcess(toolPath,args,notify);
+    });
     stdout = result.stdout;
+    notify({phase:'finalizing'});
   } catch (error) {
     const message = execFailureMessage(error);
     const recoveredPath = await findChangedMediaFileWithRetry(
@@ -770,8 +799,11 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
     );
 
     if (recoveredPath) {
+      notify({phase:'finalizing'});
       await waitForStableFile(recoveredPath);
+      if(subtitleDownloadArgs(payload).length)notify({phase:'subtitles'});
       const subtitleMessage = await tryDownloadSubtitles(toolPath, outputDirectory, payload);
+      notify({phase:'finalizing'});
       const details = await mediaFileDetails(recoveredPath);
 
       return { ok: true, ...details, ...(subtitleMessage ? { message: subtitleMessage } : {}) };
@@ -792,7 +824,9 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
   }
 
   await waitForStableFile(recoveredPath);
+  if(subtitleDownloadArgs(payload).length)notify({phase:'subtitles'});
   const subtitleMessage = await tryDownloadSubtitles(toolPath, outputDirectory, payload);
+  notify({phase:'finalizing'});
   const details = await mediaFileDetails(recoveredPath);
 
   return { ok: true, ...details, ...(subtitleMessage ? { message: subtitleMessage } : {}) };
@@ -1029,7 +1063,31 @@ async function copyMediaOutput(payload: CopyMediaOutputPayload): Promise<CopyMed
 }
 
 async function saveMediaOutput(payload: CopyMediaOutputPayload, owner?: BrowserWindow): Promise<CopyMediaOutputResult> {
-  const defaultPath = join(app.getPath(payload.kind === 'audio' ? 'music' : 'videos'), outputFileName(payload));
+  if (!isAbsolute(payload.sourcePath) || !existsSync(payload.sourcePath)) return { ok: false, message: 'Source media file was not found.' };
+  const fileName = suggestedMediaOutputFileName(payload.sourcePath, payload.kind);
+  const saveAt = async (target:string, reserved=false):Promise<CopyMediaOutputResult> => {
+    const result = await saveMediaFile(target, path => renderMediaOutput(payload, 'file', path), reserved);
+    if (!result.ok) return result;
+    const comparable=(path:string)=>process.platform==='win32'?resolve(path).toLowerCase():resolve(path);
+    const replacedSource=comparable(target)===comparable(payload.sourcePath);
+    try { return {...result,replacedSource,durationSeconds:await probeDurationSeconds(target),sizeBytes:(await stat(target)).size,fileUrl:mediaProtocolUrlForPath(target)}; }
+    catch { return {...result,replacedSource}; }
+  };
+
+  if (payload.saveMode === 'replace') {
+    if (extname(payload.sourcePath).toLowerCase() !== extname(fileName)) return { ok: false, message: 'The output format differs from the original. Save a copy instead.' };
+    return saveAt(payload.sourcePath);
+  }
+  if (payload.saveMode === 'beside') {
+    try {
+      const target = await reserveEditedCopy(payload.sourcePath, fileName);
+      return saveAt(target, true);
+    } catch (error) { return { ok: false, message: error instanceof Error ? error.message : 'The source folder is unavailable.' }; }
+  }
+  const defaultPath = join(
+    dirname(payload.sourcePath),
+    fileName
+  );
   const filters =
     payload.kind === 'audio'
       ? [{ name: 'MP3 audio', extensions: ['mp3'] }]
@@ -1039,14 +1097,14 @@ async function saveMediaOutput(payload: CopyMediaOutputPayload, owner?: BrowserW
         ? [{ name: 'PNG image', extensions: ['png'] }]
         : [{ name: 'MP4 video', extensions: ['mp4'] }];
   const result = owner
-    ? await dialog.showSaveDialog(owner, { title: `Save ${payload.label}`, defaultPath, filters })
-    : await dialog.showSaveDialog({ title: `Save ${payload.label}`, defaultPath, filters });
+    ? await dialog.showSaveDialog(owner, { title: payload.label, defaultPath, filters })
+    : await dialog.showSaveDialog({ title: payload.label, defaultPath, filters });
 
   if (result.canceled || !result.filePath) {
-    return { ok: false, message: 'Save canceled.' };
+    return { ok: false, canceled: true };
   }
 
-  return renderMediaOutput(payload, 'file', result.filePath);
+  return saveAt(result.filePath);
 }
 
 async function renderMediaOutput(
@@ -2578,7 +2636,8 @@ function createMainWindow(): BrowserWindow {
     backgroundColor: '#f3f4f6',
     autoHideMenuBar: true,
     frame: process.platform === 'darwin',
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 17 }, vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const, backgroundColor: '#00000000' } : {}),
+    ...macLiquidGlass.windowOptions(),
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 17 }, visualEffectState: 'active' as const } : {}),
     icon: iconPath,
     show: false,
     webPreferences: {
@@ -2590,6 +2649,31 @@ function createMainWindow(): BrowserWindow {
       sandbox: true
     }
   });
+  const notifyWindowState=()=>mainWindow.webContents.send('loaderly:window-state',{maximized:mainWindow.isMaximized()});
+  mainWindow.on('maximize',notifyWindowState);mainWindow.on('unmaximize',notifyWindowState);
+  const retainGlassAfterDeactivation=()=>setImmediate(()=>{
+    const reduced=nativeTheme.prefersReducedTransparency||nativeTheme.shouldUseHighContrastColors;
+    const desktopGlass=retainInactiveWindowGlass(mainWindow,currentAppearance,currentThemeMode==='dark',{
+      platform:process.platform,release:hostRelease(),reduceTransparency:reduced
+    });
+    if(desktopGlass===false&&!mainWindow.isDestroyed())mainWindow.webContents.send('loaderly:window-appearance-changed',{
+      desktopGlass,reduced,supported:supportsDesktopGlass(process.platform,hostRelease())
+    });
+  });
+  mainWindow.on('blur',retainGlassAfterDeactivation);
+  const onNativeThemeUpdated = (refreshMaterial=false) => {
+    if (mainWindow.isDestroyed()) return;
+    const reduced = nativeTheme.prefersReducedTransparency || nativeTheme.shouldUseHighContrastColors;
+    const desktopGlass = applyWindowAppearance(mainWindow, currentAppearance, currentThemeMode === 'dark', {
+      platform: process.platform, release: hostRelease(), reduceTransparency: reduced
+    }, refreshMaterial);
+    mainWindow.webContents.send('loaderly:window-appearance-changed', {
+      desktopGlass, reduced, supported: supportsDesktopGlass(process.platform, hostRelease())
+    });
+  };
+  nativeTheme.on('updated', onNativeThemeUpdated);
+  macLiquidGlass.register(mainWindow,()=>onNativeThemeUpdated(true),{cornerRadius:0,windowButtons:true});
+  mainWindow.once('closed', () => nativeTheme.removeListener('updated', onNativeThemeUpdated));
   let fallbackLoaded = false;
 
   // Keep the task switcher title tied to the installed package, including fallback pages.
@@ -2776,184 +2860,71 @@ function handleTrayUrl(url: string): boolean {
   return true;
 }
 
-function trayHtmlUrl(): string {
-  const isDark = currentThemeMode === 'dark';
-  const isArabic = currentLocale === 'ar';
-  const theme = appearanceVariables(currentAppearance, isDark);
-  const colors = {background:theme['--background'],surface:theme['--surface'],foreground:theme['--foreground'],muted:theme['--muted'],border:theme['--border-soft'],accent:theme['--accent'],accentSoft:theme['--accent-soft']};
+function trayHtmlUrl(desktopGlass: boolean): string {
   const logoPath = resolveAppIconPath();
   const logo = logoPath ? nativeImage.createFromPath(logoPath).resize({width:64,height:64}).toDataURL() : '';
-  const copy = isArabic
-    ? {
-        panel: 'لوحة سريعة',
-        open: 'فتح Loaderly',
-        downloads: 'التنزيلات',
-        editor: 'المحرر',
-        settings: 'الإعدادات',
-        exit: 'إغلاق Loaderly نهائيًا'
-      }
-    : {
-        panel: 'Quick actions',
-        open: 'Open Loaderly',
-        downloads: 'Show Downloads',
-        editor: 'Editor',
-        settings: 'Settings',
-        exit: 'Exit Loaderly'
-      };
-  const icon = {
-    logo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>',
-    open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
-    downloads: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
-    editor: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/></svg>',
-    settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.4 10.5 2h3l.8 1.4 1.6.6 1.5-.5 2.1 2.1-.5 1.5.6 1.6 1.4.8v3l-1.4.8-.6 1.6.5 1.5-2.1 2.1-1.5-.5-1.6.6-.8 1.4h-3l-.8-1.4-1.6-.6-1.5.5-2.1-2.1.5-1.5-.6-1.6L2 13.5v-3l1.4-.8L4 8.1l-.5-1.5 2.1-2.1 1.5.5 1.6-.6Z"/><circle cx="12" cy="12" r="3"/></svg>',
-    exit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17 15 12l-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg>'
-  };
-  const html = `<!doctype html>
-<html lang="${isArabic ? 'ar' : 'en'}" dir="${isArabic ? 'rtl' : 'ltr'}">
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      ${auxiliaryFontCss(isArabic)}
-      * { box-sizing: border-box; }
-      html, body {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        overflow: hidden;
-        background: transparent;
-        color: ${colors.foreground};
-        font-family: "Segoe UI", system-ui, sans-serif;
-        font-size: 13px;
-        user-select: none;
-      }
-      .tray-panel {
-        height: 100%;
-        display: grid;
-        grid-template-rows: 48px minmax(0, 1fr) 48px;
-        border: 1px solid ${colors.border};
-        border-radius: 8px;
-        overflow: hidden;
-        background: ${colors.surface};
-        box-shadow: 0 18px 42px rgba(0, 0, 0, ${isDark ? '0.42' : '0.18'});
-      }
-      .tray-head {
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        padding: 12px;
-        border-bottom: 1px solid ${colors.border};
-        background: ${colors.background};
-      }
-      .mark {
-        width: 22px;
-        height: 22px;
-        display: grid;
-        place-items: center;
-        border-radius: 6px;
-        background: ${colors.accentSoft};
-        color: ${colors.accent};
-      }
-      .mark svg,
-      .icon svg {
-        width: 15px;
-        height: 15px;
-        display: block;
-        fill: none;
-        stroke: currentColor;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        stroke-width: 2;
-      }
-      .mark svg {
-        fill: currentColor;
-        stroke: none;
-      }
-      strong { display: block; font-size: 13px; }
-      small { display: block; color: ${colors.muted}; font-size: 11px; }
-      .tray-actions {
-        min-height: 0;
-        display: grid;
-        gap: 2px;
-        padding: 5px;
-        align-content: start;
-      }
-      a {
-        height: 34px;
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        border: 1px solid transparent;
-        border-radius: 6px;
-        background: transparent;
-        color: ${colors.foreground};
-        font: inherit;
-        text-decoration: none;
-        text-align: start;
-        padding: 0 10px;
-        cursor: pointer;
-      }
-      a:hover,
-      a:focus-visible {
-        border-color: ${colors.border};
-        background: ${colors.accentSoft};
-        outline: none;
-      }
-      a:active {
-        transform: translateY(1px);
-      }
-      .exit {
-        border-top: 1px solid ${colors.border};
-        padding: 6px 5px;
-        background: ${colors.background};
-      }
-      .exit a {
-        width: 100%;
-        color: ${isDark ? '#f4b8b8' : '#722f37'};
-      }
-      .icon {
-        width: 18px;
-        height: 18px;
-        display: grid;
-        place-items: center;
-        color: ${colors.accent};
-        flex: 0 0 18px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="tray-panel">
-      <div class="tray-head">
-        <img class="mark" src="${logo}" alt="" />
-        <span>
-          <strong>Loaderly 2.0</strong>
-          <small>${copy.panel}</small>
-        </span>
-      </div>
-      <div class="tray-actions">
-        <a href="loaderly-tray://open"><span class="icon">${icon.open}</span>${copy.open}</a>
-        <a href="loaderly-tray://downloads"><span class="icon">${icon.downloads}</span>${copy.downloads}</a>
-        <a href="loaderly-tray://settings"><span class="icon">${icon.settings}</span>${copy.settings}</a>
-      </div>
-      <div class="exit">
-        <a href="loaderly-tray://exit"><span class="icon">${icon.exit}</span>${copy.exit}</a>
-      </div>
-    </div>
-    <script>
-      document.addEventListener('keydown', event => {
-        const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
-        if (!keys.includes(event.key)) return;
-        event.preventDefault();
-        const items = [...document.querySelectorAll('a')];
-        const index = items.indexOf(document.activeElement);
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
-          : event.key === 'ArrowDown' ? (index + 1) % items.length : (index < 0 ? items.length - 1 : (index + items.length - 1) % items.length);
-        items[next].focus();
-      });
-    </script>
-  </body>
-</html>`;
-
+  const html = buildTrayPopupHtml({
+    platform: process.platform,
+    osRelease: hostRelease(),
+    appearance: currentAppearance,
+    dark: currentThemeMode === 'dark',
+    locale: currentLocale,
+    version: app.getVersion(),
+    logo,
+    fontCss: auxiliaryFontCss(currentLocale === 'ar'),
+    desktopGlass,
+    reduceTransparency: nativeTheme.prefersReducedTransparency || nativeTheme.shouldUseHighContrastColors
+  });
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+const trayAppearanceUrls = new WeakMap<BrowserWindow, string>();
+const trayWindowShapes = new WeakMap<BrowserWindow, string>();
+const trayWindowRoundedCorners = new WeakMap<BrowserWindow, boolean>();
+const trayWindowMacRadius = new WeakMap<BrowserWindow, number>();
+function refreshTrayWindowShape(trayWindow: BrowserWindow): void {
+  const usesCustomRegion = process.platform === 'linux' || (process.platform === 'win32' && !supportsNativeTrayCorners(process.platform,hostRelease()));
+  if (trayWindow.isDestroyed() || !usesCustomRegion) return;
+  const [width,height] = trayWindow.getSize();
+  const signature = `${width}:${height}:${trayPopupRadius(currentAppearance)}`;
+  if (trayWindowShapes.get(trayWindow) === signature) return;
+  try {
+    trayWindow.setShape(trayPopupShape(currentAppearance,width,height));
+    trayWindowShapes.set(trayWindow,signature);
+  } catch {
+    // Unsupported window managers must not prevent quick actions from opening.
+    trayWindowShapes.delete(trayWindow);
+    safeMainError('[loaderly] The desktop could not apply the quick-actions window outline.');
+  }
+}
+function refreshTrayWindowAppearance(trayWindow: BrowserWindow): void {
+  if (trayWindow.isDestroyed()) return;
+  if(process.platform==='darwin'&&trayWindowMacRadius.get(trayWindow)!==trayPopupRadius(currentAppearance,'darwin',hostRelease())){
+    trayWindow.destroy();
+    return;
+  }
+  // roundedCorners is a construction option. Recreate the hidden flyout when
+  // switching between explicitly square and native rounded Windows corners.
+  if (supportsNativeTrayCorners(process.platform,hostRelease()) && trayWindowRoundedCorners.get(trayWindow) !== (trayPopupRadius(currentAppearance,'win32',hostRelease()) > 0)) {
+    trayWindow.destroy();
+    return;
+  }
+  const desktopGlass = applyWindowAppearance(trayWindow, currentAppearance, currentThemeMode === 'dark', {
+    platform: process.platform,
+    release: hostRelease(),
+    reduceTransparency: nativeTheme.prefersReducedTransparency || nativeTheme.shouldUseHighContrastColors
+  });
+  fitTrayPopupContentSize(trayWindow,trayWindowSize.width,trayWindowSize.height);
+  refreshTrayWindowShape(trayWindow);
+  const url = trayHtmlUrl(desktopGlass);
+  if (trayAppearanceUrls.get(trayWindow) === url) return;
+  trayAppearanceUrls.set(trayWindow, url);
+  void trayWindow.loadURL(url).catch(() => {
+    // A later appearance update may replace an in-flight page load.
+    if (!trayWindow.isDestroyed() && trayAppearanceUrls.get(trayWindow) === url) {
+      trayAppearanceUrls.delete(trayWindow);
+    }
+  });
 }
 
 function createTrayWindow(): BrowserWindow {
@@ -2967,7 +2938,11 @@ function createTrayWindow(): BrowserWindow {
     useContentSize: true,
     show: false,
     frame: false,
-    thickFrame: false,
+    ...macLiquidGlass.windowOptions(),
+    // Keep DWM's frame so Windows can clip Acrylic and its shadow together.
+    // Custom window regions only clipped hit testing, leaving square glass.
+    thickFrame: supportsNativeTrayCorners(process.platform,hostRelease()),
+    roundedCorners: process.platform !== 'win32' || (supportsNativeTrayCorners(process.platform,hostRelease()) && trayPopupRadius(currentAppearance,'win32',hostRelease()) > 0),
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -2998,10 +2973,21 @@ function createTrayWindow(): BrowserWindow {
       trayWindow.hide();
     }
   });
+  trayWindow.on('resize', () => refreshTrayWindowShape(trayWindow));
+  const onNativeThemeUpdated = () => refreshTrayWindowAppearance(trayWindow);
+  nativeTheme.on('updated', onNativeThemeUpdated);
+  macLiquidGlass.register(trayWindow,()=>{
+    applyWindowAppearance(trayWindow,currentAppearance,currentThemeMode==='dark',{
+      platform:process.platform,release:hostRelease(),reduceTransparency:nativeTheme.prefersReducedTransparency||nativeTheme.shouldUseHighContrastColors
+    },true);
+  },{cornerRadius:trayPopupRadius(currentAppearance,'darwin',hostRelease()),windowButtons:false});
   trayWindow.on('closed', () => {
+    nativeTheme.removeListener('updated', onNativeThemeUpdated);
     trayWindowRef = undefined;
   });
-  void trayWindow.loadURL(trayHtmlUrl());
+  trayWindowRoundedCorners.set(trayWindow,process.platform !== 'win32' || (supportsNativeTrayCorners(process.platform,hostRelease()) && trayPopupRadius(currentAppearance,'win32',hostRelease()) > 0));
+  trayWindowMacRadius.set(trayWindow,trayPopupRadius(currentAppearance,'darwin',hostRelease()));
+  refreshTrayWindowAppearance(trayWindow);
   trayWindowRef = trayWindow;
 
   return trayWindow;
@@ -3014,7 +3000,7 @@ function positionTrayWindow(trayWindow: BrowserWindow) {
     return;
   }
 
-  trayWindow.setContentSize(trayWindowSize.width, trayWindowSize.height);
+  fitTrayPopupContentSize(trayWindow,trayWindowSize.width,trayWindowSize.height);
   const [width, height] = trayWindow.getSize();
   const display = screen.getDisplayNearestPoint({
     x: trayBounds.x + Math.round(trayBounds.width / 2),
@@ -3030,7 +3016,9 @@ function positionTrayWindow(trayWindow: BrowserWindow) {
 
   y = Math.min(Math.max(y, workArea.y + 8), workArea.y + workArea.height - height - 8);
 
-  trayWindow.setBounds({ x, y, width, height });
+  trayWindow.setPosition(x, y);
+  // Electron's position update can recalculate fixed-frame client insets too.
+  fitTrayPopupContentSize(trayWindow,trayWindowSize.width,trayWindowSize.height);
 }
 
 function toggleTrayWindow() {
@@ -3110,6 +3098,9 @@ function createTray() {
 function nativeTrayMenu() {
   const ar = currentLocale === 'ar';
   return Menu.buildFromTemplate([
+    { label: `Loaderly ${app.getVersion()}`, enabled: false },
+    { label: ar ? 'الإجراءات السريعة…' : 'Quick actions…', click: toggleTrayWindow },
+    { type: 'separator' },
     { label: ar ? 'فتح Loaderly' : 'Open Loaderly', click: () => runTrayAction('open') },
     { label: ar ? 'التنزيلات' : 'Downloads', click: () => runTrayAction('downloads') },
     { type: 'separator' },

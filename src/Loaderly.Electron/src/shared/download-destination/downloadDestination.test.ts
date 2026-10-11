@@ -20,8 +20,8 @@ describe('download destination', () => {
   });
 
   it('defaults Loaderly downloads to the user Downloads folder', () => {
-    expect(defaultLoaderlyDownloadDirectory('C:\\Users\\voidk\\Downloads')).toBe('C:\\Users\\voidk\\Downloads\\Loaderly');
-    expect(defaultLoaderlyDownloadDirectory('/Users/voidk/Downloads/')).toBe('/Users/voidk/Downloads/Loaderly');
+    expect(defaultLoaderlyDownloadDirectory('C:\\Users\\Example\\Downloads')).toBe('C:\\Users\\Example\\Downloads\\Loaderly');
+    expect(defaultLoaderlyDownloadDirectory('/Users/Example/Downloads/')).toBe('/Users/Example/Downloads/Loaderly');
   });
   it('keeps drive roots absolute and preserves spaces in chosen folder names', () => {
     expect(resolveDownloadDirectory('R:\\', 'https://youtu.be/example', false)).toBe('R:\\');

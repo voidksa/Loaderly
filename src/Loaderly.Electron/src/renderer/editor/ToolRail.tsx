@@ -12,11 +12,12 @@ export type EditorToolRailItem = {
 
 type ToolRailProps = {
   readonly items: readonly EditorToolRailItem[];
+  readonly label: string;
 };
 
-export function ToolRail({ items }: ToolRailProps) {
+export function ToolRail({ items, label }: ToolRailProps) {
   return (
-    <aside className="editor-tool-rail" aria-label="Editor tools">
+    <aside className="editor-tool-rail" aria-label={label}>
       {items.map((item) => {
         const Icon = item.icon;
 

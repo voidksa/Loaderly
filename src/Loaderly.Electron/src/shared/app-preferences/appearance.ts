@@ -4,7 +4,12 @@ export type ThemeOpacity = Partial<Record<typeof opacityKeys[number], number>>;
 export type ThemeColors = Partial<Record<typeof colorKeys[number], string>>;
 export type Appearance = { preset: string; accent: string; density: 'comfortable' | 'compact' | 'spacious'; corners: 'rounded' | 'square'; colors?: { dark?: ThemeColors; light?: ThemeColors }; radius?: number; opacity?: ThemeOpacity; textScale?: number; sidebarWidth?: number; panelRadius?: number; borderWidth?: number; glass?: boolean };
 export const appearanceLimits = {radius:[0,20],textScale:[90,120],sidebarWidth:[188,280],panelRadius:[0,24],borderWidth:[0,2]} as const;
+export const defaultInterfaceTextScale = 120;
 export const defaultAppearance: Appearance = { preset: 'graphite', accent: '', density: 'comfortable', corners: 'rounded' };
+export const defaultGlassOpacity: Readonly<Record<typeof opacityKeys[number],number>> = {background:15,sidebar:15,titlebar:15,surface:0,editor:15,popover:0};
+export function appearanceOpacity(value: Appearance,key: typeof opacityKeys[number]): number {
+  return value.opacity?.[key] ?? (value.glass ? defaultGlassOpacity[key] : 100);
+}
 export const themePresets = [
   { id: 'lagoon', en: 'Lagoon', ar: 'بحري', dark: ['#10191e','#17242a','#203138','#2b444c','#2ad3aa'], light: ['#f1f7f5','#ffffff','#e4efeb','#c3d7d0','#007c63'] },
   { id: 'graphite', en: 'Graphite', ar: 'جرافيت', dark: ['#151515','#202020','#2b2b2b','#424242','#c4cbd3'], light: ['#f4f4f4','#ffffff','#eaeaea','#cccccc','#495563'] },
@@ -42,6 +47,30 @@ export function normalizeAppearance(value: unknown): Appearance {
   return result;
 }
 function validColor(value: unknown): boolean { return typeof value === 'string' && /^#[a-f\d]{6}$/i.test(value); }
+function colorChannels(color: string): number[] { return [1,3,5].map(i=>parseInt(color.slice(i,i+2),16)); }
+function relativeLuminance(channels: number[]): number {
+  return channels.reduce((total,channel,index)=>{
+    const value=channel/255;
+    return total+(value<=.04045?value/12.92:((value+.055)/1.055)**2.4)*[.2126,.7152,.0722][index];
+  },0);
+}
+// Native glass can sit over any desktop. Keep both text roles readable even
+// over black or white, without changing the user's saved theme or text colors.
+function readableTint(color: string, inks: string[]): number {
+  const channels=colorChannels(color), base=relativeLuminance(channels);
+  const texts=inks.map(ink=>relativeLuminance(colorChannels(ink)));
+  for(let percent=0;percent<=100;percent++) {
+    const bounds=[0,255].map(backdrop=>relativeLuminance(channels.map(channel=>channel*percent/100+backdrop*(1-percent/100))));
+    if(texts.every(text=>bounds.every(background=>
+      (text-base)*(text-background)>=0 && (Math.max(text,background)+.05)/(Math.min(text,background)+.05)>=4.5
+    ))) return percent;
+  }
+  return 100;
+}
+function tintFill(color: string, opacity: number, minimum=0): string {
+  const amount=minimum+(100-minimum)*opacity/100;
+  return `color-mix(in srgb, ${color} ${Number(amount.toFixed(2))}%, transparent)`;
+}
 export function appearanceVariables(value: Appearance, dark: boolean): Record<string,string> {
   const p=themePresets.find(p=>p.id===value.preset)??themePresets[1];
   const base=dark?p.dark:p.light, custom=value.colors?.[dark?'dark':'light'];
@@ -52,11 +81,26 @@ export function appearanceVariables(value: Appearance, dark: boolean): Record<st
   const radius=value.radius??(value.corners==='square'?3:8);
   const mix=dark?.16:.1;
   const selection=custom?.selection??'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)*mix+parseInt(surface.slice(i,i+2),16)*(1-mix)).toString(16).padStart(2,'0')).join('');
-  const variables:Record<string,string> = {'--background':bg,'--foreground':custom?.text??(dark?'#eef1f5':'#25272c'),'--titlebar-ink':custom?.text??(dark?'#eef1f5':'#25272c'),'--muted':custom?.muted??(dark?'#aab1bc':'#646b76'),'--surface':surface,'--surface-muted':bg,'--surface-raised':raised,'--popover':custom?.popover??surface,'--sidebar':custom?.sidebar??surface,'--editor':custom?.editor??bg,'--border':border,'--border-soft':`color-mix(in srgb, ${border} 62%, ${surface})`,'--accent':a,'--accent-strong':a,'--accent-soft':selection,'--accent-ink':custom?.buttonText??(luminance>.179?'#10191e':'#ffffff'),'--titlebar-bg':custom?.titlebar??surface,'--window-border':border,'--radius':`${radius}px`,'--radius-large':`${value.panelRadius??(radius===0?0:radius+4)}px`,'--ui-font-scale':String((value.textScale??100)/100),'--sidebar-width':`${value.sidebarWidth??212}px`,'--theme-border-width':`${value.borderWidth??1}px`};
+  // Darker secondary text lets light glass remain visibly translucent while
+  // retaining contrast. Explicit palette inks always take precedence.
+  const muted=custom?.muted??(dark?'#aab1bc':value.glass?'#434a55':'#646b76');
+  const variables:Record<string,string> = {'--background':bg,'--foreground':custom?.text??(dark?'#eef1f5':'#25272c'),'--titlebar-ink':custom?.text??(dark?'#eef1f5':'#25272c'),'--muted':muted,'--surface':surface,'--surface-muted':bg,'--surface-raised':raised,'--popover':custom?.popover??surface,'--sidebar':custom?.sidebar??surface,'--editor':custom?.editor??bg,'--border':border,'--border-soft':`color-mix(in srgb, ${border} 62%, ${surface})`,'--accent':a,'--accent-strong':a,'--accent-soft':selection,'--accent-ink':custom?.buttonText??(luminance>.179?'#10191e':'#ffffff'),'--titlebar-bg':custom?.titlebar??surface,'--window-border':border,'--radius':`${radius}px`,'--radius-large':`${value.panelRadius??(radius===0?0:radius+4)}px`,'--ui-font-scale':String((value.textScale??defaultInterfaceTextScale)/100),'--sidebar-width':`${value.sidebarWidth??212}px`,'--theme-border-width':`${value.borderWidth??1}px`};
   for (const key of opacityKeys) {
     const color=key==='titlebar'?variables['--titlebar-bg']:variables['--'+key];
-    variables[`--${key}-fill`]=`color-mix(in srgb, ${color} ${value.opacity?.[key]??100}%, transparent)`;
+    const opacity=appearanceOpacity(value,key);
+    const minimum=readableTint(color,[variables['--foreground'],variables['--muted']]);
+    // Popups cover other application text, so they need a stronger tint than
+    // workspace glass. Every slider step still changes the resulting tint.
+    variables[`--${key}-fill`]=tintFill(color,opacity,key==='popover'?Math.max(84,minimum):0);
+    if(['background','sidebar','titlebar','editor'].includes(key)) variables[`--${key}-glass-fill`]=tintFill(color,opacity,minimum);
   }
+  // Controls share one material across pages, editor panels and popups. Keep
+  // primary action ink solid while secondary fills reveal the glass beneath.
+  const controlOpacity = appearanceOpacity(value, 'surface');
+  variables['--control-fill'] = value.glass ? tintFill(raised, controlOpacity, 18) : raised;
+  variables['--control-hover'] = value.glass ? tintFill(custom?.selection ?? a, 0, custom?.selection ? 50 : dark ? 12 : 9) : selection;
+  variables['--control-selected'] = value.glass ? tintFill(custom?.selection ?? a, 0, custom?.selection ? 65 : dark ? 20 : 15) : selection;
+  variables['--control-pressed'] = value.glass ? tintFill(custom?.selection ?? a, 0, custom?.selection ? 72 : dark ? 27 : 22) : selection;
   return variables;
 }
 export function encodeTheme(value: Appearance): string { return JSON.stringify({format:'loaderly-theme',version:3,...normalizeAppearance(value)},null,2); }
