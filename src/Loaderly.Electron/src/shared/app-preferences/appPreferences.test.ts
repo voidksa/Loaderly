@@ -72,6 +72,9 @@ describe('app preferences', () => {
         sidebarCollapsed: true
       })
     ).toEqual({
+      downloadEngine: 'auto',
+      audioMode: 'original',
+        quickCapture: { watch: false, floating: false, floatingSize: 'compact', shortcuts: true, shortcutDefaultsVersion: 1, kind: 'video', audioMode: 'original' },
       downloadLocations: [], audioLocationId: '', videoLocationId: '',
       appearance: {preset:'graphite',accent:'',density:'comfortable',corners:'rounded'},
       themeMode: 'dark',

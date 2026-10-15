@@ -54,14 +54,15 @@ export function normalizeVisualizer(value:unknown):AudioVisualizerSettings {
   const n = (key:keyof AudioVisualizerSettings,min:number,max:number) => typeof v[key] === 'number' && Number.isFinite(v[key]) ? Math.max(min,Math.min(max,v[key] as number)) : defaultVisualizer[key] as number;
   const flag = (key:keyof AudioVisualizerSettings) => typeof v[key] === 'boolean' ? v[key] as boolean : defaultVisualizer[key] as boolean;
   const text = (key:string) => typeof v[key] === 'string' ? (v[key] as string).slice(0,160).replace(/[\u0000-\u001f]/g,'') : '';
+  const normalizedShape=normalizeVisualizerShape(v.shape);
   return {
     style:visualizerStyles.includes(v.style as AudioVisualizerSettings['style']) ? v.style as AudioVisualizerSettings['style'] : 'mirror',
     color:color(v.color,defaultVisualizer.color),secondColor:color(v.secondColor,defaultVisualizer.secondColor),gradient:flag('gradient'),
     background:color(v.background,defaultVisualizer.background),backgroundEnd:color(v.backgroundEnd,defaultVisualizer.backgroundEnd),backgroundGradient:flag('backgroundGradient'),
-    width:n('width',20,100),height:n('height',15,80),positionX:n('positionX',10,90),positionY:n('positionY',10,90),count:Math.round(n('count',16,Array.isArray((v.shape as VisualizerShape)?.paths)?1200:160)),gap:n('gap',0,12),roundness:n('roundness',0,12),
+    width:n('width',20,100),height:n('height',15,80),positionX:n('positionX',10,90),positionY:n('positionY',10,90),count:Math.round(n('count',16,v.style==='path'&&normalizedShape.paths?.length?1200:160)),gap:n('gap',0,12),roundness:n('roundness',0,12),
     sensitivity:n('sensitivity',.25,3),smoothing:n('smoothing',0,.95),glow:n('glow',0,30),opacity:n('opacity',.15,1),
     showTitle:flag('showTitle'),showSubtitle:flag('showSubtitle'),showBadges:flag('showBadges'),title:text('title'),subtitle:text('subtitle'),
-    textColor:color(v.textColor,defaultVisualizer.textColor),textSize:n('textSize',10,48),shape:normalizeVisualizerShape(v.shape)
+    textColor:color(v.textColor,defaultVisualizer.textColor),textSize:n('textSize',10,48),shape:normalizedShape
   };
 }
 export function encodeVisualizer(value:AudioVisualizerSettings) {
@@ -96,3 +97,13 @@ export const visualizerShapePresets: {id:string;en:string;ar:string;shape:Visual
   {id:'hexagon',en:'Hexagon',ar:'سداسي',shape:{points:[[.5,.1],[.85,.3],[.85,.7],[.5,.9],[.15,.7],[.15,.3]],closed:true,smooth:false,mirror:false,stroke:'line',thickness:3,amplitude:.3}},
   {id:'oval',en:'Oval',ar:'بيضاوي',shape:{points:[[.5,.15],[.78,.25],[.9,.5],[.78,.75],[.5,.85],[.22,.75],[.1,.5],[.22,.25]],closed:true,smooth:true,mirror:false,stroke:'dots',thickness:4,amplitude:.35,aspect:1.8}},
 ];
+
+// Built-in paths use the same editable format as imported shapes.
+visualizerShapePresets.push(
+  {id:'star',en:'Star',ar:'نجمة',shape:{points:Array.from({length:10},(_,i)=>{const a=i*Math.PI/5-Math.PI/2,r=i%2?.19:.4;return [.5+Math.cos(a)*r,.5+Math.sin(a)*r];}),closed:true,smooth:false,mirror:false,stroke:'line',thickness:3,amplitude:.3}},
+  {id:'spiral',en:'Spiral',ar:'حلزون',shape:{points:Array.from({length:48},(_,i)=>{const a=i/47*Math.PI*4,r=.06+i/47*.36;return [.5+Math.cos(a)*r,.5+Math.sin(a)*r];}),closed:false,smooth:true,mirror:false,stroke:'dots',thickness:3,amplitude:.25}},
+  {id:'flower',en:'Flower',ar:'زهرة',shape:{points:Array.from({length:48},(_,i)=>{const a=i/48*Math.PI*2,r=.3+.1*Math.cos(a*5);return [.5+Math.cos(a)*r,.5+Math.sin(a)*r];}),closed:true,smooth:true,mirror:false,stroke:'line',thickness:3,amplitude:.3}}
+);
+export function applyVisualizerPreset(current:AudioVisualizerSettings,preset:unknown):AudioVisualizerSettings {
+  return normalizeVisualizer({...normalizeVisualizer(preset),title:current.title,subtitle:current.subtitle,showTitle:current.showTitle,showSubtitle:current.showSubtitle});
+}

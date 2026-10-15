@@ -29,7 +29,7 @@ export async function exportVisualizerVideo(input:{sourcePath:string;outputPath:
     window=new BrowserWindow({show:false,width,height,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     if(process.env.ELECTRON_RENDERER_URL)await window.loadURL(process.env.ELECTRON_RENDERER_URL+'/visualizer.html');else await window.loadFile(join(__dirname,'../renderer/visualizer.html'));
-    await window.webContents.executeJavaScript(`window.visualizerRenderer.setup(${JSON.stringify(scene)},${width},${height})`);
+    await window.webContents.executeJavaScript(`window.visualizerRenderer.setup(${JSON.stringify(scene)},${width},${height},${JSON.stringify(input.options.captions??[])})`);
     const child=spawn(ffmpeg,['-v','error','-y','-f','image2pipe','-framerate','30','-i','pipe:0','-i',audio,'-map','0:v:0','-map','1:a:0','-c:v','libx264','-preset','veryfast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-t',String(duration),'-movflags','+faststart',partial],{windowsHide:true,signal,stdio:['pipe','ignore','pipe']});
     let failure:Error|undefined,message='';child.stderr.on('data',data=>{message=(message+data).slice(-2000);});
     const finished=new Promise<void>((res,rej)=>{child.once('error',rej);child.once('close',code=>code===0?res():rej(Error(message||'Video encoding failed')));});
@@ -40,7 +40,7 @@ export async function exportVisualizerVideo(input:{sourcePath:string;outputPath:
       const end=Math.min(length,Math.round(frame/30*48000)),start=Math.max(0,end-2048),bytes=Buffer.alloc(8192);
       await file.read(bytes,(2048-(end-start))*4,(end-start)*4,start*4);
       const samples=Float32Array.from({length:2048},(_,i)=>bytes.readFloatLE(i*4)),data=analyser.frame(samples,scene.settings.smoothing);
-      const png=await window.webContents.executeJavaScript(`window.visualizerRenderer.frame(${JSON.stringify(Array.from(data.spectrum))},${JSON.stringify(Array.from(data.waveform))})`) as string;
+      const png=await window.webContents.executeJavaScript(`window.visualizerRenderer.frame(${JSON.stringify(Array.from(data.spectrum))},${JSON.stringify(Array.from(data.waveform))},${frame/30})`) as string;
       await new Promise<void>((res,rej)=>child.stdin.write(Buffer.from(png,'base64'),error=>error?rej(error):res()));
       if(frame%15===0)notify({phase:'rendering',percent:Math.floor(frame/frames*98)});
     }child.stdin.end();notify({phase:'finishing',percent:99});await finished;

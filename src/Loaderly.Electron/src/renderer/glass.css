@@ -17,7 +17,7 @@
 .app-shell[data-platform] .titlebar {background:var(--titlebar-paint);backdrop-filter:none;}
 .app-shell[data-platform].editor-mode .workspace {background:transparent;}
 .app-shell[data-platform] .editor-studio {background:var(--editor-paint);}
-.app-shell[data-platform] .editor-stage--focus {background:transparent;}
+.app-shell[data-platform] .editor-stage--focus {background:var(--background);}
 /* The editor already owns the readable tint. Applying another minimum glass
    tint inside it makes the toolbars almost opaque and creates dark seams. */
 .app-shell[data-platform] .editor-command-bar,.app-shell[data-platform] .editor-timeline__toolbar {background:var(--titlebar-fill,var(--titlebar-bg));}
@@ -35,6 +35,7 @@
   --accent-soft:var(--control-selected);
 }
 .app-shell[data-platform] :is(.button.secondary,.desktop-menu__trigger) {background:var(--control-fill);}
+.app-shell[data-platform] .segmented-control {background:var(--control-fill);}
 .app-shell[data-platform] :is(.button.secondary,.desktop-menu__trigger):hover:not(:disabled),
 .app-shell[data-platform] .desktop-menu[data-open=true]>.desktop-menu__trigger,
 .app-shell[data-platform] :is(.product-nav__item,.product-nav__utility):not(.active):hover,
@@ -73,9 +74,6 @@
 input[type=range]:not(.app-color-hue)::-webkit-slider-runnable-track {
   background:linear-gradient(to right,var(--accent) var(--range-fill,0%),var(--muted) var(--range-fill,0%));
 }
-[dir=rtl] input[type=range]:not(.app-color-hue)::-webkit-slider-runnable-track {
-  background:linear-gradient(to left,var(--accent) var(--range-fill,0%),var(--muted) var(--range-fill,0%));
-}
 @media(prefers-reduced-transparency:reduce),(prefers-contrast:more) {
   :root,.theme-live-preview {--control-fill:var(--surface-raised)!important;--control-hover:var(--accent-soft)!important;--control-selected:var(--accent-soft)!important;--control-pressed:var(--accent-soft)!important;}
   :root,:root[data-desktop-glass=true],.theme-live-preview,:root[data-desktop-glass=true] .theme-live-preview[data-glass=true] {
@@ -97,5 +95,77 @@ input[type=range]:not(.app-color-hue)::-webkit-slider-runnable-track {
 .app-shell[data-platform] .design-library-icon {background:var(--control-selected);}
 .app-shell[data-platform] .control-deck__tabs {background:var(--surface-fill,var(--surface));}
 
+/* Input chrome follows the panel slider too. Do not recolor media, palette
+   swatches, range tracks or the accent on a checked control. */
+:root[data-desktop-glass=true] .app-shell[data-platform] :is(
+  input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=hidden],[type=button],[type=submit],[type=reset],[type=image]),
+  textarea
+) {background:var(--control-fill);color:var(--foreground);}
+:root[data-desktop-glass=true] .app-shell[data-platform] :is(
+  .studio-editor>.appearance-editor,.community-rating-signin,.visualizer-color>div,
+  .speed-rate-number,.app-color-value
+) {background:var(--surface-fill,var(--surface));}
+
+/* Menus keep their own readable material and selected/hover states, including
+   portals and menus opened from a dialog. */
+/* A solid fallback protects text when neither native glass nor CSS blur is
+   available. Native popups have a clear footprint in the web scene and use
+   the window's already blurred desktop material instead of stacking fills. */
+:root[data-interface-glass=true] :is(.desktop-menu__content,.app-tooltip[popover],.whats-new-dialog,.workspace-command-dialog,.activity-notice,.download-settings-dialog) {background:var(--popover);backdrop-filter:none;}
+:root[data-interface-glass=true][data-backdrop-blur=true] :is(.desktop-menu__content,.app-tooltip[popover],.whats-new-dialog,.workspace-command-dialog,.activity-notice,.download-settings-dialog) {
+  background:var(--menu-fill,var(--popover-fill));
+  backdrop-filter:var(--menu-backdrop-filter);
+  border-color:color-mix(in srgb,var(--foreground) 22%,transparent);
+  box-shadow:0 8px 28px #0003,inset 0 1px 0 color-mix(in srgb,var(--foreground) 8%,transparent);
+}
+:root[data-interface-glass=true] :is(.desktop-menu__content,.app-tooltip[popover],.whats-new-dialog,.workspace-command-dialog,.activity-notice,.download-settings-dialog)[data-native-material] {
+  background:var(--menu-fill,var(--popover-fill));
+  backdrop-filter:none;
+  animation:none;
+  border-color:color-mix(in srgb,var(--foreground) 22%,transparent);
+  box-shadow:0 8px 28px #0003,inset 0 1px 0 color-mix(in srgb,var(--foreground) 8%,transparent);
+}
+:root[data-interface-glass=true] .desktop-menu__content .desktop-menu__item {color:var(--foreground);}
+:root[data-interface-glass=true] .desktop-menu__content .desktop-menu__item small {color:var(--foreground);}
+:root[data-desktop-glass=true] .desktop-menu__content .desktop-menu__item.selected {background:var(--control-selected);}
+:root[data-desktop-glass=true] .desktop-menu__content .desktop-menu__item:hover:not(:disabled) {background:var(--control-hover);}
+:root[data-desktop-glass=true] .desktop-menu__content .desktop-menu__item:active:not(:disabled) {background:var(--control-pressed);}
+
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more) {
+  :root[data-interface-glass=true][data-backdrop-blur] :is(.desktop-menu__content,.app-tooltip[popover],.whats-new-dialog,.workspace-command-dialog,.activity-notice,.download-settings-dialog),
+  :root[data-interface-glass=true] :is(.desktop-menu__content,.app-tooltip[popover],.whats-new-dialog,.workspace-command-dialog,.activity-notice,.download-settings-dialog)[data-native-material] {background:var(--popover);backdrop-filter:none;}
+}
 
 
+
+
+/* Composed fields paint one material on the outside, never twice. */
+.app-shell[data-platform] :is(.toolbar-search,.command-bar__group,.playlist-search,.workspace-command-search) {background:var(--control-fill);color:var(--foreground);}
+.app-shell[data-platform] :is(.toolbar-search,.command-bar__group,.playlist-search,.workspace-command-search):focus-within {background:var(--control-fill);border-color:var(--accent);}
+:root .app-shell[data-platform] :is(.toolbar-search,.command-bar__group,.playlist-search,.workspace-command-search,.app-color-value,.speed-rate-number) :is(input,textarea),
+:root[data-desktop-glass] .app-shell[data-platform] :is(.toolbar-search,.command-bar__group,.playlist-search,.workspace-command-search,.app-color-value,.speed-rate-number) :is(input,textarea) {background:transparent;}
+.app-shell[data-platform] .command-bar__group textarea {font-family:inherit;letter-spacing:normal;text-align:start;}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more) {
+ .app-shell[data-platform] :is(.toolbar-search,.command-bar__group,.playlist-search,.workspace-command-search) {background:var(--surface);}
+}
+
+/* Modal dimming stays outside the native panel, never darkening its glass. */
+:is(.whats-new-dialog,.workspace-command-dialog,.download-settings-dialog)[data-native-material]::backdrop {mask-image:var(--native-backdrop-mask);}
+.activity-notice.update-notice[popover] {margin:0;width:max-content;overflow:visible;}
+:root[data-interface-glass=true] :is(.whats-new-dialog,.workspace-command-dialog,.download-settings-dialog) :is(button,a.button) {
+  --surface-raised:var(--control-fill);--surface-muted:var(--control-fill);
+}
+:root[data-interface-glass=true] :is(.whats-new-dialog,.workspace-command-dialog,.download-settings-dialog) .button.secondary {background:var(--control-fill);}
+:root[data-interface-glass=true] :is(.whats-new-dialog,.workspace-command-dialog,.download-settings-dialog) .button.secondary:hover {background:var(--control-hover);}
+/* Focused playback owns an opaque scene. Transparent controls must never
+   reveal the editor timeline, and the app titlebar retains its own space. */
+.editor-stage.editor-stage--focus[popover] {
+  inset:var(--preview-focus-top,48px) 0 0;
+  margin:0;width:auto;height:auto;max-width:none;max-height:none;
+  border:0;border-radius:0;box-shadow:none;
+}
+.editor-stage.editor-stage--focus.editor-stage--clean-audio[popover] {inset:0;}
+
+.activity-notice[popover] { margin:0; width:max-content; overflow:visible; color:var(--foreground); }
+:root .activity-notice .button.secondary { background:var(--control-fill); border:1px solid var(--border); }
+:root .activity-notice .button.secondary:hover { background:var(--control-hover); }

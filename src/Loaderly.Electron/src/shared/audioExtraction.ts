@@ -1,10 +1,12 @@
 import { sourceIdentityFromUrl } from './download-recovery/downloadRecovery';
+import type { DownloadAudioMode } from './downloadAudio';
 
 export type ExtractAudioChoice = 'use' | 'replace' | 'keep' | 'cancel';
-export type ExistingAudioFile = { readonly path: string; readonly source?: string };
+export type ExistingAudioFile = { readonly path: string; readonly source?: string; readonly audioMode?: DownloadAudioMode };
 export type ExtractAudioRequest = {
   readonly sourcePath: string;
   readonly source?: string;
+  readonly audioMode?: DownloadAudioMode;
   readonly knownAudio?: readonly ExistingAudioFile[];
   readonly choice?: ExtractAudioChoice;
   readonly existingPath?: string;
@@ -49,11 +51,24 @@ function filenameYoutubeIdentity(value: string): string | undefined {
 
 // A title is not an identity: two unrelated clips can share the same name.
 // The bracketed YouTube id also recognizes audio saved by earlier versions.
-export function audioMatchesSource(request: Pick<ExtractAudioRequest, 'source' | 'sourcePath'>, candidate: ExistingAudioFile): boolean {
+export function audioMatchesSource(request: Pick<ExtractAudioRequest, 'source' | 'sourcePath' | 'audioMode'>, candidate: ExistingAudioFile): boolean {
+  const mode = (value: DownloadAudioMode | undefined, path: string) => value ?? (/\[Instrumental\]/i.test(path) ? 'instrumental' : /\[No music\]/i.test(path) ? 'vocals' : 'original');
+  if (mode(request.audioMode, request.sourcePath) !== mode(candidate.audioMode, candidate.path)) return false;
   const sourceIdentity = remoteIdentity(request.source) ?? filenameYoutubeIdentity(request.sourcePath);
   const candidateIdentity = remoteIdentity(candidate.source);
   if (sourceIdentity && candidateIdentity) return sourceIdentity === candidateIdentity;
   if (sourceIdentity && filenameYoutubeIdentity(candidate.path) === sourceIdentity) return true;
   if (remoteIdentity(request.source) || candidateIdentity) return false;
   return Boolean(candidate.source && localPathKey(candidate.source) === localPathKey(request.source || request.sourcePath));
+}
+
+export function audioExtractionError(error: unknown, ar: boolean): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/no audio track|NO_AUDIO/i.test(message)) return ar ? 'هذا الملف لا يحتوي على مسار صوتي.' : 'This file has no audio track.';
+  if (/ffmpeg was not found|MEDIA_TOOL_MISSING/i.test(message)) return ar ? 'أداة معالجة الوسائط غير متاحة. افتح الأدوات لتجهيزها ثم أعد المحاولة.' : 'The media tool is unavailable. Set it up in Tools, then retry.';
+  if (/Source.*not found|ENOENT/i.test(message)) return ar ? 'تعذر العثور على الملف. تحقق من موقعه ثم أعد المحاولة.' : 'The file could not be found. Check its location, then retry.';
+  if (/EACCES|EPERM|Permission denied|Access is denied/i.test(message)) return ar ? 'تعذر حفظ الصوت في المجلد. تحقق من صلاحية الوصول إليه وأن الملف غير مستخدم.' : 'Could not save audio in the folder. Check access permissions and whether the file is in use.';
+  if (/ENOSPC|No space left/i.test(message)) return ar ? 'لا توجد مساحة كافية لحفظ الصوت. وفّر مساحة ثم أعد المحاولة.' : 'There is not enough space to save audio. Free some space, then retry.';
+  if (/existing audio.*changed|existing audio.*no longer/i.test(message)) return ar ? 'تغير الملف الصوتي المحفوظ. أعد الاستخراج لتحديث الخيارات.' : 'The saved audio changed. Extract again to refresh the choices.';
+  return ar ? 'تعذر استخراج الصوت. أعد المحاولة، وتحقق من تحديث أدوات الوسائط إذا استمر الخطأ.' : 'Could not extract audio. Retry, and check for media tool updates if the error continues.';
 }

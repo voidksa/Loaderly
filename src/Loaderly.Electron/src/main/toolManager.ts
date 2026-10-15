@@ -1,10 +1,11 @@
+import { PytubefixManager } from './pytubefixManager';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { isNewerToolVersion, parseToolVersion, toolNames, type ToolName, type ToolStatus, type ToolInstallProgress } from '../shared/tool-manager/toolStatus';
+import { isNewerToolVersion, parseToolVersion, toolNames, type ToolName, type ToolStatus, type ToolInstallProgress, type ToolInstallResult } from '../shared/tool-manager/toolStatus';
 import { currentToolPlatform, executableName, packageFor, packageSource, type ToolPackage, type ToolPlatform } from './toolPlatform';
 import { extractToolZip } from './toolArchive';
 
@@ -24,9 +25,11 @@ export class ToolManager {
   cancel() { this.installation?.abort(new Error('Installation canceled. Your previous tools were kept.')); }
   private releases = new Map<ToolPackage, { expires: number; request: Promise<Release> }>();
   private checks = new Map<ToolName, { expires: number; request: Promise<ToolStatus> }>();
-  constructor(private root: string, private fallback: (name: ToolName) => string | undefined, private target: ToolPlatform = currentToolPlatform) {}
+  readonly backup: PytubefixManager;
+  constructor(private root: string, private fallback: (name: ToolName) => string | undefined, private target: ToolPlatform = currentToolPlatform) { this.backup = new PytubefixManager(join(root, 'pytubefix'), target); }
 
   resolve(name: ToolName): string | undefined {
+    if (name === 'pytubefix') return this.backup.runtime()?.python;
     try {
       const active = JSON.parse(readFileSync(join(this.root, `${packageFor(name)}.json`), 'utf8'));
       if (/^[a-z0-9-]+$/i.test(active.directory)) {
@@ -111,6 +114,7 @@ export class ToolManager {
   }
 
   private async readStatus(name: ToolName): Promise<ToolStatus> {
+    if (name === 'pytubefix') return this.backup.check();
     try { packageSource(packageFor(name), this.target); } catch { return this.localStatus(name); }
     const [local, remote] = await Promise.all([this.localStatus(name), this.release(name).then(value => ({ value }), error => ({ error: checkErrorText(error) }))]);
     if ('error' in remote) return { ...local, checkError: remote.error };
@@ -119,18 +123,19 @@ export class ToolManager {
 
   async checkAll(): Promise<readonly ToolStatus[]> { return Promise.all(toolNames.map(name => this.check(name))); }
 
-  async install(input: string, progress: (value: ToolInstallProgress) => void = () => {}): Promise<{ ok: boolean; name: string; message?: string; status?: ToolStatus }> {
+  async install(input: string, progress: (value: ToolInstallProgress) => void = () => {}): Promise<ToolInstallResult> {
     if (!toolNames.includes(input as ToolName)) return { ok: false, name: input, message: 'Unknown tool.' };
     if (this.busy) return { ok: false, name: input, message: 'Another tool installation is in progress.' };
     this.busy = true;
     const controller = this.installation = new AbortController();
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(6 * 60_000)]);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(input === 'pytubefix' ? 15 * 60_000 : 6 * 60_000)]);
     const name = input as ToolName;
     const pkg = packageFor(name);
     const directory = `${pkg}-${randomUUID()}`;
     const stage = join(this.root, directory);
     let activated = false;
     try {
+      if (name === 'pytubefix') return await this.backup.install(signal, progress);
       progress({ name, phase: 'checking' });
       const release = await this.release(name, true, signal);
       signal.throwIfAborted();
@@ -178,8 +183,14 @@ export class ToolManager {
       await writeFile(`${manifest}.tmp`, JSON.stringify({ directory, version: release.version }));
       await rename(`${manifest}.tmp`, manifest);
       activated = true;
-      return { ok: true, name, status: { name, path: this.resolve(name), available: true, version: release.version, latestVersion: release.version, updateSupported: true, updateAvailable: false } };
-    } catch (error) { return { ok: false, name, message: controller.signal.aborted ? 'Installation canceled. Your previous tools were kept.' : signal.aborted ? 'Installation timed out. Check your connection and retry. Your previous tools were kept.' : errorText(error) }; }
+      const statuses = toolNames.filter(tool => packageFor(tool) === pkg).map(tool => ({ name: tool, path: this.resolve(tool), available: true, version: release.version, latestVersion: release.version, updateSupported: true, updateAvailable: false }));
+      return { ok: true, name, status: statuses.find(status => status.name === name), statuses };
+    } catch (error) {
+      const message = controller.signal.aborted ? 'Installation canceled. Your previous tools were kept.' : signal.aborted ? 'Installation timed out. Check your connection and retry. Your previous tools were kept.' : errorText(error);
+      // Keep diagnostics private, without requiring a second failed attempt to inspect them.
+      await mkdir(this.root, { recursive: true }).then(() => writeFile(join(this.root, `${name}-last-error.json`), JSON.stringify({ time: new Date().toISOString(), name, message: message.slice(0, 6000) }, null, 2))).catch(() => {});
+      return { ok: false, name, message };
+    }
     finally {
       for (const tool of toolNames) if (packageFor(tool) === pkg) this.checks.delete(tool);
       if (!activated) await rm(stage, { recursive: true, force: true }).catch(() => {});

@@ -56,11 +56,14 @@ function relativeLuminance(channels: number[]): number {
 }
 // Native glass can sit over any desktop. Keep both text roles readable even
 // over black or white, without changing the user's saved theme or text colors.
-function readableTint(color: string, inks: string[]): number {
+function readableTint(color: string, inks: string[], overlays: {color:string;alpha:number}[]=[], backdropBrightness=1): number {
   const channels=colorChannels(color), base=relativeLuminance(channels);
   const texts=inks.map(ink=>relativeLuminance(colorChannels(ink)));
   for(let percent=0;percent<=100;percent++) {
-    const bounds=[0,255].map(backdrop=>relativeLuminance(channels.map(channel=>channel*percent/100+backdrop*(1-percent/100))));
+    const bounds=[0,255*backdropBrightness].flatMap(backdrop=>{
+      const background=channels.map(channel=>channel*percent/100+backdrop*(1-percent/100));
+      return [relativeLuminance(background),...overlays.map(overlay=>relativeLuminance(colorChannels(overlay.color).map((channel,i)=>channel*overlay.alpha+background[i]*(1-overlay.alpha))))];
+    });
     if(texts.every(text=>bounds.every(background=>
       (text-base)*(text-background)>=0 && (Math.max(text,background)+.05)/(Math.min(text,background)+.05)>=4.5
     ))) return percent;
@@ -98,9 +101,17 @@ export function appearanceVariables(value: Appearance, dark: boolean): Record<st
   // primary action ink solid while secondary fills reveal the glass beneath.
   const controlOpacity = appearanceOpacity(value, 'surface');
   variables['--control-fill'] = value.glass ? tintFill(raised, controlOpacity, 18) : raised;
-  variables['--control-hover'] = value.glass ? tintFill(custom?.selection ?? a, 0, custom?.selection ? 50 : dark ? 12 : 9) : selection;
-  variables['--control-selected'] = value.glass ? tintFill(custom?.selection ?? a, 0, custom?.selection ? 65 : dark ? 20 : 15) : selection;
-  variables['--control-pressed'] = value.glass ? tintFill(custom?.selection ?? a, 0, custom?.selection ? 72 : dark ? 27 : 22) : selection;
+  const stateTints={hover:custom?.selection?50:dark?12:9,selected:custom?.selection?65:dark?20:15,pressed:custom?.selection?72:dark?27:22};
+  for(const [state,tint] of Object.entries(stateTints))variables['--control-'+state]=value.glass?tintFill(custom?.selection??a,0,tint):selection;
+  // Native popups reveal the desktop material directly, so one readable tint
+  // is enough. Do not dim or stack it over an already tinted workspace.
+  variables['--menu-backdrop-filter'] = 'blur(32px)';
+  variables['--menu-fill'] = value.glass
+    ? tintFill(variables['--popover'], appearanceOpacity(value,'popover'), readableTint(variables['--popover'],[variables['--foreground']],[
+      {color:raised,alpha:(18+82*controlOpacity/100)/100},
+      ...Object.values(stateTints).map(tint=>({color:custom?.selection??a,alpha:tint/100}))
+    ]))
+    : variables['--popover-fill'];
   return variables;
 }
 export function encodeTheme(value: Appearance): string { return JSON.stringify({format:'loaderly-theme',version:3,...normalizeAppearance(value)},null,2); }

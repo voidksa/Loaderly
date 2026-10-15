@@ -1,6 +1,6 @@
 import type {AudioVisualizerSettings} from './audioVisualizer';
 export type VisualizerVideoScene={settings:AudioVisualizerSettings;title:string;image?:string;imageMode:'cover'|'logo';logoSize:number;logoX:number;logoY:number};
-export type VisualizerVideoOptions={scene:VisualizerVideoScene;size:'landscape'|'portrait'|'square';resolution:720|1080};
+export type VisualizerVideoOptions={captions?:readonly import('./editorSubtitles').EditorSubtitleCue[];scene:VisualizerVideoScene;size:'landscape'|'portrait'|'square';resolution:720|1080};
 export type VisualizerExportProgress={phase:'preparing'|'rendering'|'finishing'|'complete'|'canceled'|'error';percent:number;path?:string;message?:string};
 export function videoDimensions(options:Pick<VisualizerVideoOptions,'size'|'resolution'>) {
   const short=options.resolution===720?720:1080,long=short===720?1280:1920;

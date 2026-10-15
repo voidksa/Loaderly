@@ -4,13 +4,13 @@ export type EditorToolId = 'select' | EditorLayerId;
 export type EditorProjectTrackId = 'media' | 'cut' | 'blur' | 'zoom' | 'speed' | 'reframe' | 'text' | 'subtitles';
 
 const videoToolIds = ['select', 'cuts', 'blur', 'zoom', 'speed', 'reframe', 'text', 'subtitles'] as const;
-const audioToolIds = ['select', 'cuts', 'speed'] as const;
+const audioToolIds = ['select', 'cuts', 'speed', 'subtitles'] as const;
 
 const videoLayerIds = ['cuts', 'subtitles', 'blur', 'zoom', 'speed', 'reframe', 'text'] as const;
-const audioLayerIds = ['cuts', 'speed'] as const;
+const audioLayerIds = ['cuts', 'speed', 'subtitles'] as const;
 
 const videoTrackIds = ['media', 'cut', 'blur', 'zoom', 'speed', 'reframe', 'text', 'subtitles'] as const;
-const audioTrackIds = ['media', 'cut', 'speed'] as const;
+const audioTrackIds = ['media', 'cut', 'speed', 'subtitles'] as const;
 
 export function editorToolIdsForMedia(kind: EditorMediaKind): readonly EditorToolId[] {
   return kind === 'audio' ? audioToolIds : videoToolIds;

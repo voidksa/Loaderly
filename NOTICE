@@ -1,1 +1,8 @@
 Required Notice: Loaderly Copyright (c) 2026 voidksa. Licensed under the PolyForm Noncommercial License 1.0.0.
+
+Local speech recognition and vocal separation use faster-whisper, CTranslate2,
+Demucs and PyTorch. Their original licenses and the licenses of bundled runtime
+components are included in resources/local-ai/licenses/components.json and the
+adjacent license files. These third-party components retain their own licenses.
+Model downloads are optional. OpenAI Whisper and the Demucs model are credited
+in resources/local-ai/_internal/models.json with their source and revision.

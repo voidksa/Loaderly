@@ -1,7 +1,7 @@
 {
   "name": "loaderly",
   "productName": "Loaderly",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
@@ -14,12 +14,14 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "prepare:desktop-tools": "tsx scripts/prepare-desktop-tools.ts",
-    "predev": "node scripts/build-designer.mjs"
+    "predev": "node scripts/build-designer.mjs",
+    "build:local-ai": "node scripts/build-local-ai.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "x11": "2.3.0",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
@@ -41,7 +43,7 @@
   "build": {
     "appId": "com.loaderly.app",
     "productName": "Loaderly",
-    "copyright": "Copyright © 2026 VOIDKSA. All rights reserved.",
+    "copyright": "Copyright Â© 2026 VOIDKSA. All rights reserved.",
     "directories": {
       "output": "dist-installer",
       "buildResources": "build"
@@ -68,6 +70,30 @@
         {
           "from": "../../assets/identity/loaderly-512.png",
           "to": "assets/identity/loaderly-512.png"
+        },
+        {
+          "from": "build/local-ai",
+          "to": "local-ai"
+        },
+        {
+          "from": "../../tools/windows",
+          "to": "tools"
+        },
+        {
+          "from": "public/fonts/NotoSansArabic.ttf",
+          "to": "fonts/NotoSansArabic.ttf"
+        },
+        {
+          "from": "../../LICENSE.md",
+          "to": "LICENSE.md"
+        },
+        {
+          "from": "../../NOTICE",
+          "to": "NOTICE"
+        },
+        {
+          "from": "../../docs/INSTALLATION.md",
+          "to": "START-HERE.md"
         }
       ]
     },
@@ -85,7 +111,9 @@
       "uninstallerIcon": "../../assets/loaderly.ico"
     },
     "mac": {
-      "asarUnpack": ["node_modules/electron-liquid-glass/prebuilds/**/*.node"],
+      "asarUnpack": [
+        "node_modules/electron-liquid-glass/prebuilds/**/*.node"
+      ],
       "target": [
         "dmg",
         "zip"
@@ -122,6 +150,10 @@
         {
           "from": "../../docs/INSTALLATION.md",
           "to": "START-HERE.md"
+        },
+        {
+          "from": "build/local-ai",
+          "to": "local-ai"
         }
       ]
     },
@@ -158,6 +190,10 @@
         {
           "from": "../../docs/INSTALLATION.md",
           "to": "START-HERE.md"
+        },
+        {
+          "from": "build/local-ai",
+          "to": "local-ai"
         }
       ],
       "syncDesktopName": true
@@ -169,7 +205,8 @@
         }
       }
     },
-    "publish": null
+    "publish": null,
+    "beforePack": "scripts/check-local-ai.cjs"
   },
   "description": "Download, organize and edit video and audio with Loaderly.",
   "author": {

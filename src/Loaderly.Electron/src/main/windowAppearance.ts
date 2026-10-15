@@ -2,12 +2,13 @@ import type {BrowserWindow} from 'electron';
 import {release} from 'node:os';
 import {appearanceVariables,type Appearance} from '../shared/app-preferences/appearance';
 import {macLiquidGlass} from './macLiquidGlass';
+import {linuxGlass} from './linuxGlass';
 
 type AppearanceWindow = Pick<BrowserWindow,'setVibrancy'|'setBackgroundMaterial'|'setBackgroundColor'>;
 const appliedAppearance = new WeakMap<AppearanceWindow,string>();
 
 export function supportsDesktopGlass(platform:NodeJS.Platform, osRelease:string):boolean {
- return platform==='darwin'||(platform==='win32'&&Number(osRelease.split('.')[2])>=22621);
+ return platform==='darwin'||(platform==='win32'&&Number(osRelease.split('.')[2])>=22621)||(platform==='linux'&&linuxGlass.isSupported());
 }
 export function applyWindowAppearance(win:AppearanceWindow,value:Appearance,dark:boolean,environment={platform:process.platform,release:release(),reduceTransparency:false},refreshMaterial=false):boolean {
  const supported=supportsDesktopGlass(environment.platform,environment.release);
@@ -21,6 +22,7 @@ export function applyWindowAppearance(win:AppearanceWindow,value:Appearance,dark
  const material=(enabled:boolean)=>{
   if(environment.platform==='darwin'&&!macLiquidGlass.apply(win as BrowserWindow,enabled)) win.setVibrancy(enabled?'under-window':null);
   if(environment.platform==='win32'&&supported) win.setBackgroundMaterial(enabled?'acrylic':'none');
+  if(environment.platform==='linux') linuxGlass.apply(win as BrowserWindow,enabled);
  };
  try {
   material(glass);

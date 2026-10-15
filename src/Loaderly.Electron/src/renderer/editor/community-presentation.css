@@ -13,11 +13,17 @@
 }
 
 .community-library.community-catalog .community-toolbar {
-  margin-block: 0 12px;
+  display:grid;
+  grid-template-columns:minmax(160px,1fr) auto auto auto;
+  gap:14px 10px;
+  margin-block:0 16px;
 }
 
+.community-library.community-catalog .community-toolbar>.segmented-control{grid-column:1/-1;justify-self:start;flex-wrap:wrap}
+.community-library.community-catalog .community-toolbar>input{width:100%;max-width:none;min-height:42px}
+
 .community-library.community-catalog .community-toolbar > input {
-  max-width: 560px;
+  max-width: none;
 }
 
 .community-library.community-catalog .community-results-heading {
@@ -32,9 +38,10 @@
 
 .community-catalog .community-grid--list .community-design {
   grid-template-columns: 240px minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 24px;
-  padding: 0;
+  padding: 0 0 24px;
+  border-bottom:1px solid var(--border-soft);
 }
 
 .community-catalog .community-grid--grid {
@@ -102,9 +109,9 @@
 }
 
 .community-catalog .community-grid--list .community-design-body {
-  grid-template-columns: minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   column-gap: 24px;
-  max-width: 880px;
+  max-width: 760px;
 }
 
 .community-catalog .community-grid--grid .community-design-body {
@@ -136,6 +143,10 @@
 
 .community-catalog .community-grid--list .community-rating {
   min-width: 208px;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px 20px;
 }
 
 .community-catalog .community-grid .community-rating-picker {

@@ -36,6 +36,7 @@ tmp/
 /docs/IDENTITY-AUDIO-DOCS-WORKPLAN.md
 /assets/identity/*generation*.json
 /src/Loaderly.Electron/dist-installer/
+/src/Loaderly.Electron/dist-*-qa/
 
 # Website is deployed separately to Cloudflare, never to the application repository
 /website/
@@ -49,6 +50,10 @@ tmp/
 # Native application tools and preview evidence
 /src/Loaderly.Electron/build/tools/
 /src/Loaderly.Electron/build/managed-tools/
+/src/Loaderly.Electron/build/local-ai/
+/src/Loaderly.Electron/build/local-ai-output/
+/src/Loaderly.Electron/build/local-ai-work/
+__pycache__/
 /src/Loaderly.Electron/desktop-smoke/
 
 # Generated from the bundled offline designer sources
@@ -60,3 +65,5 @@ tmp/
 !/docs/2.2.0-RELEASE-NOTES.md
 !/docs/images/
 !/docs/community/
+
+/src/Loaderly.Electron/output/

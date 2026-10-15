@@ -65,23 +65,34 @@ export function drawVisualizer(ctx:CanvasRenderingContext2D,width:number,height:
   ctx.fillStyle=ctx.strokeStyle=s.gradient?gradient:s.color;ctx.globalAlpha=s.opacity;ctx.shadowBlur=s.glow;ctx.shadowColor=s.color;
   const bands=visualizerBands(spectrum,s.count);
   const magnitude=(i:number)=>visualizerLevel(bands[Math.min(bands.length-1,i)]??0,s.sensitivity);
+  const pulse=visualizerLevel(Math.sqrt(bands.reduce((sum,band)=>sum+band*band,0)/Math.max(1,bands.length)),s.sensitivity);
   if(s.style==='path'){
     let entries=samples.get(s.shape);if(!entries){entries=new Map();samples.set(s.shape,entries);}
     let contours=entries.get(s.count);if(!contours){contours=sampleContours(s.shape,s.count);entries.set(s.count,contours);}
     const fit=fitOverride??fitShape(s.shape,width,height);
+    const sampleCount=contours.reduce((sum,part)=>sum+part.length,0);
     let index=0;
     contours.forEach((points,part)=>{
       let length=0;for(let i=1;i<points.length;i++)length+=Math.hypot(points[i].point[0]-points[i-1].point[0],points[i].point[1]-points[i-1].point[1])*fit.scale;
       const spacing=length/Math.max(1,points.length-1),stroke=s.shape.stroke??'bars';
       ctx.lineWidth=s.shape.thickness??Math.max(.6,Math.min(10,spacing-Math.min(s.gap,spacing*.85)));ctx.lineCap=s.roundness>0?'round':'butt';ctx.lineJoin='round';
-      if(stroke==='line')ctx.beginPath();
-      for(let i=0;i<points.length;i++,index++){
-        const {point:p,normal:n}=points[i],x=fit.x+p[0]*fit.scale,y=fit.y+p[1]*fit.scale,h=magnitude(index)*fit.reach,back=s.shape.mirror?h:0;
-        if(stroke==='line'){const dx=x+n[0]*h*.35,dy=y+n[1]*h*.35;if(i)ctx.lineTo(dx,dy);else ctx.moveTo(dx,dy);}
-        else if(stroke==='dots'){ctx.beginPath();ctx.arc(x+n[0]*h*.35,y+n[1]*h*.35,Math.max(.5,ctx.lineWidth/2),0,Math.PI*2);ctx.fill();}
-        else{ctx.beginPath();ctx.moveTo(x-n[0]*back,y-n[1]*back);ctx.lineTo(x+n[0]*Math.max(.5,h),y+n[1]*Math.max(.5,h));ctx.stroke();}
+      // Outlines and dots need the same movement range as bars. A small
+      // broadband pulse keeps the whole contour responsive while local bands
+      // retain their detail. Silence remains exactly still.
+      const sides=stroke!=='bars'&&s.shape.mirror?[1,-1]:[1];
+      for(const side of sides){
+        if(stroke==='line')ctx.beginPath();
+        for(let i=0;i<points.length;i++){
+          const {point:p,normal:n}=points[i],x=fit.x+p[0]*fit.scale,y=fit.y+p[1]*fit.scale;
+          const level=magnitude(Math.floor((index+i)/Math.max(1,sampleCount)*bands.length));
+          const h=(stroke==='bars'?level:level*.75+pulse*.25)*fit.reach,back=s.shape.mirror?h:0;
+          if(stroke==='line'){const dx=x+n[0]*h*side,dy=y+n[1]*h*side;if(i)ctx.lineTo(dx,dy);else ctx.moveTo(dx,dy);}
+          else if(stroke==='dots'){ctx.beginPath();ctx.arc(x+n[0]*h*side,y+n[1]*h*side,Math.max(.5,ctx.lineWidth/2),0,Math.PI*2);ctx.fill();}
+          else{ctx.beginPath();ctx.moveTo(x-n[0]*back,y-n[1]*back);ctx.lineTo(x+n[0]*Math.max(.5,h),y+n[1]*Math.max(.5,h));ctx.stroke();}
+        }
+        if(stroke==='line'){if(shapeContours(s.shape)[part].closed)ctx.closePath();ctx.stroke();}
       }
-      if(stroke==='line'){if(shapeContours(s.shape)[part].closed)ctx.closePath();ctx.stroke();}
+      index+=points.length;
     });
   }else if(s.style==='wave'){
     ctx.beginPath();ctx.lineWidth=Math.max(1.5,s.roundness/2);ctx.lineCap='round';ctx.lineJoin='round';
@@ -97,7 +108,7 @@ export function drawVisualizer(ctx:CanvasRenderingContext2D,width:number,height:
       const h=Math.max(2,magnitude(i)*height*.88),x=i*slot+(slot-barWidth)/2,y=s.style==='bars'?height-h:(height-h)/2;
       if(s.style==='dots'){
         const radius=Math.max(.8,Math.min(barWidth/2,5)),step=radius*2+3;
-        for(let d=0;d<=h;d+=step){ctx.beginPath();ctx.arc(x+barWidth/2,y+d,radius,0,Math.PI*2);ctx.fill();}
+        for(let d=radius;d<=Math.max(radius,h-radius);d+=step){ctx.beginPath();ctx.arc(x+barWidth/2,y+d,radius,0,Math.PI*2);ctx.fill();}
       }else{ctx.beginPath();ctx.roundRect(x,y,barWidth,h,Math.min(s.roundness,barWidth/2,h/2));ctx.fill();}
     }
   }ctx.globalAlpha=1;ctx.shadowBlur=0;

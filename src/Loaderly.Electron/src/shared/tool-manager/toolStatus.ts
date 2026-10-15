@@ -1,6 +1,6 @@
-export const toolNames = ['yt-dlp', 'ffmpeg', 'ffprobe', 'deno'] as const;
+export const toolNames = ['yt-dlp', 'ffmpeg', 'ffprobe', 'deno', 'pytubefix'] as const;
 export type ToolName = typeof toolNames[number];
-export type ToolInstallProgress = { name: string; phase: 'checking' | 'downloading' | 'verifying' | 'activating'; received?: number; total?: number };
+export type ToolInstallProgress = { name: string; phase: 'checking' | 'downloading' | 'verifying' | 'activating' | 'preparing-runtime' | 'installing'; received?: number; total?: number };
 export type ToolStatus = {
   readonly name: string;
   readonly available: boolean;
@@ -11,6 +11,14 @@ export type ToolStatus = {
   readonly updateSupported?: boolean;
   readonly message?: string;
   readonly checkError?: string;
+};
+
+export type ToolInstallResult = {
+  readonly ok: boolean;
+  readonly name: string;
+  readonly message?: string;
+  readonly status?: ToolStatus;
+  readonly statuses?: readonly ToolStatus[];
 };
 
 export function parseToolVersion(value: string): string | undefined {

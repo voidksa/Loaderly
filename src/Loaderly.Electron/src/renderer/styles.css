@@ -3265,8 +3265,8 @@ h2 {
   background: var(--background);
 }
 
-.editor-command-bar h2,
-.editor-command-bar p {
+.editor-command-bar__media h2,
+.editor-command-bar__media p {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3303,13 +3303,13 @@ h2 {
   background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface-raised) 30%);
 }
 
-.editor-command-bar h2 {
+.editor-command-bar__media h2 {
   margin: 0;
   font-size:calc(16px * var(--ui-font-scale,1));
   line-height: 1.25;
 }
 
-.editor-command-bar p {
+.editor-command-bar__media p {
   margin: 5px 0 0;
   color: var(--muted);
   font-size:calc(12px * var(--ui-font-scale,1));
@@ -6050,6 +6050,7 @@ textarea:focus-visible,
 
 /* Shared control styling for effect strength, speed, text and zoom sliders. */
 input[type="range"] {
+  direction: ltr;
   appearance: none; -webkit-appearance: none; height: 22px; margin: 0; padding: 0;
   background: transparent; border: 0; cursor: pointer; min-width: 0; width: 100%;
 }
@@ -6057,7 +6058,6 @@ input[type="range"]::-webkit-slider-runnable-track {
   height: 6px; border-radius: 999px; border: 0;
   background: linear-gradient(to right, var(--accent) var(--range-fill, 0%), var(--border) var(--range-fill, 0%));
 }
-[dir="rtl"] input[type="range"]::-webkit-slider-runnable-track { background: linear-gradient(to left, var(--accent) var(--range-fill, 0%), var(--border) var(--range-fill, 0%)); }
 input[type="range"]::-webkit-slider-thumb {
   appearance: none; -webkit-appearance: none; width: 14px; height: 14px; margin-top: -4px;
   background: var(--accent); border: 2px solid var(--surface); border-radius: 50%; box-shadow: 0 0 0 1px var(--accent);
@@ -6546,7 +6546,7 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .product-nav {overflow-y:auto;overflow-x:hidden;}
 .product-nav__item,.product-nav__utility {width:100%;box-sizing:border-box;}
 .product-nav__item>span,.product-nav__utility>span {flex:1;}
-.activity-notice>span {min-width:0;overflow-wrap:anywhere;max-height:35vh;overflow:auto;}
+.activity-notice>span {min-width:0;overflow-wrap:anywhere;max-height:none;overflow:visible;line-height:1.7;}
 
 .studio-draft-header {display:grid;grid-template-columns:minmax(230px,1fr) minmax(260px,1fr);align-items:start;gap:14px 28px;}
 .studio-draft-header .community-design-name {max-width:none;grid-column:1;}
@@ -6632,6 +6632,21 @@ body,button,input,textarea,select,.desktop-menu__content{font-family:var(--font-
 .theme-preview-panel small {display:block;color:var(--muted);margin-top:4px;}
 .theme-preview-action {background:var(--accent);color:var(--accent-ink);border-radius:var(--radius);padding:6px 10px;margin-inline-start:auto;}
 .theme-preview-menu {display:inline-block;margin-top:10px;padding:6px 12px;background:var(--popover-fill);border:var(--theme-border-width) solid var(--border);border-radius:var(--radius);font-size:calc(11px * var(--ui-font-scale,1));}
+
+/* Resolution choices remain one compact line; only automatic/audio modes
+   need a sentence. The same menu works in Downloads, queued rows and settings. */
+.desktop-menu__label {display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;}
+.desktop-menu__label>strong {min-width:0;}
+.desktop-menu__badge {flex:none;font-size:calc(10px * var(--ui-font-scale,1));font-weight:500;white-space:nowrap;}
+.desktop-menu__content--detailed {width:320px;max-width:calc(100vw - 16px);max-height:560px;padding:8px;gap:2px;}
+.desktop-menu__content--detailed .desktop-menu__item {min-height:36px;padding:7px 10px;}
+.desktop-menu__content--detailed .desktop-menu__item>span:not(.desktop-menu__item-icon) {min-width:0;}
+.desktop-menu__content--detailed .desktop-menu__item small {margin-top:3px;line-height:1.5;}
+.desktop-menu__content--detailed .desktop-menu__item strong {white-space:normal;}
+.desktop-menu__heading {padding:6px 10px 10px;font-size:calc(12px * var(--ui-font-scale,1));font-weight:650;}
+.desktop-menu__section {border-top:1px solid var(--border-soft);margin:7px 2px 3px;padding:10px 8px 4px;font-size:calc(10px * var(--ui-font-scale,1));color:var(--foreground);}
+.desktop-menu__separator {border-top:1px solid var(--border-soft);margin:7px 2px;}
+.desktop-menu__heading,.desktop-menu__section,.desktop-menu__separator {flex-shrink:0;}
 .theme-opacity-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 32px;margin-block:20px;}
 .theme-opacity-field {display:grid;gap:8px;}
 .theme-opacity-field>label {display:flex;justify-content:space-between;gap:8px;font-size:calc(12px * var(--ui-font-scale,1));}

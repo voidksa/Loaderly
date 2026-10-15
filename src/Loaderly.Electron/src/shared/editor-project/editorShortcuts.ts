@@ -10,6 +10,7 @@ export type EditorShortcutInput = {
   readonly isComposing?: boolean;
   readonly repeat?: boolean;
   readonly inMenu?: boolean;
+  readonly platform?: string;
 };
 
 export type EditorShortcutAction =
@@ -36,6 +37,8 @@ export function resolveEditorShortcut(input: EditorShortcutInput): EditorShortcu
   const command = Boolean(input.ctrlKey || input.metaKey);
   const code = input.code;
 
+  if (input.platform && (input.platform === 'darwin' ? input.ctrlKey : input.metaKey)) return undefined;
+
   if (input.altKey || (input.repeat && !['ArrowLeft', 'ArrowRight'].includes(code))) return undefined;
 
   if (command) {
@@ -46,6 +49,8 @@ export function resolveEditorShortcut(input: EditorShortcutInput): EditorShortcu
     if (code === 'KeyZ') {
       return { type: 'undo' };
     }
+
+    if (input.shiftKey) return undefined;
 
     if (code === 'KeyY') {
       return { type: 'redo' };

@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { canOpenEditorForMedia, editorSessionStorageKeys, mediaIdentityForPath, playerScrubSecondsFromClientX, playbackResumeSeconds } from './editorSession';
 
 describe('editor session persistence helpers', () => {
+  it('keeps case-distinct Linux paths separate while retaining a read migration path',()=>{
+    expect(mediaIdentityForPath('/home/void/Clip.mp4')).not.toBe(mediaIdentityForPath('/home/void/clip.mp4'));
+    const keys=editorSessionStorageKeys('/home/void/Clip.mp4');expect(keys[0]).toContain('v3:');expect(keys.at(-1)).toContain('v2:');
+  });
   it('normalizes media paths into stable per-media identities', () => {
     expect(mediaIdentityForPath('C:\\Users\\Void\\Videos\\Clip.MP4')).toBe('c:/users/void/videos/clip.mp4');
   });

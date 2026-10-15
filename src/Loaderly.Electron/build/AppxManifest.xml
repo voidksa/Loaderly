@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+ xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+ xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+ xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+ IgnorableNamespaces="uap desktop rescap">
+ <Identity Name="voidksa.Loaderly" Publisher="CN=4F489940-76CE-47CF-93CD-B4D2480E6877" Version="2.3.0.0" ProcessorArchitecture="x64"/>
+ <Properties><DisplayName>Loaderly</DisplayName><PublisherDisplayName>voidksa</PublisherDisplayName><Description>Download and edit video and audio in one workspace.</Description><Logo>Assets\Logo50.png</Logo></Properties>
+ <Resources><Resource Language="en-US"/><Resource Language="ar-SA"/></Resources>
+ <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0"/></Dependencies>
+ <Applications><Application Id="Loaderly" Executable="Loaderly.exe" EntryPoint="Windows.FullTrustApplication">
+  <uap:VisualElements DisplayName="Loaderly" Description="Download and edit video and audio in one workspace." BackgroundColor="#202020" Square150x150Logo="Assets\Logo150.png" Square44x44Logo="Assets\Logo44.png">
+   <uap:DefaultTile Wide310x150Logo="Assets\Wide310.png" Square310x310Logo="Assets\Logo310.png"/>
+  </uap:VisualElements>
+  <Extensions><desktop:Extension Category="windows.startupTask" Executable="Loaderly.exe" EntryPoint="Windows.FullTrustApplication"><desktop:StartupTask TaskId="LoaderlyStartup" Enabled="true" DisplayName="Loaderly"/></desktop:Extension></Extensions>
+ </Application></Applications>
+ <Capabilities><rescap:Capability Name="runFullTrust"/></Capabilities>
+</Package>

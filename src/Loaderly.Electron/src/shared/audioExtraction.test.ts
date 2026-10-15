@@ -17,3 +17,9 @@ it('keeps source services distinct and local paths tied to their full location',
   expect(audioMatchesSource({ sourcePath: 'D:\\Videos\\song.mp4' }, { path: 'E:/Music/song - audio.mp3', source: 'd:/videos/song.mp4' })).toBe(true);
   expect(audioMatchesSource({ sourcePath: '/Videos/song.mp4' }, { path: '/Music/song - audio.mp3', source: '/Elsewhere/song.mp4' })).toBe(false);
 });
+it('does not reuse a different separated version of the same clip', () => {
+  const source = 'https://youtu.be/L9O4per-Uhw';
+  expect(audioMatchesSource({ source, sourcePath: 'clip [No music].mp4' }, { source, path: 'original.mp3' })).toBe(false);
+  expect(audioMatchesSource({ source, sourcePath: 'clip.mp4', audioMode: 'instrumental' }, { source, path: 'renamed.mp3', audioMode: 'vocals' })).toBe(false);
+  expect(audioMatchesSource({ source, sourcePath: 'clip [Instrumental].mp4' }, { source, path: 'clip [Instrumental] - audio.mp3' })).toBe(true);
+});

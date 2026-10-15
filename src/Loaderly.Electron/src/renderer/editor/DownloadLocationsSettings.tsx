@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { AudioLines, Film, FolderPlus, Trash2 } from 'lucide-react';
+import { FolderPlus, Trash2 } from 'lucide-react';
 import type { AppPreferences } from '../../shared/app-preferences/appPreferences';
 import { DownloadFolderSetting } from './DownloadFolderSetting';
 import { DesktopMenu } from './DesktopMenu';
+import { DownloadPreference } from './DownloadPreference';
+import { DesignLibraryToggle } from './DesignLibraryToggle';
 import { ConfirmAction } from './ConfirmAction';
 
 export function DownloadLocationsSettings({ preferences: p, onChange }: { preferences: AppPreferences; onChange: (value: Partial<AppPreferences>) => void }) {
@@ -40,26 +42,27 @@ export function DownloadLocationsSettings({ preferences: p, onChange }: { prefer
       setMessage(t('Could not open the folder picker. Try again.', 'تعذّر فتح نافذة اختيار المجلد. حاول مجددًا.'));
     }
   }
-  return <section className="download-locations" aria-labelledby="download-locations-title">
+  return <section className="download-locations" aria-label={t('Video and audio folders', 'مجلدات الفيديو والصوت')}>
     {removal && <ConfirmAction ar={ar} title={t('Remove this location?', 'إزالة هذا المكان؟')} confirmLabel={t('Remove location', 'إزالة المكان')} onCancel={() => setRemoving(undefined)} onConfirm={() => onChange({ downloadLocations: p.downloadLocations.filter(l => l.id !== removal.id), audioLocationId: p.audioLocationId === removal.id ? '' : p.audioLocationId, videoLocationId: p.videoLocationId === removal.id ? '' : p.videoLocationId })}>
       <strong dir="auto">{removal.name}</strong><p>{t('Removes this saved location from Loaderly. Files in the folder stay in place. Downloads assigned here will use the default folder.', 'يُزال هذا المكان من إعدادات Loaderly وتبقى ملفات المجلد كما هي. ستستخدم التنزيلات المرتبطة به المجلد الافتراضي.')}</p>
     </ConfirmAction>}
+    <div className="location-defaults">{(['audio', 'video'] as const).map(kind => {
+      const options = defaults(kind), value = kind === 'audio' ? p.audioLocationId : p.videoLocationId;
+      const label = kind === 'audio' ? t('Save audio to', 'حفظ الصوت في') : t('Save video to', 'حفظ الفيديو في');
+      return <DownloadPreference key={kind} label={label}>
+        <DesktopMenu ariaLabel={label} value={value} valueLabel={options.find(item => item.value === value)?.label ?? options[0].label} options={options}
+          onChange={id => onChange(kind === 'audio' ? { audioLocationId: id } : { videoLocationId: id })} />
+      </DownloadPreference>;
+    })}</div>
+    <DesignLibraryToggle label={t('Manage saved locations', 'إدارة أماكن الحفظ')} icon={<FolderPlus size={16} aria-hidden="true"/>}>
+    <div className="download-saved-locations">
     <header className="download-locations__heading">
-      <div><h3 id="download-locations-title">{t('Download locations', 'أماكن التنزيل')}</h3>
-        <p>{t('Name your folders, then choose where to save audio and video.', 'سمِّ مجلداتك، ثم اختر مكان حفظ الصوت والفيديو.')}</p></div>
+      <div><h3 id="download-locations-title">{t('Saved locations', 'أماكن الحفظ المحفوظة')}</h3>
+        <p>{t('Add named folders to use in your downloads.', 'أضف مجلدات مسماة لاستخدامها في التنزيلات.')}</p></div>
       <button className="button secondary" type="button" disabled={p.downloadLocations.length >= 50} onClick={() => void chooseFolder()}>
         <FolderPlus size={17} aria-hidden="true" />{t('Add location', 'إضافة مكان')}
       </button>
     </header>
-    <div className="location-defaults">{(['audio', 'video'] as const).map(kind => {
-      const options = defaults(kind), value = kind === 'audio' ? p.audioLocationId : p.videoLocationId;
-      const label = kind === 'audio' ? t('Save audio to', 'حفظ الصوت في') : t('Save video to', 'حفظ الفيديو في');
-      return <div className="location-field" key={kind}>
-        <span className="location-field__label">{kind === 'audio' ? <AudioLines size={16} aria-hidden="true" /> : <Film size={16} aria-hidden="true" />}{label}</span>
-        <DesktopMenu ariaLabel={label} value={value} valueLabel={options.find(item => item.value === value)?.label ?? options[0].label} options={options}
-          onChange={id => onChange(kind === 'audio' ? { audioLocationId: id } : { videoLocationId: id })} />
-      </div>;
-    })}</div>
     <div className="download-location-grid">{p.downloadLocations.map(item => <section className="download-location" key={item.id} aria-label={item.name}>
       <div className="location-heading">
         <label className="location-field"><span className="location-field__label">{t('Location name', 'اسم المكان')}</span>
@@ -92,6 +95,7 @@ export function DownloadLocationsSettings({ preferences: p, onChange }: { prefer
         </label>
       </div>
     </section>)}</div>
+    </div></DesignLibraryToggle>
     <p className="download-locations__message" role="status">{message}</p>
   </section>;
 }

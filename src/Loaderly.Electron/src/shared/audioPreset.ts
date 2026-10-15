@@ -1,8 +1,10 @@
 import {normalizeAudioSettings,type AudioSettings} from './editor-project/audioProcessing';
 import {normalizeSpeedMode,type SpeedSoundMode} from './editor-project/speedSound';
-export type SoundPreset={audio:AudioSettings;speed?:{rate:number;mode:SpeedSoundMode}};
+import {normalizeStudioEdits,type StudioAudio} from './editor-project/studio';
+export type SoundPreset={audio:AudioSettings;processing?:Pick<StudioAudio,'normalize'|'targetLufs'|'peakDb'|'denoise'>;speed?:{rate:number;mode:SpeedSoundMode}};
 export function normalizeSoundPreset(value:SoundPreset):SoundPreset{
  const result:SoundPreset={audio:normalizeAudioSettings(value.audio)};
+ if(value.processing){const p=normalizeStudioEdits({audio:value.processing}).audio;result.processing={normalize:p.normalize,targetLufs:p.targetLufs,peakDb:p.peakDb,denoise:p.denoise};}
  if(value.speed&&typeof value.speed.rate==='number'&&Number.isFinite(value.speed.rate))result.speed={rate:Math.max(.25,Math.min(8,value.speed.rate)),mode:normalizeSpeedMode(value.speed.mode)};
  return result;
 }

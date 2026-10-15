@@ -1,6 +1,6 @@
 import {validDraft,type DraftRequest,type DraftResult} from '../shared/communityDrafts';
 import {safeStorage} from 'electron';
-import {readFile,writeFile,mkdir,rm} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rm,stat} from 'node:fs/promises';
 import {join} from 'node:path';
 import {releaseOrigin} from '../shared/releases';
 import {boundedResponse} from './communityCatalog';
@@ -13,23 +13,37 @@ export class CommunityRatings {
   private generation=0;
   private persistence:Promise<void>=Promise.resolve();
   private pending?:{clientId:string;deviceCode:string;userCode:string;interval:number;next:number;expires:number};
-  constructor(private directory:string){}
+  constructor(private directory:string,private platform:NodeJS.Platform=process.platform){}
   private get file(){return join(this.directory,'community-github.bin');}
-  private secure(){return safeStorage.isEncryptionAvailable()&&(process.platform!=='linux'||safeStorage.getSelectedStorageBackend()!=='basic_text');}
-  private async load(){if(this.loaded)return;const generation=this.generation;this.loading??=(async()=>{try{if(this.secure()){const token=safeStorage.decryptString(await readFile(this.file));if(generation===this.generation)this.token=token;}}catch{/* A missing OS key requires signing in again. */}finally{this.loaded=true;}})();await this.loading;}
+  private get interactiveStorage(){return this.platform==='darwin'||this.platform==='linux';}
+  private secure(){return safeStorage.isEncryptionAvailable()&&(this.platform!=='linux'||safeStorage.getSelectedStorageBackend()!=='basic_text');}
+  private async savedAccount():Promise<CommunityAccount>{
+    if(this.token||!this.interactiveStorage)return {};
+    try{const file=await stat(this.file);return file.isFile()&&file.size>0&&file.size<=4096?{savedSession:true}:{};}catch{return {};}
+  }
+  private async load(){if(this.loaded)return;const generation=this.generation;this.loading??=(async()=>{try{
+    // Check for an actual saved session before asking the OS for its key.
+    const encrypted=await readFile(this.file);
+    if(encrypted.length>0&&encrypted.length<=4096&&this.secure()){
+      const token=safeStorage.decryptString(encrypted);
+      if(generation===this.generation&&/^[A-Za-z0-9_]{20,255}$/.test(token))this.token=token;
+    }
+  }catch{/* A missing OS key requires signing in again. */}finally{if(generation===this.generation)this.loaded=true;}})();await this.loading;}
   private async json(url:string,init:RequestInit={},limit=100000){const response=await fetch(url,{...init,redirect:'error',signal:AbortSignal.timeout(12000)});if(!response.ok){if(response.status===401)await this.logout();throw Error('Request unavailable');}return JSON.parse(await boundedResponse(response,limit));}
   async logout():Promise<CommunityAccount>{this.generation++;this.token='';this.pending=undefined;this.loaded=true;this.persistence=this.persistence.catch(()=>{}).then(()=>rm(this.file,{force:true}));await this.persistence;return {};}
   async ratings(lookId?:unknown,stars?:unknown):Promise<CommunityRatingsResult>{
-    await this.load();
     if(lookId!==undefined&&(typeof lookId!=='string'||lookId.length>80||!Number.isInteger(stars)||Number(stars)<1||Number(stars)>5))throw Error('Invalid rating');
+    // Public browsing must never open a Keychain or secret-store prompt.
+    if(!this.interactiveStorage)await this.load();
+    const saved=await this.savedAccount();
     if(lookId!==undefined&&!this.token)return {available:true,ratings:[],account:{error:'sign-in-required'}};
     try {const result=await this.json(releaseOrigin+'/api/community/ratings',{method:lookId===undefined?'GET':'POST',headers:{...(this.token?{Authorization:`Bearer ${this.token}`} : {}),...(lookId===undefined?{}:{'Content-Type':'application/json'})},...(lookId===undefined?{}:{body:JSON.stringify({lookId,stars})})});
       if(!Array.isArray(result.ratings)||result.ratings.length>200)throw Error('Invalid ratings');
-      return {available:true,ratings:result.ratings.filter(validRating),account:typeof result.user?.login==='string'?{login:result.user.login.slice(0,40)}:{}};
-    }catch{return {available:false,ratings:[],account:{error:'unavailable'}};}
+      return {available:true,ratings:result.ratings.filter(validRating),account:typeof result.user?.login==='string'?{login:result.user.login.slice(0,40)}:saved};
+    }catch{return {available:false,ratings:[],account:{...saved,error:'unavailable'}};}
   }
   async drafts(input:DraftRequest):Promise<DraftResult>{
-    await this.load();if(!this.token)return {ok:false,error:'sign-in-required'};
+    if(!this.interactiveStorage)await this.load();if(!this.token)return {ok:false,error:'sign-in-required'};
     if(!input||!['list','save','publish','unpublish','delete'].includes(input.action))return {ok:false,error:'invalid-action'};
     let body:unknown=input;
     if(input.action==='save'){const draft=validDraft(input.draft);if(!draft)return {ok:false,error:'invalid-design'};body={action:'save',draft};}
@@ -48,6 +62,12 @@ export class CommunityRatings {
   }
   async begin():Promise<CommunityAccount>{
     const generation=++this.generation;this.pending=undefined;
+    // Restoring a protected session is an explicit sign-in action on systems
+    // whose key provider can ask the user to unlock their password store.
+    if(!this.token){this.loaded=false;this.loading=undefined;await this.load();}
+    if(generation!==this.generation)return {};
+    if(this.token){const restored=await this.ratings();if(restored.account?.login||!restored.available)return restored.account??{error:'unavailable'};}
+    if(generation!==this.generation)return {};
     try{
       const response=await fetch(releaseOrigin+'/api/community/auth-config',{redirect:'error',signal:AbortSignal.timeout(12000)});
       if(generation!==this.generation)return {};

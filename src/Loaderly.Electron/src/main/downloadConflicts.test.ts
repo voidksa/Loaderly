@@ -9,6 +9,14 @@ afterEach(async()=>{await rm(directory,{recursive:true,force:true});});
 function options(choice:DuplicateChoice='keep'){
  return {directory,title:'Song',identity:'abc123',kind:'audio' as const,classify:async()=> 'audio' as const,choose:vi.fn(async()=>choice),download:vi.fn(async(stage:string)=>{const path=join(stage,'Song [abc123].mp3');await writeFile(path,'new');return {ok:true,path};})};
 }
+it('preserves separated outputs when downloading or replacing the original',async()=>{
+ const vocals=join(directory,'Song [abc123] [No music].mp3'),music=join(directory,'Song [abc123] [Instrumental] (2).mp3');
+ await writeFile(vocals,'voices');await writeFile(music,'music');
+ const first=options('replace');const result=await managedDownload(first);
+ expect(first.choose).not.toHaveBeenCalled();expect(result.path).toBe(join(directory,'Song [abc123].mp3'));
+ const replace=options('replace');await managedDownload(replace);expect(replace.choose).toHaveBeenCalledWith(result.path);
+ expect(await readFile(vocals,'utf8')).toBe('voices');expect(await readFile(music,'utf8')).toBe('music');
+});
 it('skips duplicates before downloading and keeps audio separate from video',async()=>{
  await writeFile(join(directory,'Song [abc123].mp4'),'existing');
  const skip=options('skip');expect(await managedDownload(skip)).toMatchObject({skipped:true});expect(skip.download).not.toHaveBeenCalled();

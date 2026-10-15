@@ -66,7 +66,7 @@ export function regionSegmentsForExport(
   keyframes: readonly EffectRegionKeyframe[] | undefined,
   startSeconds: number,
   endSeconds: number,
-  stepSeconds = 0.25
+  stepSeconds?: number
 ): readonly EffectRegionSegment[] {
   const safeStart = Math.max(0, finiteNumber(startSeconds, 0));
   const safeEnd = Math.max(safeStart + 0.05, finiteNumber(endSeconds, safeStart + 0.05));
@@ -76,19 +76,16 @@ export function regionSegmentsForExport(
     return [{ startSeconds: safeStart, endSeconds: safeEnd, region: baseRegion }];
   }
 
-  const step = Math.max(0.05, finiteNumber(stepSeconds, 0.25));
-  const segments: EffectRegionSegment[] = [];
-  let cursor = safeStart;
-
-  while (cursor < safeEnd - 0.001) {
-    const next = Math.min(safeEnd, cursor + step);
-    const sampleTime = cursor + (next - cursor) / 2;
-    segments.push({
-      startSeconds: Math.round(cursor * 1000) / 1000,
-      endSeconds: Math.round(next * 1000) / 1000,
-      region: regionAtKeyframeTime(baseRegion, sorted, sampleTime)
-    });
-    cursor = next;
+  const boundaries=[...new Set([safeStart,safeEnd,...sorted.map(k=>k.timeSeconds).filter(t=>t>safeStart&&t<safeEnd)])].sort((a,b)=>a-b);
+  const segments: EffectRegionSegment[]=[];
+  for(let index=1;index<boundaries.length;index++){
+    const start=boundaries[index-1],end=boundaries[index],left=regionAtKeyframeTime(baseRegion,sorted,start),right=regionAtKeyframeTime(baseRegion,sorted,end);
+    const movement=Math.max(Math.abs(left.x-right.x),Math.abs(left.y-right.y),Math.abs(left.width-right.width),Math.abs(left.height-right.height),Math.abs((left.rotation??0)-(right.rotation??0))/3,Math.abs((left.opacity??1)-(right.opacity??1))*100);
+    const count=stepSeconds!==undefined?Math.ceil((end-start)/Math.max(1/60,finiteNumber(stepSeconds,.25))):Math.max(1,Math.min(Math.ceil(movement/.5),Math.ceil((end-start)*60)));
+    for(let i=0;i<count;i++){
+      const from=start+(end-start)*i/count,to=start+(end-start)*(i+1)/count;
+      segments.push({startSeconds:Math.round(from*1000)/1000,endSeconds:Math.round(to*1000)/1000,region:regionAtKeyframeTime(baseRegion,sorted,(from+to)/2)});
+    }
   }
 
   return segments;

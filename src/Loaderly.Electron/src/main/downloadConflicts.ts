@@ -1,5 +1,5 @@
 import {constants} from 'node:fs';
-import {copyFile,link,lstat,mkdtemp,readdir,rename,rm,stat} from 'node:fs/promises';
+import {copyFile,link,lstat,mkdir,mkdtemp,readdir,rename,rm,stat} from 'node:fs/promises';
 import {dirname,extname,isAbsolute,join,parse} from 'node:path';
 import {randomUUID} from 'node:crypto';
 
@@ -29,6 +29,7 @@ export async function missingLibraryFiles(input:unknown):Promise<string[]> {
  return missing;
 }
 export async function managedDownload(options:{directory:string;title:string;identity?:string;kind:Kind;knownFiles?:readonly string[];
+ stagingKey?:string;
  classify:(path:string)=>Promise<Kind|undefined>; choose:(path:string)=>Promise<DuplicateChoice>;
  download:(stage:string)=>Promise<{ok:boolean;path?:string;message?:string;subtitlePath?:string}>;
 }):Promise<{ok:boolean;path?:string;message?:string;subtitlePath?:string;skipped?:boolean;replacedPath?:string}> {
@@ -44,6 +45,10 @@ async function run(options:Parameters<typeof managedDownload>[0]){
  for(const path of candidates){
   if(!isAbsolute(path)||!extensions.has(extname(path).toLowerCase()))continue;
   const stem=parse(path).name;
+  // Separation outputs share the remote id but are not copies of the raw download.
+  // Replacing one here would silently put original audio in a processed filename.
+  const identityTag=options.identity?`[${options.identity}]`:undefined;
+  if(identityTag&&stem.includes(identityTag)&&/^\s+\[(?:No music|Instrumental)\](?:\s+\(\d+\))?$/.test(stem.slice(stem.lastIndexOf(identityTag)+identityTag.length)))continue;
   if(fileTitleKey(stem,options.identity)!==downloadTitleKey(options.title)&&downloadTitleKey(stem)!==downloadTitleKey(options.title)&&!(options.identity&&stem.includes(`[${options.identity}]`)))continue;
   const info=await lstat(path).catch(()=>undefined);if(!info?.isFile()||info.isSymbolicLink())continue;
   if(await options.classify(path)===options.kind){duplicate=path;break;}
@@ -51,7 +56,10 @@ async function run(options:Parameters<typeof managedDownload>[0]){
  const choice=duplicate?await options.choose(duplicate):'keep';
  if(choice==='skip')return {ok:false,skipped:true};
  const original=duplicate&&choice==='replace'?await stat(duplicate):undefined;
- const stage=await mkdtemp(join(options.directory,'.loaderly-download-'));
+ const resumable=typeof options.stagingKey==='string'&&/^[a-f0-9]{64}$/.test(options.stagingKey);
+ const stage=resumable?join(options.directory,`.loaderly-partial-${options.stagingKey}`):await mkdtemp(join(options.directory,'.loaderly-download-'));
+ if(resumable){await mkdir(stage,{recursive:true});const info=await lstat(stage);if(!info.isDirectory()||info.isSymbolicLink())throw Error('Invalid download staging directory.');}
+ let completed=false;
  try{
   const result=await options.download(stage);
   if(!result.ok||!result.path)return result;
@@ -86,6 +94,6 @@ async function run(options:Parameters<typeof managedDownload>[0]){
    const destination=join(targetDirectory,parse(target).name+name.slice(file.name.length));
    try{await copyFile(join(stage,name),destination,constants.COPYFILE_EXCL);if(join(stage,name)===result.subtitlePath)subtitlePath=destination;}catch{/* Existing captions stay untouched. */}
   }
-  return {...result,path:target,subtitlePath,replacedPath:replace};
- }finally{await rm(stage,{recursive:true,force:true});}
+  completed=true;return {...result,path:target,subtitlePath,replacedPath:replace};
+ }finally{if(completed||!resumable)await rm(stage,{recursive:true,force:true});}
 }

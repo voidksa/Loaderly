@@ -1,5 +1,8 @@
+import { normalizeDownloadAudioMode, type DownloadAudioMode } from '../downloadAudio';
+import { normalizeDownloadEngine, type DownloadEngine } from '../downloadEngine';
 import { normalizeDownloadLocations, type DownloadLocation } from '../download-destination/downloadLocations';
 import { defaultAppearance, normalizeAppearance, type Appearance } from './appearance';
+import { defaultQuickCapture, normalizeQuickCapture, type QuickCaptureSettings } from '../quickCapture';
 export type ThemeMode = 'light' | 'dark';
 export type AppLocale = 'en' | 'ar';
 export type DownloadQuality = 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
@@ -9,6 +12,9 @@ export type SubtitleLanguageProfile = 'available' | 'arabic' | 'english' | 'arab
 export type AiTranslationProvider = 'off' | 'openrouter' | 'openai' | 'anthropic' | 'gemini' | 'local' | 'custom';
 
 export type AppPreferences = {
+  readonly downloadEngine: DownloadEngine;
+  readonly audioMode: DownloadAudioMode;
+  readonly quickCapture: QuickCaptureSettings;
   readonly themeMode: ThemeMode;
   readonly appearance: Appearance;
   readonly locale: AppLocale;
@@ -29,6 +35,9 @@ export type AppPreferences = {
 };
 
 export const defaultPreferences: AppPreferences = {
+  downloadEngine: 'auto',
+  audioMode: 'original',
+  quickCapture: defaultQuickCapture,
   themeMode: 'light',
   appearance: defaultAppearance,
   locale: 'en',
@@ -107,6 +116,9 @@ export function normalizePreferences(value: unknown): AppPreferences {
   const record = value as Record<string, unknown>;
 
   return {
+    audioMode: normalizeDownloadAudioMode(record.audioMode, record.removeMusic),
+    downloadEngine: normalizeDownloadEngine(record.downloadEngine),
+    quickCapture: normalizeQuickCapture(record.quickCapture as Partial<QuickCaptureSettings>),
     themeMode: resolveThemeMode(record.themeMode),
     appearance: normalizeAppearance(record.appearance),
     locale: resolveAppLocale(record.locale),

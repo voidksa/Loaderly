@@ -1,3 +1,4 @@
+import {drawAudioCaption} from '../../shared/editor-project/audioCaptions';
 import type {AudioSection} from '../../shared/editor-project/audioSections';
 import {drawVisualizerScene,type VisualizerVideoScene} from '../../shared/editor-project/visualizerVideo';
 import {useEffect,useRef,type RefObject} from 'react';
@@ -12,8 +13,8 @@ export function useAudioPreview(mediaRef:RefObject<HTMLMediaElement|null>,settin
  useEffect(()=>startAudioPreview(()=>mediaRef.current,()=>latest.current,node=>{analyser.current=node;}),[mediaRef]);
  return analyser;
 }
-export function AudioVisualizer({ analyser, playing, settings = defaultVisualizer, scene }: { analyser: RefObject<AnalyserNode | null>; playing: boolean; settings?:AudioVisualizerSettings;scene?:VisualizerVideoScene }) {
-  const ref = useRef<HTMLCanvasElement>(null), latest = useRef({playing,settings,scene}); latest.current={playing,settings,scene};
+export function AudioVisualizer({ analyser, playing, settings = defaultVisualizer, scene, caption }: { analyser: RefObject<AnalyserNode | null>; playing: boolean; settings?:AudioVisualizerSettings;scene?:VisualizerVideoScene;caption?:string }) {
+  const ref = useRef<HTMLCanvasElement>(null), latest = useRef({playing,settings,scene,caption}); latest.current={playing,settings,scene,caption};
   const sceneImage=useRef<HTMLImageElement|undefined>(undefined);
   useEffect(()=>{sceneImage.current=undefined;if(!scene?.image)return;const image=new Image();image.src=scene.image;let active=true;void image.decode().then(()=>{if(active)sceneImage.current=image;}).catch(()=>{});return()=>{active=false;};},[scene?.image]);
   useEffect(() => {
@@ -23,12 +24,13 @@ export function AudioVisualizer({ analyser, playing, settings = defaultVisualize
       frame = requestAnimationFrame(draw);
       const canvas = ref.current, ctx = canvas?.getContext('2d');
       if (!canvas || !ctx) return;
-      const {playing,settings:s,scene:composition}=latest.current;
+      const {playing,settings:s,scene:composition,caption:text}=latest.current;
       const width=Math.max(1,canvas.clientWidth),height=Math.max(1,canvas.clientHeight),dpr=Math.min(devicePixelRatio,2);
       if(canvas.width!==Math.round(width*dpr)||canvas.height!==Math.round(height*dpr)){canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);}
       ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,width,height);
       if(analyser.current&&playing){analyser.current.smoothingTimeConstant=s.smoothing;analyser.current.getByteFrequencyData(spectrum);analyser.current.getByteTimeDomainData(waveform);}else {spectrum.fill(0);waveform.fill(128);}
       if(composition)drawVisualizerScene(ctx,width,height,composition,spectrum,waveform,sceneImage.current);else drawVisualizer(ctx,width,height,s,spectrum,waveform);
+      if(text)drawAudioCaption(ctx,width,height,text);
     };
     frame=requestAnimationFrame(draw);return()=>cancelAnimationFrame(frame);
   },[analyser]);

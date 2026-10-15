@@ -1,10 +1,8 @@
-.app-dialog.whats-new-dialog>footer {align-items:center;gap:18px;flex-wrap:wrap;}
+.app-dialog.whats-new-dialog>footer {align-items:center;gap:12px;flex-wrap:wrap;}
 .whats-new-support {flex:1 1 280px;min-width:0;}
-.whats-new-support>.button.whats-new-support__button {min-height:40px;max-width:100%;padding:8px 14px;gap:8px;border:1px solid var(--border);background:var(--surface-raised);color:var(--foreground);line-height:1.5;white-space:normal;text-align:center;text-decoration:none;cursor:pointer;}
-.whats-new-support>.button.whats-new-support__button:hover {background:color-mix(in srgb,var(--surface-raised) 88%,var(--accent) 12%);border-color:var(--accent);text-decoration:none;}
-.whats-new-support>.button.whats-new-support__button:focus-visible {outline:2px solid var(--accent);outline-offset:3px;}
+.whats-new-support>.button.whats-new-support__button {max-width:100%;white-space:normal;text-align:start;text-decoration:none;}
 .whats-new-support__button>svg {flex:none;}
-.whats-new-support p {margin:8px 0 0;color:var(--muted);font-size:calc(11px * var(--ui-font-scale,1));line-height:1.65;}
+.whats-new-support p {margin:6px 0 0;color:var(--muted);font-size:calc(11px * var(--ui-font-scale,1));line-height:1.65;}
 .activity-notice.support-notice {align-items:flex-start;gap:12px;width:max-content;max-width:min(680px,calc(100vw - 32px));}
 .support-notice>svg {flex:none;margin-top:4px;color:var(--accent);}
 .support-notice__body {min-width:0;}

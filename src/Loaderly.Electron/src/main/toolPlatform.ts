@@ -1,7 +1,7 @@
 import type { ToolName } from '../shared/tool-manager/toolStatus';
 
 export type ToolPlatform = { platform: NodeJS.Platform; arch: string };
-export type ToolPackage = 'yt-dlp' | 'ffmpeg' | 'deno';
+export type ToolPackage = 'yt-dlp' | 'ffmpeg' | 'deno' | 'pytubefix';
 export type PackageSource = { repository: string; version: (tag: string) => string; assets: (tag: string) => { name: string; binaries: string[]; zipped: boolean }[] };
 export const currentToolPlatform: ToolPlatform = { platform: process.platform, arch: process.arch };
 export const packageFor = (name: ToolName): ToolPackage => name === 'ffprobe' ? 'ffmpeg' : name;
@@ -18,6 +18,7 @@ export function packageSource(name: ToolPackage, { platform, arch }: ToolPlatfor
     repository: 'denoland/deno', version,
     assets: () => [{ name: `deno-${arch === 'arm64' ? 'aarch64' : 'x86_64'}-${platform === 'darwin' ? 'apple-darwin' : platform === 'linux' ? 'unknown-linux-gnu' : 'pc-windows-msvc'}.zip`, binaries: ['deno'], zipped: true }]
   };
+  if (name === 'pytubefix') throw Error('Backup engine uses its own verified runtime installer.');
   if (platform === 'win32' && arch === 'x64') return {
     repository: 'GyanD/codexffmpeg', version,
     assets: tag => [{ name: `ffmpeg-${tag}-essentials_build.zip`, binaries: ['ffmpeg', 'ffprobe'], zipped: true }]

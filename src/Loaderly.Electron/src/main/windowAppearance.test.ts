@@ -2,6 +2,26 @@ import {describe,it,expect,vi} from 'vitest';
 import {supportsDesktopGlass,applyWindowAppearance,retainInactiveWindowGlass} from './windowAppearance';
 import {defaultAppearance,appearanceVariables} from '../shared/app-preferences/appearance';
 import {macLiquidGlass} from './macLiquidGlass';
+import {linuxGlass} from './linuxGlass';
+
+it('toggles Linux alpha without touching Windows or macOS materials',()=>{
+ const support=vi.spyOn(linuxGlass,'isSupported').mockReturnValue(true);
+ const linuxApply=vi.spyOn(linuxGlass,'apply').mockImplementation(()=>{});
+ const macApply=vi.spyOn(macLiquidGlass,'apply');
+ try {
+  const win={setVibrancy:vi.fn(),setBackgroundMaterial:vi.fn(),setBackgroundColor:vi.fn()};
+  const environment={platform:'linux' as const,release:'6.14',reduceTransparency:false};
+  expect(supportsDesktopGlass('linux','6.14')).toBe(true);
+  expect(applyWindowAppearance(win,{...defaultAppearance,glass:true},true,environment)).toBe(true);
+  expect(win.setBackgroundColor).toHaveBeenLastCalledWith('#00000000');
+  expect(linuxApply).toHaveBeenLastCalledWith(win,true);
+  support.mockReturnValue(false);
+  expect(applyWindowAppearance(win,{...defaultAppearance,glass:true},true,environment)).toBe(false);
+  expect(win.setBackgroundColor).toHaveBeenLastCalledWith(appearanceVariables(defaultAppearance,true)['--background']);
+  expect(linuxApply).toHaveBeenLastCalledWith(win,false);
+  expect(win.setVibrancy).not.toHaveBeenCalled();expect(win.setBackgroundMaterial).not.toHaveBeenCalled();expect(macApply).not.toHaveBeenCalled();
+ } finally {support.mockRestore();linuxApply.mockRestore();macApply.mockRestore();}
+});
 describe('desktop glass compatibility',()=>{
  it('keeps native resizing and falls back on unsupported systems',()=>{
   expect(supportsDesktopGlass('darwin','')).toBe(true);

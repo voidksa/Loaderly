@@ -19,6 +19,7 @@ const { createRequire, isBuiltin } = require('node:module');
     if (targetPlatform === 'darwin' && manifest.optionalDependencies?.['electron-liquid-glass']) {
       external.add('electron-liquid-glass');
     }
+    if (targetPlatform === 'linux' && manifest.dependencies?.x11) external.add('x11');
     const visited = new Set();
     function check(name, from) {
       const req = createRequire(from);

@@ -11,6 +11,7 @@ type TrayPopupOptions = {
   reduceTransparency: boolean;
   platform?: string;
   osRelease?: string;
+  floating?: boolean;
 };
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]!));
@@ -60,7 +61,7 @@ export function trayPopupShape(appearance: Appearance, width: number, height: nu
   return rows;
 }
 
-export function trayPopupColors(options: Pick<TrayPopupOptions, 'appearance' | 'dark' | 'desktopGlass' | 'reduceTransparency'>) {
+export function trayPopupColors(options: Pick<TrayPopupOptions, 'appearance' | 'dark' | 'desktopGlass' | 'reduceTransparency' | 'platform'>) {
   const theme = appearanceVariables(options.appearance, options.dark);
   const glass = options.desktopGlass && !options.reduceTransparency;
   const nativeInks = appearanceVariables({...defaultAppearance,glass:true}, options.dark);
@@ -69,9 +70,10 @@ export function trayPopupColors(options: Pick<TrayPopupOptions, 'appearance' | '
     glass,
     // Acrylic/vibrancy already supplies the native tint. The stronger in-app
     // popover fill would paint over it a second time and hide the desktop.
+    // Linux compositors supply blur without the native material's color tint.
     // Custom text colors can invert the native material's light/dark polarity.
     // Keep their contrast-protecting themed surface instead of changing inks.
-    surface: !glass ? theme['--popover'] : customInks ? theme['--popover-fill'] : `color-mix(in srgb, ${theme['--popover']} ${appearanceOpacity(options.appearance,'popover')}%, transparent)`,
+    surface: !glass ? theme['--popover'] : options.platform === 'linux' || customInks ? theme['--popover-fill'] : `color-mix(in srgb, ${theme['--popover']} ${appearanceOpacity(options.appearance,'popover')}%, transparent)`,
     foreground: theme['--foreground'],
     muted: theme['--muted'],
     border: theme['--border-soft'],
@@ -86,9 +88,14 @@ export function buildTrayPopupHtml(options: TrayPopupOptions): string {
   const theme = appearanceVariables(options.appearance, options.dark);
   const ar = options.locale === 'ar';
   const copy = ar
-    ? { panel:'الإجراءات السريعة', open:'فتح Loaderly', downloads:'التنزيلات', settings:'الإعدادات', exit:'إغلاق Loaderly نهائيًا' }
-    : { panel:'Quick actions', open:'Open Loaderly', downloads:'Show Downloads', settings:'Settings', exit:'Exit Loaderly' };
+    ? { 'toggle-floating': options.floating ? 'إخفاء الزر العائم' : 'إظهار الزر العائم', 'capture-video':'تنزيل الرابط كفيديو', 'capture-audio':'تنزيل الرابط كصوت', 'stop-capture':'إيقاف التقاط الروابط', panel:'الإجراءات السريعة', open:'فتح Loaderly', downloads:'التنزيلات', settings:'الإعدادات', exit:'إغلاق Loaderly نهائيًا' }
+    : { 'toggle-floating': options.floating ? 'Hide floating button' : 'Show floating button', 'capture-video':'Download copied video', 'capture-audio':'Download copied audio', 'stop-capture':'Stop clipboard capture', panel:'Quick actions', open:'Open Loaderly', downloads:'Show Downloads', settings:'Settings', exit:'Exit Loaderly' };
   const icon = {
+    'toggle-floating':'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 7v10m-4-4 4 4 4-4"/></svg>',
+    'capture-video':'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>',
+    'capture-audio':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13M9 8l12-2"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+    'stop-capture':'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>',
+
     open:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
     downloads:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 21h14"/></svg>',
     settings:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg>',
@@ -121,7 +128,7 @@ a:focus-visible { background:${colors.selection};outline:2px solid ${colors.acce
 </style></head>
 <body><div class="tray-panel">
 <header class="tray-head">${options.logo ? `<img class="mark" src="${escapeHtml(options.logo)}" alt=""/>` : '<span class="mark" aria-hidden="true">L</span>'}<span class="tray-title"><strong><bdi>Loaderly</bdi> <bdi class="version" dir="ltr" title="${escapeHtml(options.version)}">${escapeHtml(options.version)}</bdi></strong><small>${copy.panel}</small></span></header>
-<nav class="tray-actions" aria-label="${copy.panel}">${action('open')}${action('downloads')}${action('settings')}</nav>
+<nav class="tray-actions" aria-label="${copy.panel}">${action('open')}${action('downloads')}${action('toggle-floating')}${action('capture-video')}${action('capture-audio')}${action('stop-capture')}${action('settings')}</nav>
 <footer class="exit">${action('exit')}</footer>
 </div><script>
 document.addEventListener('keydown', event => {

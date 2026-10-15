@@ -19,7 +19,7 @@ export function ProgramUpdates({ ar, busy, beforeInstall }: { ar: boolean; busy:
   const downloading = state?.phase === 'downloading', checking = state?.phase === 'checking';
   const progress = Math.min(100, Math.max(0, Math.round(state?.progress ?? 0)));
   const checkedAt = state?.checkedAt ? new Date(state.checkedAt) : undefined;
-  const checkedLabel = checkedAt && Number.isFinite(checkedAt.getTime()) ? new Intl.DateTimeFormat(ar ? 'ar' : 'en', {dateStyle:'medium',timeStyle:'short'}).format(checkedAt) : undefined;
+  const checkedLabel = checkedAt && Number.isFinite(checkedAt.getTime()) ? new Intl.DateTimeFormat(ar ? 'ar-u-nu-latn' : 'en', {dateStyle:'medium',timeStyle:'short'}).format(checkedAt) : undefined;
   if (state?.distribution === 'store') return <section className="program-updates" aria-label={t('Loaderly updates', 'تحديثات Loaderly')}>
     <div className="setting-row"><span><strong>{t('Updates', 'التحديثات')}</strong><small>{t('Updates are managed by Microsoft Store.', 'يتولى متجر Microsoft التحديثات.')}</small></span><button className="button secondary" onClick={() => void action('check')}><ExternalLink size={15} aria-hidden="true" />{t('Open Microsoft Store', 'فتح متجر Microsoft')}</button></div>
     {error && <p role="status">{t('Could not open Microsoft Store. Open it from the Start menu.', 'تعذّر فتح متجر Microsoft. افتحه من قائمة ابدأ.')}</p>}

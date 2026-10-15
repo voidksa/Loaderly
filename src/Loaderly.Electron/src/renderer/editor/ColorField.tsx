@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../../shared/ui/shortcutLabel';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Copy, X, RotateCcw } from 'lucide-react';
@@ -59,6 +60,7 @@ export function ColorField({ label, value, onChange, ar, onReset }: { label: str
 
   useLayoutEffect(() => {
     if (!open) return;
+    if (popupRef.current?.hasAttribute('popover')) popupRef.current.showPopover();
     const reposition = () => {
       const trigger = triggerRef.current, popup = popupRef.current;
       if (!trigger || !popup) return;
@@ -74,9 +76,12 @@ export function ColorField({ label, value, onChange, ar, onReset }: { label: str
     return () => { window.removeEventListener('resize', reposition); window.removeEventListener('scroll', reposition, true); };
   }, [open, ar]);
 
+  useLayoutEffect(() => {
+    if (open && position.visibility === 'visible') hueRef.current?.focus({ preventScroll: true });
+  }, [open, position.visibility]);
+
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => hueRef.current?.focus({ preventScroll: true }));
     const outside = (e: Event) => {
       if (!fieldRef.current?.contains(e.target as Node) && !popupRef.current?.contains(e.target as Node)) close();
     };
@@ -89,7 +94,6 @@ export function ColorField({ label, value, onChange, ar, onReset }: { label: str
     window.addEventListener('pointercancel', endGesture);
     window.addEventListener('keydown', escape, true);
     return () => {
-      cancelAnimationFrame(frame);
       window.removeEventListener('pointerdown', outside);
       window.removeEventListener('focusin', outside);
       window.removeEventListener('pointerup', endGesture);
@@ -127,12 +131,12 @@ export function ColorField({ label, value, onChange, ar, onReset }: { label: str
           if (result) { if (!result.ok) throw Error('Copy failed'); } else await navigator.clipboard.writeText(color.toUpperCase());
           setCopied(true); setStatus(t('Color copied.', 'نُسخ اللون.')); clearTimeout(copyTimer.current);
           copyTimer.current = setTimeout(() => setCopied(false), 1600);
-        } catch { inputRef.current?.focus(); inputRef.current?.select(); setStatus(t('Press Ctrl+C to copy the selected color.', 'اضغط Ctrl+C لنسخ اللون المحدد.')); }
+        } catch { inputRef.current?.focus(); inputRef.current?.select(); setStatus(t(`Press ${shortcutLabel('Mod+C',window.loaderly?.platform ?? 'win32')} to copy the selected color.`, `اضغط ${shortcutLabel('Mod+C',window.loaderly?.platform ?? 'win32')} لنسخ اللون المحدد.`)); }
       }}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>
     </div>
     {invalid ? <small className="app-color-error" id={id + '-error'}>{t('Use 3 or 6 HEX digits, such as #AABBCC.', 'أدخل كود HEX من 3 أو 6 خانات، مثل #AABBCC.')}</small> : null}
     <span className="sr-only" role="status">{status}</span>
-    {open ? createPortal(<div className="app-color-picker" id={id + '-picker'} ref={popupRef} role="dialog" aria-label={t('Choose color: ', 'اختيار لون: ') + label} dir={ar ? 'rtl' : 'ltr'} style={position} onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+    {open ? createPortal(<div popover={fieldRef.current?.closest('dialog[open]') ? 'manual' : undefined} className="app-color-picker" id={id + '-picker'} ref={popupRef} role="dialog" aria-label={t('Choose color: ', 'اختيار لون: ') + label} dir={ar ? 'rtl' : 'ltr'} style={position} onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
       <header><strong>{label}</strong><button type="button" aria-label={t('Close color picker', 'إغلاق منتقي الألوان')} onClick={() => close(true)}><X size={16} /></button></header>
       <div className="app-color-plane" role="group" tabIndex={0} aria-label={t('Shade. Arrow keys adjust saturation and brightness.', 'درجة اللون. الأسهم تضبط التشبع والسطوع.')} style={{ backgroundColor: `hsl(${hsv.h} 100% 50%)` }} onPointerDown={e => {
         if (e.button !== 0) return; e.preventDefault(); e.currentTarget.focus(); beginGesture(); e.currentTarget.setPointerCapture(e.pointerId); movePlane(e);
@@ -150,6 +154,6 @@ export function ColorField({ label, value, onChange, ar, onReset }: { label: str
         const next = [...rgb]; next[index] = n; apply(rgbHex(next));
       }} /></label>)}</div>
       <footer><span className="app-color-preview" style={{ background: canonical }} /><code dir="ltr">{canonical.toUpperCase()}</code><span>{t('Drag or enter RGB', 'اسحب أو أدخل RGB')}</span></footer>
-    </div>, fieldRef.current?.closest('.app-shell') ?? document.body) : null}
+    </div>, fieldRef.current?.closest('dialog[open]') ?? fieldRef.current?.closest('.app-shell') ?? document.body) : null}
   </div>;
 }

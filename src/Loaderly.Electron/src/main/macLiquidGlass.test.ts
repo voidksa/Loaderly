@@ -66,6 +66,19 @@ describe('macOS Liquid Glass',()=>{
   expect(controller.apply(window,false)).toBe(true);
   expect(native.addView).not.toHaveBeenCalled();
  });
+ it('refreshes the backing after entering and leaving fullscreen without adding native views',()=>{
+  const native={addView:vi.fn(()=>0)};
+  const {controller,win,window,refresh}=setup(vi.fn(()=>native));
+  win.webContents.emit('did-finish-load');
+  controller.apply(window,true);
+  refresh.mockImplementation(()=>controller.apply(window,true));
+  win.emit('enter-full-screen');win.emit('leave-full-screen');
+  expect(refresh).toHaveBeenCalledTimes(3);
+  expect(native.addView).toHaveBeenCalledTimes(1);
+  win.emit('closed');
+  expect(win.listenerCount('enter-full-screen')).toBe(0);
+  expect(win.listenerCount('leave-full-screen')).toBe(0);
+ });
  it.each(['throw',-1,undefined,NaN])('returns control to legacy vibrancy after native failure %s',result=>{
   const native={addView:vi.fn(()=>{if(result==='throw')throw Error('Native failure');return result as number;})};
   const {controller,win,window}=setup(vi.fn(()=>native));

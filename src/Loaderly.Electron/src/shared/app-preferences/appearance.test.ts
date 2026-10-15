@@ -2,6 +2,28 @@ import {describe,it,expect} from 'vitest';
 import {appearanceOpacity,appearanceVariables,decodeTheme,encodeTheme,normalizeAppearance,opacityKeys,themePresets} from './appearance';
 const tintPercent=(fill:string)=>Number(fill.match(/ ([\d.]+)%/)![1]);
 describe('portable themes',()=>{
+ it('uses lighter option menus with readable primary labels over either desktop extreme',()=>{
+  const channels=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+  const lum=(rgb:number[])=>rgb.reduce((sum,n,i)=>{n/=255;return sum+(n<=.04045?n/12.92:((n+.055)/1.055)**2.4)*[.2126,.7152,.0722][i]},0);
+  for(const preset of themePresets)for(const dark of [true,false]){
+   const css=appearanceVariables(normalizeAppearance({preset:preset.id,glass:true,opacity:{popover:0}}),dark);
+   const [,hex,percent]=css['--menu-fill'].match(/(#[a-f\d]{6}) ([\d.]+)%/i)!;
+   const alpha=Number(percent)/100;
+   expect(alpha).toBeLessThan(tintPercent(css['--popover-fill'])/100);
+   for(const backdrop of [0,255]){
+    const ink=lum(channels(css['--foreground'])),base=channels(hex).map(n=>n*alpha+backdrop*(1-alpha));
+    for(const state of ['fill','hover','selected','pressed']){
+     const [,color,opacity]=css['--control-'+state].match(/(#[a-f\d]{6}) ([\d.]+)%/i)!;
+     const amount=Number(opacity)/100,bg=lum(channels(color).map((n,i)=>n*amount+base[i]*(1-amount)));
+     expect((Math.max(ink,bg)+.05)/(Math.min(ink,bg)+.05),`${preset.id}/${dark}/${state}/${backdrop}`).toBeGreaterThanOrEqual(4.5);
+    }
+   }
+   const opaque=appearanceVariables(normalizeAppearance({preset:preset.id,glass:true,opacity:{popover:100}}),dark);
+   expect(tintPercent(opaque['--menu-fill'])).toBe(100);
+   const plain=appearanceVariables(normalizeAppearance({preset:preset.id}),dark);
+   expect(plain['--menu-fill']).toBe(plain['--popover-fill']);
+  }
+ });
  it('keeps glass control labels readable across presets, states and extreme desktop backgrounds',()=>{
   const rgb=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
   const lum=(channels:number[])=>channels.reduce((sum,v,i)=>{v/=255;return sum+(v<=.04045?v/12.92:((v+.055)/1.055)**2.4)*[.2126,.7152,.0722][i];},0);

@@ -29,7 +29,7 @@ export function SpeedControls({ rate, mode, ar, onRate, onMode }: {
       <RangeInput aria-label={ar?'شريط السرعة':'Speed slider'} min={.25} max={8} step={.01} value={rate} onChange={e=>onRate(Number(e.target.value))}/>
       <label className="speed-rate-number"><input aria-label={ar?'معدل السرعة':'Speed rate'} type="number" dir="ltr" min={.25} max={8} step={.01} value={draft} onChange={e=>setDraft(e.target.value)} onBlur={commit} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();commit();}if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setDraft(String(rate));}}}/><span aria-hidden="true">×</span></label>
     </div>
-    <div className="speed-presets" aria-label={ar?'سرعات جاهزة':'Speed presets'}>{[.5,.75,1,1.25,1.5,2].map(value=><button type="button" key={value} aria-pressed={rate===value} onClick={()=>onRate(value)}>{value}×</button>)}</div>
+    <div className="speed-presets" dir="ltr" aria-label={ar?'سرعات جاهزة':'Speed presets'}>{[.5,.75,1,1.25,1.5,2].map(value=><button type="button" key={value} aria-pressed={rate===value} onClick={()=>onRate(value)}>{value}×</button>)}</div>
     <strong>{ar?'وضع الصوت':'Audio mode'}</strong>
     <DesktopMenu ariaLabel={ar?'وضع الصوت':'Audio mode'} options={options} value={selected.value} valueLabel={selected.label} onChange={onMode}/>
     <small className="speed-mode-description">{selected.description}</small>

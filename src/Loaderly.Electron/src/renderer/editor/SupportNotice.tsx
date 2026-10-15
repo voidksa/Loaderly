@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Heart, X } from 'lucide-react';
 import { accumulateSupportUse, canShowSupportReminder, normalizeSupportReminder, recordSupportReminder, supportIdleAfterMs, supportReminderStorageKey, supportUrl, type SupportReminderState } from '../../shared/supportReminder';
 import './support-notice.css';
+import { FloatingNotice } from './FloatingSurface';
 
 const overlaySelector = 'dialog[open], [role="menu"], .app-color-picker, .activity-notice:not(.support-notice), .program-update-notice';
 const supportOpenedEvent = 'loaderly:support-opened';
@@ -73,11 +74,11 @@ export function SupportNotice({ ar, blocked }: { ar: boolean; blocked: boolean }
   }, []);
   useEffect(() => { refresh.current(); }, [blocked]);
   if (!visible) return null;
-  return <aside className="activity-notice support-notice" dir={ar ? 'rtl' : 'ltr'} aria-label={ar ? 'دعم Loaderly' : 'Support Loaderly'}>
+  return <FloatingNotice className="support-notice" dir={ar ? 'rtl' : 'ltr'} aria-label={ar ? 'دعم Loaderly' : 'Support Loaderly'}>
     <Heart size={18} aria-hidden="true" />
     <div className="support-notice__body"><p role="status">{ar ? 'أعجبك Loaderly؟ دعمك يساهم في تطويره.' : 'Enjoying Loaderly? Your support helps us make it better.'}</p>
       <div className="support-notice__actions"><a className="button secondary" href={supportUrl(ar)} target="_blank" rel="noopener noreferrer" onClick={announceSupportOpened}>{ar ? 'ساهم في تطوير Loaderly' : 'Support Loaderly'}</a><button className="support-notice__never" type="button" onClick={() => actions.current.neverAgain()}>{ar ? 'عدم إظهار هذا التذكير مجددًا' : 'Don’t remind me again'}</button></div>
     </div>
     <button type="button" className="support-notice__close" aria-label={ar ? 'إغلاق' : 'Dismiss'} onClick={() => actions.current.dismiss()}><X size={15} /></button>
-  </aside>;
+  </FloatingNotice>;
 }

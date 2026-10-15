@@ -3,6 +3,19 @@ import { appearanceVariables, defaultAppearance } from '../shared/app-preference
 import { buildTrayPopupHtml, fitTrayPopupContentSize, supportsNativeTrayCorners, trayPopupColors, trayPopupRadius, trayPopupShape } from './trayPopup';
 
 describe('tray popup glass surfaces', () => {
+  it.each([true, false])('retains a readable Linux tint without changing native Windows or Mac material, dark=%s', dark => {
+    for (const opacity of [0, 50, 100]) {
+      const appearance = {...defaultAppearance,glass:true,opacity:{popover:opacity}};
+      const theme = appearanceVariables(appearance,dark);
+      const options = {appearance,dark,desktopGlass:true,reduceTransparency:false};
+      expect(trayPopupColors({...options,platform:'linux'}).surface).toBe(theme['--popover-fill']);
+      expect(trayPopupColors({...options,platform:'linux'}).surface).not.toContain(' 0%, transparent)');
+      for (const platform of ['win32','darwin']) {
+        expect(trayPopupColors({...options,platform}).surface).toBe(`color-mix(in srgb, ${theme['--popover']} ${opacity}%, transparent)`);
+      }
+    }
+  });
+
   it.each([true, false])('uses one menu surface with transparent header and footer, dark=%s', dark => {
     const appearance = {...defaultAppearance,glass:true,opacity:{popover:0}};
     const options = {appearance,dark,desktopGlass:true,reduceTransparency:false};

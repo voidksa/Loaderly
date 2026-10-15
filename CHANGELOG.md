@@ -2,6 +2,94 @@
 
 Features, improvements and fixes in each Loaderly release.
 
+## 2.3.0 - 2026-10-15
+
+### App and tools
+
+- **Optional YouTube backup:** Install or update pytubefix from Tools. Automatic mode keeps yt-dlp first and tries the installed backup for eligible YouTube extraction or transfer failures. Choose an engine in Preferences > Downloads. Other sites continue to use yt-dlp; playlists are discovered with yt-dlp. The backup uses its own runtime inside Loaderly’s tool files.
+- **Update all or install missing tools:** Use Update all or Install missing, or keep using each tool’s own button. Tools run in sequence; cancel the remaining work or retry failed tools. FFmpeg and FFprobe update together. On macOS and Linux, this pair is updated with Loaderly.
+- **Find appearance settings in their own tab:** General now keeps language and startup settings in simple rows. Appearance has its own tab for themes, colors, transparency and layout, with a live preview.
+- **Start with your computer:** Loaderly can open when you sign in. Turn this on or off in Preferences > General. Changes made in your system startup settings are respected.
+
+### Projects and versions
+
+- **Take a project with you:** Save a project file with edits, clips and markers. Include copies of its media when moving to another computer, and locate any missing files when you open it.
+- **Keep named editing versions:** Save a named version, compare its settings with your current work and restore it. Restoring first keeps a recovery version of your current edits.
+- **Use a lighter playback preview:** Create a smaller preview for demanding video. Exports continue to use the original media.
+
+### More ways to edit
+
+- **Export named clips in a batch:** Name several ranges from one source and choose each clip’s format, size, quality and destination. Reorder pending export tasks, cancel a task or retry one that failed.
+- **See the waveform and add markers:** Analyze the source waveform, zoom in and keep named markers at useful moments. Review suggested silence cuts before applying them.
+- **Adjust color and compare a frame:** Control brightness, contrast, saturation and warmth across the output or a selected range. Compare the same frame before and after workspace edits.
+- **Layer images and moving text:** Add a transparent logo or image, arrange and lock layers, and animate position, size and opacity with motion points. Preview the rendered result before export.
+- **Freeze a frame or reverse a clip:** Extend a selected frame or reverse an output range of up to two minutes. Choose whether its sound also plays backward.
+
+### Audio visualizers
+
+- **See the look before applying it:** Built-in looks and custom shapes now have small previews rendered with the same drawing code as playback and export. Switching a look preserves your title and subtitle.
+- **Star, spiral and flower:** Three new editable shapes join the existing collection. Choose outlines, bars or dots, then adjust thickness, proportions and movement strength. Save or share your settings as before.
+- **Controls that fit the shape:** Only relevant motion controls appear for each style. Compound shapes distribute frequency bands across all parts, ordinary styles keep a bounded detail count, and dot rows stay within their drawing area. These fixes apply to preview and video export together.
+
+### Sound on your device
+
+- **Measure and normalize loudness:** Measure integrated loudness and true peak, then normalize to your target with a peak ceiling. Hear a rendered preview before exporting.
+- **Reduce steady noise:** Control the amount of hiss and steady noise reduction. Reuse loudness and noise settings in your sound presets.
+- **Add a separate soundtrack:** Position and trim an extra audio file, adjust its level, and mix it with or replace the original. Lower the extra track when the original audio becomes louder.
+- **Separate vocals and music locally:** Download the optional separation model to create a vocals track and an instrumental track on your computer. Review both results; separation quality depends on the recording.
+
+### Speech and captions
+
+- **Transcribe without uploading audio:** Download a speech model once, then transcribe on your device. Choose Arabic, English or automatic language detection, and review the generated text and timings.
+- **Choose speech or singing:** Select Speech for spoken recordings or Singing & music for songs. Empty recognition results explain that no speech was recognized and let you try different settings. Generated lyrics and timings still need review.
+- **Use captions in the audio editor:** Add recognized text to the subtitle track, edit it and seek to each cue. Preview captions during playback, save SRT or VTT, or include them in a visualizer video. MP3 and WAV remain audio-only.
+- **Edit captions together:** Search and preview replacements, shift selected or all captions, merge or split cues, and export SRT or VTT. Timing warnings help identify overlaps.
+- **Show synchronized words:** Use recognized word timings for outlined, boxed or animated words. Correct individual timings before you export.
+
+### Downloads and your library
+
+- **Choose from a floating download button:** Turn on the optional floating button in Downloads or Preferences > Downloads. Minimize Loaderly, copy a complete link in your browser, click the button and choose video or audio, with Original audio, Vocals only or Instrumental. It stays hidden while any Loaderly window is open, including when screenshot tools or system dialogs take focus. Drag it to move, hide it at any time and keep your last choice and position. Automatic clipboard downloading stays a separate option. Window placement and staying above apps depend on the desktop, especially on Linux Wayland.
+- **Download directly from copied links:** Enable optional clipboard capture in Preferences > Downloads, or use the tray commands and global shortcuts for video or audio. Capture skips repeated links, and playlists still ask you to select their videos. Loaderly must be running. Shortcut and background clipboard availability depend on your system.
+- **Download without background music:** Choose Vocals only under Sound beside format and save location. Loaderly downloads the file, separates speech and singing on your device and saves a new copy. Prepare the model once. The original is kept and retries reuse it. Some music or other sounds may remain.
+- **Keep tasks and results organized:** See the current file’s tasks first, or switch to all files. Filter by task type, status or search. Active work is separate from dated results, with the newest first. Remove finished results from history and undo removal; output files stay on disk.
+- **Control the download queue:** Pause supported transfers, resume them, reorder waiting downloads and choose how many run together. Scheduled starts require Loaderly to remain open.
+- **Set a total download speed limit:** Divide a total bandwidth limit across download slots. New settings apply after active transfers finish.
+- **Organize with collections:** Create named collections without copying media. Review a replacement file before reconnecting a moved source to its saved edits.
+- **Review duplicates and preview storage:** Find files with identical content and select extra copies for review. Clear unused preview files while keeping active previews.
+- **Convert several files:** Queue MP4, WebM, MP3 or WAV conversions. Video can use an approximate target size; smaller sizes reduce quality.
+- **Select and clear download history:** Select completed or failed downloads, select all results in the current filter, and remove them together. Library files stay saved, and Undo restores the last removed group. Download actions now sit beside each item, with quick download and queue controls grouped clearly.
+- **Download music without vocals:** Choose Instrumental under Sound to keep the accompaniment and reduce singing and speech. Available for video, audio, the floating button, automatic capture and download shortcuts. Separation happens on your device after transfer and keeps the original. Some vocals may remain.
+
+### Shortcuts and shared settings
+
+- **Shortcuts across keyboard languages:** App and editor letter shortcuts follow the physical key, independently of the interface or keyboard language. Global downloads use Ctrl+Shift+F6 for video, F7 for audio and F8 to show or hide the floating button; macOS uses Command instead of Ctrl. They are enabled by default. Change them in Quick downloads > Shortcuts. Some keyboards also need Fn. Download now accepts the main and numeric Enter keys and ignores held keys and input composition.
+- **Aligned pages and settings:** Preferences, Tools and Community library share the Library and Downloads page edges. Settings use consistent rows and section spacing; About adapts to available width and translation setup has fewer nested panels. Arabic and English layouts keep controls within the window when text is enlarged, with visible keyboard focus and shared glass surfaces.
+- **Restore the floating button from your browser:** The show/hide shortcut no longer opens the main window and immediately hides the floating button. It toggles the button while Loaderly stays minimized or hidden. Unavailable global shortcuts are retried when shortcut settings are applied again, keeping successful bindings active.
+- **Find commands and choose shortcuts:** Open command search from the sidebar or its displayed shortcut. Shortcuts use the keys for your operating system. Use the default shortcuts or customize them, check conflicts and see why a command is unavailable.
+- **Reuse editing templates:** Keep and share editing settings with color, text, motion, sound processing and output size. Preview a template on your own media before applying it. Shared templates exclude media files and private paths.
+
+### Improvements and fixes
+
+- **A focused downloads page:** Quick downloads opens a separate panel with Floating button, Automatic capture and Shortcuts views. Queue settings open beside the result filters. Expanding options no longer pushes the download list down the page.
+- **Glass notifications and clearer floating actions:** Support reminders and activity messages follow the selected glass style. The floating button offers a small icon or an icon with a label, shows the copied link and offers the three sound choices before video and audio.
+- **A smaller floating button you control:** Choose a small icon or a labeled button. Right-click or open its options to resize or hide it. Restore it from the Loaderly tray menu or Quick downloads. The show/hide shortcut is enabled by default and uses the keys for your system. Escape collapses its panel.
+- **Clearer switches, messages and music setup:** Switches follow the interface direction, keyboard focus stays inside the floating controls, and model setup has more space. Short Arabic notifications no longer show a stray scrollbar. Editor time ranges keep their reading order in Arabic.
+- **More reliable backup-engine installation:** The private Python environment uses an exact runtime version to avoid failing version links. Failed tool installs keep the previous working version and offer expandable error details, with a local diagnostic record for troubleshooting.
+- **Glass preset cards and stronger sound response:** Visualizer preset frames follow the app glass settings while their thumbnails retain the actual design colors. Custom outlines and dots respond more clearly to audio, support two-sided movement and stay still in silence. Preview and video export share the same drawing behavior.
+- **Captions appear after adding a result:** Adding a valid transcript now updates the editor text and timeline together, clears stale search filters and saves the cues. Empty or invalid results no longer report success or replace existing captions. Word timing edits preserve your corrected text.
+- **Captioned audio follows your edits:** Captions in audio previews and exported videos follow kept ranges, cuts and speed changes. Arabic and English text wraps within the picture, and video export lets you include or hide captions.
+- **Clear download stages:** Transfers name the current stage and show a consistent percentage. Vocals-only and instrumental downloads explain that local separation follows the transfer and is not included in its remaining time. Compatible YouTube and segmented downloads fetch up to four parts at once without a speed cap. Incomplete parts are retried rather than silently omitted. Source limits still affect speed.
+- **Consistent glass across the interface:** Quick commands, What’s new, menus, tooltips and community category controls follow your transparency settings. Overlapping surfaces keep underlying text from showing through sharply. Solid mode and reduced-transparency settings remain readable.
+- **A clean expanded preview:** The expanded preview covers the timeline so its playhead no longer shows through the playback controls. The header stays clear of the title bar; leaving the preview preserves playback position and returns keyboard focus.
+- **Clearer editing tools and previews:** Workspace tools have focused views, helpful presets and optional advanced controls. Video-only tools stay out of audio tasks. Preview color changes, listen to suggested silence cuts, and review clip ranges before export. Model setup and progress stay beside the relevant action.
+- **Tidier library and settings:** Downloads aligns with the library and uses the available page width in both languages. Download options appear before the start button. Copied-link capture can be configured directly on Downloads; preferences group defaults, quick downloads and save locations in aligned rows. Search, filters and collection actions have clearer spacing. Files and storage opens without moving its button. Download settings highlights the entire heading when hovered, with clear keyboard focus. Subtitle downloads and AI translation each keep their settings together, with one model picker. Community controls, ratings and the About page are easier to scan.
+- **Arabic layout and keyboard fixes:** Controls align and wrap in both interface languages. App-generated numbers use 0–9 while your text stays unchanged. Sliders increase to the right in either language; menu navigation, focus, volume shortcuts and Escape behavior are more consistent.
+- **A clearer About page:** The app identity, version, updates and help links now share one balanced panel that adapts to the window size.
+- **Ready-to-use, customizable shortcuts:** Navigation, import and editing commands now have shortcuts from the first launch. Global download and floating-button shortcuts are enabled by default, can be changed, and show their actual availability. Previous custom shortcuts are kept.
+- **Aligned download controls and quieter scrolling:** Selection and queue controls align on one row. Switches align with their labels, and progress bars follow your theme. Download items use tighter spacing. Scrollbars appear while scrolling or using the thumb and stay unobtrusive at rest.
+- **Consistent on and off switches:** Switches move right when on and left when off in both Arabic and English, including startup, quick downloads and the floating button.
+- **Reliable audio extraction after tool updates:** Fixed audio extraction and editor exports with updated media tools. Extracted audio keeps the selected sound version, and saved vocals, instrumental and original audio are no longer confused. Errors explain missing audio, access or storage problems more clearly. The About page also includes the GitHub icon.
+
 ## 2.2.0 - 2026-10-11
 
 More control over where your files go, easier reuse of your designs, and a clearer desktop workspace.

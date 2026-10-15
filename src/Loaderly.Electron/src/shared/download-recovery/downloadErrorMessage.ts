@@ -3,6 +3,10 @@ import { isRecoverableDownloadFileError, subtitlesSkippedRateLimitMessage, subti
 
 export function friendlyDownloadError(message: string, locale: 'en' | 'ar'): string {
   const text = message.replace(/\s+/g, ' ').trim(), ar = locale === 'ar';
+  if (/Install the optional pytubefix/i.test(text)) return ar ? 'ثبّت محرك pytubefix الاختياري من الأدوات، أو اختر الوضع التلقائي في إعدادات التنزيل.' : 'Install optional pytubefix from Tools, or choose Automatic in download preferences.';
+  if (/FFmpeg was not found/i.test(text)) return ar ? 'أداة FFmpeg غير متاحة. افتح الأدوات لتثبيتها.' : 'FFmpeg is unavailable. Open Tools to install it.';
+  if (/LOCAL_(MODEL|RUNTIME)_NOT_INSTALLED/.test(text)) return ar ? 'جهّز أداة فصل الصوت من خيارات التنزيل ثم أعد المحاولة.' : 'Set up audio separation in the download options, then retry.';
+  if (/MUSIC_REMOVAL_FAILED|AUDIO_SEPARATION_FAILED/.test(text)) return ar ? 'اكتمل التنزيل، لكن تعذرت فصل الصوت. الأصل محفوظ. أعد المحاولة لمعالجة الصوت دون تنزيل المقطع مجددًا.' : 'Downloaded, but audio separation failed. The original is safe. Retry to process the audio without downloading again.';
   const folder = downloadFolderProblem(text);
   if (folder) return downloadFolderMessage(folder, ar);
   if (/yt-dlp was not found/i.test(text)) return ar ? 'أداة التنزيل غير متاحة. افتح صفحة الأدوات للتحقق منها وتحديثها.' : 'The download tool is unavailable. Open Tools to check and update it.';

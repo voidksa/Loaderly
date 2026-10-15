@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {defaultVisualizer,encodeVisualizer,decodeVisualizer,normalizeVisualizer,visualizerShapePresets,visualizerCodeLimit} from './audioVisualizer';
+import {applyVisualizerPreset,visualizerPresets,defaultVisualizer,encodeVisualizer,decodeVisualizer,normalizeVisualizer,visualizerShapePresets,visualizerCodeLimit} from './audioVisualizer';
 import {sampleShape,shapeCurve,fitShape,sampleContours,drawVisualizer} from './audioVisualizerDrawing';
 describe('shareable visualizer appearance',()=>{
   it('round trips an independent appearance, including Arabic labels',()=>{
@@ -71,4 +71,47 @@ describe('shareable visualizer appearance',()=>{
     const segments:number[][][]=[],ctx={createLinearGradient:()=>({addColorStop:()=>{}}),beginPath:()=>segments.push([]),moveTo:(x:number,y:number)=>segments.at(-1)!.push([x,y]),lineTo:(x:number,y:number)=>segments.at(-1)!.push([x,y]),stroke:()=>{},closePath:()=>{}};
     drawVisualizer(ctx as unknown as CanvasRenderingContext2D,400,300,s,new Uint8Array(1024),new Uint8Array(2048));expect(segments).toHaveLength(2);for(const part of segments)expect(new Set(part.map(p=>p[0])).size).toBe(1);
   });
+});
+
+it('keeps user captions when applying a visualizer look',()=>{
+ const current=normalizeVisualizer({title:'عنواني',subtitle:'My subtitle',showSubtitle:true});
+ const next=applyVisualizerPreset(current,visualizerPresets[1].settings);
+ expect(next.style).toBe('wave');expect(next.title).toBe(current.title);expect(next.subtitle).toBe(current.subtitle);expect(next.showSubtitle).toBe(true);
+});
+it('limits ordinary shapes even after importing compound typography',()=>{
+ const shape={paths:[{points:[[0,0],[1,1]],closed:false}]};
+ expect(normalizeVisualizer({style:'bars',shape,count:1200}).count).toBe(160);
+ expect(normalizeVisualizer({style:'path',shape:{paths:[]},count:1200}).count).toBe(160);
+});
+it('distributes audio response through all compound contours at low detail',()=>{
+ const paths=Array.from({length:32},(_,i)=>({points:[[i/32,.2],[i/32,.8]],closed:false}));
+ const s=normalizeVisualizer({style:'path',count:16,shape:{paths,stroke:'bars',amplitude:1}});
+ const lengths:number[]=[],points:number[][]=[];
+ const ctx={createLinearGradient:()=>({addColorStop:()=>{}}),beginPath:()=>{points.length=0;},moveTo:(x:number,y:number)=>points.push([x,y]),lineTo:(x:number,y:number)=>points.push([x,y]),stroke:()=>lengths.push(Math.hypot(points[1][0]-points[0][0],points[1][1]-points[0][1]))};
+ const spectrum=new Uint8Array(1024);spectrum.fill(255,0,220);
+ drawVisualizer(ctx as unknown as CanvasRenderingContext2D,600,300,s,spectrum,new Uint8Array(2048));
+ expect(lengths.slice(25,50).every(n=>n>1)).toBe(true);expect(lengths.at(-1)).toBe(.5);
+});
+it('keeps dot centers and radii within the drawing area',()=>{
+ const dots:number[][]=[];const ctx={createLinearGradient:()=>({addColorStop:()=>{}}),beginPath:()=>{},arc:(x:number,y:number,r:number)=>dots.push([x,y,r]),fill:()=>{}};
+ drawVisualizer(ctx as unknown as CanvasRenderingContext2D,800,300,normalizeVisualizer({style:'dots',sensitivity:3}),new Uint8Array(1024).fill(255),new Uint8Array(2048));
+ expect(dots.every(([x,y,r])=>x-r>=0&&x+r<=800&&y-r>=0&&y+r<=300)).toBe(true);
+});
+
+it('gives every outline and dotted preset audible movement without moving in silence or at zero strength',()=>{
+ const capture=(shape:typeof defaultVisualizer.shape,spectrum:Uint8Array)=>{
+  const points:number[][]=[];
+  const ctx={createLinearGradient:()=>({addColorStop:()=>{}}),beginPath:()=>{},closePath:()=>{},stroke:()=>{},fill:()=>{},moveTo:(x:number,y:number)=>points.push([x,y]),lineTo:(x:number,y:number)=>points.push([x,y]),arc:(x:number,y:number)=>points.push([x,y])};
+  drawVisualizer(ctx as unknown as CanvasRenderingContext2D,800,400,normalizeVisualizer({...defaultVisualizer,style:'path',shape}),spectrum,new Uint8Array(2048).fill(128));
+  return points;
+ };
+ const silent=new Uint8Array(1024),voice=new Uint8Array(1024);voice.fill(190,1,100);
+ for(const preset of visualizerShapePresets.filter(p=>p.shape.stroke==='line'||p.shape.stroke==='dots')){
+  const shape=normalizeVisualizer({shape:preset.shape}).shape,rest=capture(shape,silent),moving=capture(shape,voice);
+  expect(rest.length).toBe(moving.length);
+  expect(Math.max(...moving.map((p,i)=>Math.hypot(p[0]-rest[i][0],p[1]-rest[i][1])))).toBeGreaterThan(2);
+  expect(capture({...shape,amplitude:0},voice)).toEqual(capture({...shape,amplitude:0},silent));
+  expect(capture({...shape,mirror:true},voice)).toHaveLength(moving.length*2);
+  expect(capture({...shape,amplitude:1},new Uint8Array(1024).fill(255)).every(([x,y])=>x>=4&&x<=796&&y>=4&&y<=396)).toBe(true);
+ }
 });

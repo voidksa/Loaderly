@@ -9,9 +9,9 @@ import {
 
 describe('editor capabilities', () => {
   it('limits the audio editor to audio-safe tools and tracks', () => {
-    expect(editorToolIdsForMedia('audio')).toEqual(['select', 'cuts', 'speed']);
-    expect(editorLayerIdsForMedia('audio')).toEqual(['cuts', 'speed']);
-    expect(editorProjectTrackIdsForMedia('audio')).toEqual(['media', 'cut', 'speed']);
+    expect(editorToolIdsForMedia('audio')).toEqual(['select', 'cuts', 'speed', 'subtitles']);
+    expect(editorLayerIdsForMedia('audio')).toEqual(['cuts', 'speed', 'subtitles']);
+    expect(editorProjectTrackIdsForMedia('audio')).toEqual(['media', 'cut', 'speed', 'subtitles']);
   });
 
   it('keeps the full visual toolset for video media', () => {
@@ -23,7 +23,7 @@ describe('editor capabilities', () => {
   it('falls back to cuts when an audio session restores a visual-only layer', () => {
     expect(normalizeEditorLayerForMedia('audio', 'blur')).toBe('cuts');
     expect(normalizeEditorLayerForMedia('audio', 'text')).toBe('cuts');
-    expect(normalizeEditorLayerForMedia('audio', 'subtitles')).toBe('cuts');
+    expect(normalizeEditorLayerForMedia('audio', 'subtitles')).toBe('subtitles');
     expect(normalizeEditorLayerForMedia('audio', 'reframe')).toBe('cuts');
     expect(normalizeEditorLayerForMedia('audio', 'speed')).toBe('speed');
   });

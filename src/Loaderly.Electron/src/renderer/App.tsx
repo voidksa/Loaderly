@@ -1,3 +1,15 @@
+import { audioExtractionError } from '../shared/audioExtraction';
+import { canRemoveDownloadHistory, hideDownloadHistory, isDownloadHistoryRow, restoreDownloadHistory } from '../shared/downloadHistory';
+import { DownloadPreference } from './editor/DownloadPreference';
+import { downloadAudioMode, downloadAudioLabel, type DownloadAudioMode } from '../shared/downloadAudio';
+import { GitHubIcon } from './editor/GitHubIcon';
+import { MusicDownloadOptions } from './editor/MusicDownloadOptions';
+import { FloatingNotice } from './editor/FloatingSurface';
+import { shortcutLabel } from '../shared/ui/shortcutLabel';
+import { isDownloadShortcut } from '../shared/ui/keyboardShortcut';
+import { editorCommandId, readCommandOverrides } from '../shared/ui/commandShortcuts';
+import { QuickCaptureSettings, QuickCaptureBar } from './editor/QuickCaptureSettings';
+import type { CaptureRequest, QuickCaptureState } from '../shared/quickCapture';
 import { WhatsNew } from './editor/WhatsNew';
 import { announceSupportOpened } from './editor/SupportNotice';
 import { DownloadLocationsSettings } from './editor/DownloadLocationsSettings';
@@ -6,6 +18,14 @@ import { SaveOutputDialog, type SaveMode } from './editor/SaveOutputDialog';
 import {createMediaIdAllocator} from '../shared/mediaIdentity';
 import {AudioSectionControls} from './editor/AudioSectionControls';
 import {normalizeAudioSections,audioSectionsForOutput,adjustAudioSectionWindow,type AudioSection} from '../shared/editor-project/audioSections';
+import { StudioPanel } from './editor/StudioPanel';
+import { CommandPalette } from './editor/CommandPalette';
+import { DownloadQueueControls } from './editor/DownloadQueueControls';
+import { LibraryWorkspaceTools, type LibraryCollection } from './editor/LibraryWorkspaceTools';
+import type { DownloadControlState } from '../shared/downloadControl';
+import { emptyStudioEdits, normalizeStudioEdits, normalizeTranscript, type StudioEdits, type Transcript, type NamedRange } from '../shared/editor-project/studio';
+import type { PortableProject } from '../main/studioFiles';
+import { encodeEditorPreset, decodeEditorPreset, applyEditorPreset } from '../shared/editorPreset';
 import {TimeField} from './editor/TimeField';
 import {formatTimecode} from '../shared/editor-timeline/timecode';
 import {SoundPresetControls} from './editor/SoundPresetLibrary';
@@ -25,6 +45,7 @@ import { VisualizerVideoExport } from './editor/VisualizerVideoExport';
 import {videoDimensions,type VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
 import { CommunityLibrary } from './editor/CommunityLibrary';
 import { ProgramUpdates } from './editor/ProgramUpdates';
+import { StartupSettings } from './editor/StartupSettings';
 import './about.css';
 import { ProgramUpdateNotice } from './editor/ProgramUpdateNotice';
 import { LinuxWelcome } from './editor/LinuxWelcome';
@@ -47,6 +68,7 @@ import { sampleLumaPatch, findAdaptiveTrackingMatch, patchContrast, frameCorrela
 import { loadTrackingVideo, releaseTrackingVideo, seekTrackingVideo } from './trackingVideo';
 import { detectFaces } from './faceDetection';
 import { parseToolVersion, type ToolStatus } from '../shared/tool-manager/toolStatus';
+import { runToolSequence, toolBatchCandidates, toolPackageState, type ToolBatchItem, type ToolPackageName } from '../shared/tool-manager/toolBatch';
 import { mediaDisplayTitle, mediaFileFormat } from '../shared/media-presentation/mediaPresentation';
 ﻿import {
   useEffect,
@@ -62,6 +84,7 @@ import { mediaDisplayTitle, mediaFileFormat } from '../shared/media-presentation
 } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
   AlertTriangle,
   AudioLines,
   BookOpen,
@@ -223,12 +246,22 @@ type MediaSourceType = 'download' | 'local';
 type MediaKind = 'video' | 'audio';
 type WindowControlAction = 'minimize' | 'toggleMaximize' | 'close';
 type AutosaveState = 'idle' | 'saving' | 'saved' | 'failed';
-type DownloadPhase = 'preparing' | 'downloading' | 'processing' | 'subtitles' | 'finalizing' | 'completed' | 'failed';
+type DownloadPhase = import('../shared/downloadProgress').DownloadProgress['phase'] | 'completed' | 'failed';
 type LibraryFilter = 'all' | 'video' | 'audio';
 type LibrarySort = 'recent' | 'name' | 'duration';
 type DownloadFilter = 'all' | 'active' | 'queued' | 'completed' | 'failed';
 
 type MediaRow = {
+  readonly downloadHidden?: boolean;
+  readonly audioMode?: DownloadAudioMode;
+  readonly removeMusic?: boolean;
+  readonly originalPath?: string;
+  readonly originalSubtitlePath?: string;
+  readonly quickCaptureId?: string;
+
+  readonly downloadPaused?: boolean;
+  readonly downloadScheduledAt?: number;
+  readonly missing?: boolean;
   readonly downloadTarget?: {path:string;groupByPlatform:boolean;name:string};
   readonly id: number;
   readonly titleKey?: TextKey;
@@ -241,6 +274,7 @@ type MediaRow = {
   readonly progress: number;
   readonly progressKnown?: boolean;
   readonly downloadPhase?: DownloadPhase;
+  readonly downloadEngineUsed?: 'yt-dlp' | 'pytubefix';
   readonly downloadedBytes?: number;
   readonly totalBytes?: number;
   readonly downloadSpeedBytesPerSecond?: number;
@@ -403,6 +437,8 @@ type TimelineHandleTarget =
   | { readonly kind: 'cutout'; readonly id: number; readonly edge: 'start' | 'end' };
 
 type EditorUiSnapshot = {
+  readonly studio?: StudioEdits;
+  readonly studioTranscript?: Transcript;
   readonly selectedLayerId: string;
   readonly playheadSeconds: number;
   readonly trimStartSeconds: number;
@@ -601,10 +637,17 @@ function readSavedMediaRows(): readonly MediaRow[] {
           progress: ready ? 100 : 0,
           progressKnown: ready,
           downloadPhase: ready ? 'completed' : failed ? 'failed' : 'preparing',
+          downloadPaused: row.downloadPaused === true,
+          downloadScheduledAt: typeof row.downloadScheduledAt === 'number' && Number.isFinite(row.downloadScheduledAt) ? row.downloadScheduledAt : undefined,
           size: typeof row.size === 'string' ? row.size : '0 MB',
           quality,
+          audioMode: downloadAudioMode(row),
+          originalPath: typeof row.originalPath === 'string' ? row.originalPath : undefined,
+          originalSubtitlePath: typeof row.originalSubtitlePath === 'string' ? row.originalSubtitlePath : undefined,
+          quickCaptureId: typeof row.quickCaptureId === 'string' ? row.quickCaptureId : undefined,
           downloadTarget: row.downloadTarget && typeof row.downloadTarget.path === "string" ? {path:row.downloadTarget.path,name:typeof row.downloadTarget.name === "string"?row.downloadTarget.name:"",groupByPlatform:row.downloadTarget.groupByPlatform===true}:undefined,
           sourceType,
+          downloadHidden: row.downloadHidden === true && (ready || failed),
           mediaKind: row.mediaKind === 'audio' ? 'audio' : mediaKindForPath(filePath ?? source, quality),
           filePath,
           fileUrl: savedFileUrl,
@@ -691,10 +734,9 @@ function DownloadElapsedLabel({
   const transfer = row.status === 'downloading' && row.downloadPhase === 'downloading';
   const details: string[] = [];
   if(transfer){
-    if(row.progressKnown) details.push(`${row.downloadEstimated ? '≈ ' : ''}${Math.floor(row.progress)}%`);
     if(row.downloadedBytes!==undefined)details.push(row.totalBytes?`${formatBytes(row.downloadedBytes)} / ${row.downloadEstimated?'≈ ':''}${formatBytes(row.totalBytes)}`:formatBytes(row.downloadedBytes));
     if(row.downloadSpeedBytesPerSecond)details.push(`${formatBytes(row.downloadSpeedBytesPerSecond)}${locale==='ar'?'/ث':'/s'}`);
-    if(row.downloadEtaSeconds!==undefined)details.push(locale==='ar'?`المتبقي نحو ${formatElapsed(row.downloadEtaSeconds*1000)}`:`About ${formatElapsed(row.downloadEtaSeconds*1000)} left`);
+    if(row.downloadEtaSeconds!==undefined)details.push(row.downloadEtaSeconds<1?(locale==='ar'?'المتبقي أقل من ثانية':'Less than a second left'):locale==='ar'?`المتبقي نحو ${formatElapsed(row.downloadEtaSeconds*1000)}`:`About ${formatElapsed(row.downloadEtaSeconds*1000)} left`);
   }
   return <span className="download-progress-details">{details.map((detail,index)=><bdi key={index}>{detail}</bdi>)}<bdi>{label}</bdi></span>;
 }
@@ -734,7 +776,7 @@ function platformDisplayLabel(platform: NodeJS.Platform | undefined, arch: NodeJ
 }
 
 function defaultToolUpdateMessage(locale: AppLocale): string {
-  return uiText(locale, 'Check for updates, then install or update each tool here.', 'افحص التحديثات، ثم ثبّت أو حدّث كل أداة من هنا.');
+  return uiText(locale, 'Check for updates, then manage all tools or choose one below.', 'افحص التحديثات، ثم ثبّت أو حدّث الأدوات معًا أو اختر أداة من الأسفل.');
 }
 
 function subtitleTextAt(cues: readonly SubtitleCue[], seconds: number): string {
@@ -1045,6 +1087,7 @@ export function App() {
   const playerScrubRef = useRef(false);
   const outputBusyRef = useRef(false);
   const toolCheckBusyRef = useRef(false);
+  const toolRunRef = useRef<{ busy: boolean; canceled: boolean; active?: string }>({ busy: false, canceled: false });
   const downloadInFlightIdsRef = useRef<Set<number>>(new Set());
   const autoTrackingBusyRef = useRef(false);
   const previewPreparationRef = useRef<Set<string>>(new Set());
@@ -1109,7 +1152,7 @@ export function App() {
       if(busy||disposed||document.hidden||!window.loaderly?.missingLibraryFiles)return;
       const paths=mediaRowsRef.current.filter(row=>row.status==='ready'&&row.filePath).map(row=>row.filePath!);
       if(!paths.length)return;busy=true;
-      try{const missing=new Set(await window.loaderly.missingLibraryFiles(paths));if(!disposed&&missing.size)setMediaRows(rows=>rows.filter(row=>row.status!=='ready'||!row.filePath||!missing.has(row.filePath)));}catch{/* Keep the library when the system cannot verify files. */}finally{busy=false;}
+      try{const missing=new Set(await window.loaderly.missingLibraryFiles(paths));if(!disposed)setMediaRows(rows=>rows.map(row=>row.filePath?{...row,missing:missing.has(row.filePath)}:row));}catch{/* Keep the library when the system cannot verify files. */}finally{busy=false;}
     };
     void refresh();const timer=window.setInterval(()=>void refresh(),15000);
     window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
@@ -1117,18 +1160,51 @@ export function App() {
   },[]);
   const [selectedMediaId, setSelectedMediaId] = useState<number | undefined>(undefined);
   const [openedEditorMediaId, setOpenedEditorMediaId] = useState<number | undefined>(undefined);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'downloads' | 'translation' | 'about'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'appearance' | 'downloads' | 'translation' | 'about'>('general');
   const [selectedLayerId, setSelectedLayerId] = useState<EditorLayerId>('cuts');
   // The active tool is independent of the timeline item shown in the inspector.
   const [activeEditorTool, setActiveEditorTool] = useState<EditorToolId>('select');
   const [urlValue, setUrlValue] = useState('');
+  const [quickCaptureState, setQuickCaptureState] = useState<QuickCaptureState>();
+  const captureHandler = useRef<(request: CaptureRequest) => void>(() => {});
+  const captureAdmission = useRef<Promise<void>>(Promise.resolve());
+  captureHandler.current = request => {
+    // Playlist selection is modal; keep later copied links behind that decision.
+    captureAdmission.current = captureAdmission.current.catch(() => {}).then(() => receiveQuickCapture(request));
+  };
+  const receivedCaptures = useRef(new Set<string>());
+  const captureLocale = useRef(preferences.locale); captureLocale.current = preferences.locale;
+  useEffect(() => {
+    const disposeRequest = window.loaderly?.onQuickCapture(request => captureHandler.current(request));
+    const disposeState = window.loaderly?.onQuickCaptureState(state => {
+      setQuickCaptureState(state);
+      setPreferences(current => JSON.stringify(current.quickCapture) === JSON.stringify(state.settings) ? current : { ...current, quickCapture: state.settings });
+      if (state.message) setActivity(state.message === 'COPY_MEDIA_LINK' ? uiText(captureLocale.current, 'Copy a complete media link first.', 'انسخ رابط المقطع كاملًا أولًا.') : uiText(captureLocale.current, 'Clipboard capture needs attention. Check Quick downloads in Preferences.', 'يحتاج التقاط الروابط إلى التحقق. افتح التنزيل السريع في الإعدادات.'));
+    });
+    void window.loaderly?.quickCapture({ action: 'ready' });
+    return () => { disposeRequest?.(); disposeState?.(); };
+  }, []);
+  useEffect(() => { void window.loaderly?.quickCapture({ action: 'configure', settings: preferences.quickCapture }).then(setQuickCaptureState).catch(() => {}); }, [preferences.quickCapture]);
   const [librarySelecting,setLibrarySelecting]=useState(false);
   const [librarySelection,setLibrarySelection]=useState<number[]>([]);
+  const [libraryCollections,setLibraryCollections]=useState<LibraryCollection[]>(()=>{try{const value=JSON.parse(localStorage.getItem('loaderly:collections:v1')??'[]');return Array.isArray(value)?value.filter(c=>c&&typeof c.id==='string'&&typeof c.name==='string'&&Array.isArray(c.members)).slice(0,500):[];}catch{return [];}});
+  const [libraryCollectionFilter,setLibraryCollectionFilter]=useState('');
+  const [downloadQueue,setDownloadQueue]=useState<DownloadControlState>({settings:{concurrency:2,rateKib:0},entries:[]});
+  useEffect(()=>{
+    const update=(state:DownloadControlState)=>{
+      setDownloadQueue(state);
+      setMediaRows(rows=>rows.map(row=>{const entry=state.entries.find(e=>e.id===row.id);return entry?{...row,status:entry.phase==='queued'?'queued':'downloading',downloadPaused:false}:row;}));
+    };
+    void window.loaderly?.downloadControl({action:'state'}).then(update).catch(()=>{});
+    return window.loaderly?.onDownloadQueue(update);
+  },[]);
+  const scheduledAdmissions=useRef(new Set<number>());
+  useEffect(()=>{for(const row of mediaRows){if(row.status==='queued'&&row.downloadScheduledAt&&!row.downloadPaused&&!scheduledAdmissions.current.has(row.id)){scheduledAdmissions.current.add(row.id);void startUrlDownload(row.id,row.source,row.quality,row.downloadTarget,row);}}},[mediaRows]);
   const [duplicateDownload,setDuplicateDownload]=useState<DuplicateDownloadPrompt>();
   useEffect(()=>window.loaderly?.onDuplicatePrompt(setDuplicateDownload),[]);
   useEffect(()=>window.loaderly?.onDownloadIdentity(identity=>setMediaRows(rows=>rows.map(row=>row.id===identity.rowId?{...row,title:identity.title,thumbnailUrl:identity.thumbnailUrl??row.thumbnailUrl}:row))),[]);
   useEffect(()=>window.loaderly?.onDownloadProgress?.(state=>setMediaRows(rows=>rows.map(row=>row.id===state.rowId&&row.status==='downloading'?{
-    ...row,downloadPhase:state.phase,progress:state.percent??0,progressKnown:state.percent!==undefined,
+    ...row,downloadEngineUsed:state.engine??row.downloadEngineUsed,originalPath:state.originalPath??row.originalPath,originalSubtitlePath:state.subtitlePath??row.originalSubtitlePath,downloadPhase:state.phase,progress:state.percent??0,progressKnown:state.percent!==undefined,
     downloadedBytes:state.downloadedBytes,totalBytes:state.totalBytes,downloadEstimated:state.estimated,
     downloadSpeedBytesPerSecond:state.speedBytesPerSecond,downloadEtaSeconds:state.etaSeconds,downloadStream:state.stream
   }:row))),[]);
@@ -1174,7 +1250,11 @@ export function App() {
   const [toolCheckBusy, setToolCheckBusy] = useState(false);
   const [updatingToolName, setUpdatingToolName] = useState<string | undefined>(undefined);
   const [toolInstallProgress, setToolInstallProgress] = useState<import('../shared/tool-manager/toolStatus').ToolInstallProgress>();
-  useEffect(() => window.loaderly?.onToolInstallProgress?.(setToolInstallProgress), []);
+  const [toolBatchItems, setToolBatchItems] = useState<readonly ToolBatchItem[]>([]);
+  const [toolStopRequested, setToolStopRequested] = useState(false);
+  useEffect(() => window.loaderly?.onToolInstallProgress?.(progress => {
+    if (toolRunRef.current.busy && progress.name === toolRunRef.current.active) setToolInstallProgress(progress);
+  }), []);
   const [copyJobs, setCopyJobs] = useState<readonly QuickCopyJob[]>([]);
   const [textOverlays, setTextOverlays] = useState<readonly TextOverlay[]>([]);
   const [selectedTextOverlayId, setSelectedTextOverlayId] = useState<number | undefined>(undefined);
@@ -1182,6 +1262,10 @@ export function App() {
   const [selectedCutOutId, setSelectedCutOutId] = useState<number | undefined>(undefined);
   const [textDraft, setTextDraft] = useState(initialPreferences.locale === 'ar' ? 'نص على المقطع' : 'On-screen text');
   const [subtitleFile, setSubtitleFile] = useState<LoadedSubtitle | undefined>(undefined);
+  const [studioEdits, setStudioEdits] = useState<StudioEdits>(emptyStudioEdits);
+  const [studioTranscript, setStudioTranscript] = useState<Transcript>();
+  const [studioProxy,setStudioProxy]=useState<{source:string;url:string;size:{width:number;height:number}}>();
+  const [pendingEditorTemplate,setPendingEditorTemplate]=useState<{name:string;code:string}>();
   const [subtitlesVisible, setSubtitlesVisible] = useState(true);
   const [audioSettings,setAudioSettings]=useState<AudioSettings>(defaultAudioSettings);
   const [audioSections,setAudioSections]=useState<AudioSection[]>([]);
@@ -1236,6 +1320,11 @@ export function App() {
   const [downloadLocationId, setDownloadLocationId] = useState('');
   useEffect(()=>{if(downloadLocationId&&!preferences.downloadLocations.some(l=>l.id===downloadLocationId&&(l.kind==='all'||l.kind===(preferences.quality==='audio'?'audio':'video'))))setDownloadLocationId('');},[downloadLocationId,preferences.downloadLocations,preferences.quality]);
   const [downloadFilter, setDownloadFilter] = useState<DownloadFilter>('all');
+  const [downloadSelecting, setDownloadSelecting] = useState(false);
+  const [downloadSelection, setDownloadSelection] = useState<number[]>([]);
+  const [removedDownloadIds, setRemovedDownloadIds] = useState<number[]>([]);
+  useEffect(() => { setDownloadSelection([]); }, [downloadFilter]);
+  useEffect(() => { if (activeNav !== 'downloads') { setDownloadSelecting(false); setDownloadSelection([]); } }, [activeNav]);
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | undefined>(undefined);
   const [activity, setActivity] = useState(() => createText(initialPreferences.locale)('ready'));
   const [activityNotice, setActivityNotice] = useState('');
@@ -1368,7 +1457,7 @@ export function App() {
     [cutOutRanges, effectiveTrimEnd, trimStartSeconds]
   );
   const hasRealMedia = Boolean(selectedMedia.filePath && selectedMedia.fileUrl);
-  const activeSubtitleText = !isAudioEditor && subtitlesVisible && subtitleFile ? subtitleTextAt(subtitleFile.cues, playheadSeconds) : '';
+  const activeSubtitleText = subtitlesVisible && subtitleFile ? subtitleTextAt(subtitleFile.cues, playheadSeconds) : '';
   const activeSubtitleCueIndex = useMemo(
     () => (subtitleFile ? findActiveSubtitleCueIndex(subtitleFile.cues, playheadSeconds) : -1),
     [playheadSeconds, subtitleFile]
@@ -1536,18 +1625,16 @@ export function App() {
       qualityOptions.map<MenuOption<DownloadQuality>>((quality) => ({
         value: quality,
         label: qualityLabel(quality, preferences.locale),
-        description:
-          quality === 'audio'
-            ? (preferences.locale === 'ar' ? 'صوت فقط' : 'Audio only')
-            : quality === 'best'
-              ? t('noSaveDialog')
-              : quality === '2160p'
-                ? '4K'
-                : quality === '1440p'
-                  ? '2K'
-                  : quality === '1080p'
-                    ? 'Full HD'
-                    : quality
+        description: quality === 'best'
+          ? uiText(preferences.locale, 'Highest quality available from the source', 'أعلى جودة متاحة من المصدر')
+          : quality === 'audio'
+            ? uiText(preferences.locale, 'Audio file without video', 'ملف صوتي دون فيديو')
+            : undefined,
+        badge: ({'2160p':'4K','1440p':'QHD','1080p':'Full HD','720p':'HD','480p':'SD'} as Partial<Record<DownloadQuality,string>>)[quality],
+        section: quality === '2160p'
+          ? uiText(preferences.locale, 'Video resolution', 'دقة الفيديو')
+          : undefined,
+        separator: quality === 'audio'
       })),
     [preferences.locale, t]
   );
@@ -1605,12 +1692,12 @@ export function App() {
         label: preferences.locale === 'ar' ? 'متوقف' : 'Disabled',
         description: preferences.locale === 'ar' ? 'تحرير الترجمة اليدوي يبقى متاحا' : 'Manual subtitle editing stays available'
       },
-      { value: 'openrouter', label: 'OpenRouter', description: preferences.locale === 'ar' ? 'يدعم موديلات كثيرة من مزودين مختلفين' : 'Many models from different providers' },
-      { value: 'openai', label: 'OpenAI', description: 'GPT models' },
-      { value: 'anthropic', label: 'Anthropic', description: 'Claude models' },
-      { value: 'gemini', label: 'Google Gemini', description: 'Gemini models' },
-      { value: 'local', label: preferences.locale === 'ar' ? 'موديل محلي' : 'Local model', description: preferences.locale === 'ar' ? 'مثل Ollama أو خادم محلي متوافق' : 'Ollama or a compatible local server' },
-      { value: 'custom', label: preferences.locale === 'ar' ? 'مزود مخصص' : 'Custom provider', description: preferences.locale === 'ar' ? 'رابط وموديل مخصص' : 'Custom endpoint and model' }
+      { value: 'openrouter', label: 'OpenRouter', description: preferences.locale === 'ar' ? 'نماذج متعددة من مزودين مختلفين' : 'Many models from different providers' },
+      { value: 'openai', label: 'OpenAI', description: preferences.locale === 'ar' ? 'نماذج GPT' : 'GPT models' },
+      { value: 'anthropic', label: 'Anthropic', description: preferences.locale === 'ar' ? 'نماذج Claude' : 'Claude models' },
+      { value: 'gemini', label: 'Google Gemini', description: preferences.locale === 'ar' ? 'نماذج Gemini' : 'Gemini models' },
+      { value: 'local', label: preferences.locale === 'ar' ? 'نموذج محلي' : 'Local model', description: preferences.locale === 'ar' ? 'مثل Ollama أو خادم محلي متوافق' : 'Ollama or a compatible local server' },
+      { value: 'custom', label: preferences.locale === 'ar' ? 'مزود مخصص' : 'Custom provider', description: preferences.locale === 'ar' ? 'رابط ونموذج مخصصان' : 'Custom endpoint and model' }
     ],
     [preferences.locale]
   );
@@ -1650,11 +1737,16 @@ export function App() {
     for (const [key,value] of Object.entries(appearanceVariables(preferences.appearance, preferences.themeMode === 'dark'))) document.documentElement.style.setProperty(key,value);
     document.documentElement.dataset.density = preferences.appearance.density;
     document.documentElement.dataset.corners = preferences.appearance.corners;
+    // In-app blur is independent of native desktop material support.
+    document.documentElement.dataset.interfaceGlass = String(!!preferences.appearance.glass);
 
     let canceled=false;
     const syncTitlebarTheme = () => {
       void window.loaderly?.setTitlebarTheme?.(preferences.themeMode, preferences.locale, preferences.appearance).then(result=>{
-        if(!canceled) document.documentElement.dataset.desktopGlass=String(!!result.desktopGlass);
+        if(!canceled){
+          document.documentElement.dataset.desktopGlass=String(!!result.desktopGlass);
+          document.documentElement.dataset.backdropBlur=String(!!result.backdropBlur);
+        }
       }).catch(()=>{/* Keep the last confirmed material through a transient IPC failure. */});
     };
     syncTitlebarTheme();
@@ -1717,6 +1809,8 @@ export function App() {
   useEffect(() => {
     const duration = selectedMedia.durationSeconds ?? 0;
     const savedSnapshot = readSavedEditorSnapshot(selectedMedia);
+    setStudioEdits(emptyStudioEdits());
+    setStudioTranscript(undefined);
     setAudioSettings(defaultAudioSettings);
     setAudioSections([]);setSelectedAudioSectionId(undefined);
     setAudioInspectorOpen(selectedMedia.mediaKind === 'audio');
@@ -1792,10 +1886,7 @@ export function App() {
       setSelectedEffectItemId(undefined);
     }
 
-    if (subtitleFile) {
-      setSubtitleFile(undefined);
-      setSubtitlesVisible(false);
-    }
+    // Audio transcripts remain available in the subtitle workspace.
   }, [
     activeNav,
     isAudioEditor,
@@ -1823,6 +1914,8 @@ export function App() {
   }, [
     audioSettings,
     audioSections,
+    studioEdits,
+    studioTranscript,
     visualizerSettings,
     visualizerVideo,
     blurMask,
@@ -1906,6 +1999,7 @@ export function App() {
 
       const target = event.target as HTMLElement | null;
       const action = resolveEditorShortcut({
+        platform: window.loaderly?.platform ?? 'win32',
         key: event.key,
         code: event.code,
         ctrlKey: event.ctrlKey,
@@ -1922,6 +2016,8 @@ export function App() {
       if (!action) {
         return;
       }
+      const commandId = editorCommandId(action);
+      if (commandId && readCommandOverrides()[commandId]) return;
 
       if (cleanAudioView && action.type !== 'toggle-playback' && action.type !== 'seek') {
         event.preventDefault();
@@ -2054,6 +2150,14 @@ export function App() {
     }
 
     previewFocusReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    // Keep the existing player mounted while lifting it above the editor.
+    // Reparenting/remounting the media would interrupt playback.
+    stage.showPopover();
+    const titlebar = document.querySelector('.titlebar');
+    const positionStage = () => stage.style.setProperty('--preview-focus-top', `${titlebar?.getBoundingClientRect().bottom ?? 48}px`);
+    positionStage();
+    const titlebarSize = new ResizeObserver(positionStage);
+    if (titlebar) titlebarSize.observe(titlebar);
     const focusFrame = window.requestAnimationFrame(() => stage.focus());
     const handleFocusModeKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab' || event.defaultPrevented) {
@@ -2090,6 +2194,9 @@ export function App() {
     window.addEventListener('keydown', handleFocusModeKeyDown);
 
     return () => {
+      titlebarSize.disconnect();
+      if (stage.matches(':popover-open')) stage.hidePopover();
+      stage.style.removeProperty('--preview-focus-top');
       window.cancelAnimationFrame(focusFrame);
       window.removeEventListener('keydown', handleFocusModeKeyDown);
       const returnTarget = previewFocusReturnRef.current;
@@ -2212,9 +2319,13 @@ export function App() {
   function downloadPhaseLabel(row: MediaRow): string {
     switch (row.downloadPhase) {
       case 'preparing':
+        if (row.downloadEngineUsed === 'pytubefix') return uiText(preferences.locale, 'Trying YouTube backup…', 'جارٍ تجربة المحرك الاحتياطي ليوتيوب…');
         return uiText(preferences.locale, 'Preparing', 'تجهيز');
       case 'downloading':
         return row.downloadStream==='audio'?uiText(preferences.locale,'Downloading audio','تنزيل الصوت'):row.downloadStream==='video'?uiText(preferences.locale,'Downloading video','تنزيل الفيديو'):uiText(preferences.locale, 'Downloading', 'تنزيل');
+      case 'waiting-audio': return uiText(preferences.locale, 'Waiting for local audio processing', 'انتظار معالجة الصوت المحلية');
+      case 'removing-music': return downloadAudioMode(row) === 'instrumental' ? uiText(preferences.locale, 'Separating music from vocals', 'فصل الموسيقى عن الغناء') : uiText(preferences.locale, 'Separating vocals from music', 'فصل الأصوات عن الموسيقى');
+      case 'saving-audio': return uiText(preferences.locale, 'Saving the separated audio', 'حفظ النسخة بعد فصل الصوت');
       case 'processing':
         return uiText(preferences.locale, 'Processing media', 'معالجة المقطع');
       case 'subtitles':
@@ -2334,7 +2445,7 @@ export function App() {
   }
 
   function isMediaReadyForEditor(row: MediaRow): boolean {
-    return canOpenEditorForMedia(row);
+    return !row.missing && canOpenEditorForMedia(row);
   }
 
   function speedEditorHint(): string {
@@ -2445,6 +2556,7 @@ export function App() {
     }
 
     if (row.status === 'queued') {
+      if (row.downloadPaused) return uiText(preferences.locale, 'Paused', 'متوقف مؤقتًا');
       return downloadPhaseLabel({ ...row, downloadPhase: row.downloadPhase ?? 'preparing' });
     }
 
@@ -2452,11 +2564,14 @@ export function App() {
       return downloadPhaseLabel({ ...row, downloadPhase: 'failed' });
     }
 
+    if (row.downloadPhase === 'removing-music') return `${downloadPhaseLabel(row)}${row.progressKnown ? ` · ${Math.round(row.progress)}%` : ''}`;
+
     if (row.progressKnown === false) {
       return downloadPhaseLabel(row);
     }
 
-    return `${Math.max(0, Math.min(100, Math.round(row.progress)))}%`;
+    const percent = `${row.downloadEstimated ? '≈ ' : ''}${Math.max(0, Math.min(100, Math.round(row.progress)))}%`;
+    return row.downloadPhase === 'downloading' ? `${downloadPhaseLabel(row)} · ${percent}` : percent;
   }
 
   function openSelectedMediaEditor(row: MediaRow = selectedMedia) {
@@ -2494,6 +2609,20 @@ export function App() {
         ? uiText(preferences.locale, 'Opened the media location.', 'فُتح موقع الملف.')
         : uiText(preferences.locale, 'The media location could not be opened.', 'تعذر فتح موقع الملف.')
     );
+  }
+
+  function removeDownloadHistory(ids: readonly number[]) {
+    const busyIds = downloadQueue.entries.map(entry => entry.id);
+    const removable = mediaRows.filter(row => ids.includes(row.id) && canRemoveDownloadHistory(row, busyIds)).map(row => row.id);
+    if (!removable.length) return;
+    setMediaRows(rows => hideDownloadHistory(rows, removable, busyIds));
+    setRemovedDownloadIds(removable);
+    setDownloadSelection([]);
+    setDownloadSelecting(false);
+  }
+
+  function toggleDownloadSelection(id: number) {
+    setDownloadSelection(ids => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id]);
   }
 
   function requestRemoveMedia(rowId: number) {
@@ -2539,20 +2668,8 @@ export function App() {
     );
   }
 
-  async function startDownloadBatch(rows: readonly MediaRow[], concurrency = 2) {
-    let nextIndex = 0;
-    const worker = async () => {
-      while (nextIndex < rows.length) {
-        const row = rows[nextIndex];
-        nextIndex += 1;
-
-        if (row?.source) {
-          await startUrlDownload(row.id, row.source, row.quality, row.downloadTarget);
-        }
-      }
-    };
-
-    await Promise.all(Array.from({ length: Math.min(concurrency, rows.length) }, () => worker()));
+  async function startDownloadBatch(rows: readonly MediaRow[]) {
+    await Promise.all(rows.filter(row=>row.source).map(row=>startUrlDownload(row.id,row.source,row.quality,row.downloadTarget,row)));
   }
 
   function startAllQueuedDownloads() {
@@ -2566,43 +2683,64 @@ export function App() {
     void startDownloadBatch(queuedRows);
   }
 
-  function friendlyToolUpdateResult(toolName: string, ok: boolean, message: string | undefined): string {
-    return ok ? uiText(preferences.locale, `${toolName} is ready.`, `${toolName} جاهز.`)
-      : uiText(preferences.locale, `Could not install ${toolName}. ${message ?? 'Please retry.'}`, `تعذر تثبيت ${toolName}. ${message ?? 'حاول مرة أخرى.'}`);
+  function toolInstallError(message?: string): string {
+    const english = message || 'Please retry.';
+    const arabic = /checksum/i.test(english) ? 'لم تتطابق بصمة الحزمة. احتُفظ بالأدوات السابقة.'
+      : /timed out|too long/i.test(english) ? 'انتهت مهلة العملية. تحقق من اتصالك وأعد المحاولة.'
+      : /canceled/i.test(english) ? 'أُلغيت العملية. احتُفظ بالأدوات السابقة.'
+      : /limited requests/i.test(english) ? 'خدمة التحديثات حدّت الطلبات مؤقتًا. أعد المحاولة لاحقًا.'
+      : /network|fetch|reach|download failed/i.test(english) ? 'تعذر تنزيل الحزمة. تحقق من اتصالك وأعد المحاولة.'
+      : 'تعذر تثبيت الأداة. أعد المحاولة؛ احتُفظ بالإصدار السابق إن وُجد.';
+    return uiText(preferences.locale, english, arabic);
   }
 
-  async function updateBundledTool(toolName: string) {
-    if (updatingToolName) {
-      return;
-    }
-
+  async function updateBundledTools(requested: readonly ToolPackageName[]) {
+    if (toolRunRef.current.busy || toolCheckBusyRef.current) return;
+    const names = [...new Set(requested)].filter(name => {
+      const state = toolPackageState(toolStatuses, name);
+      return state.supported && (state.missing || state.update);
+    });
+    if (!names.length) return;
     if (!window.loaderly?.updateTool) {
-      const message = preferences.locale === 'ar' ? 'تحديث الأدوات غير متاح من هذه النافذة حالياً.' : 'Tool updates are not available from this window right now.';
-      setToolUpdateMessage(message);
-      setActivity(message);
-      return;
+      const message = uiText(preferences.locale, 'Tool updates are not available from this window right now.', 'تحديث الأدوات غير متاح من هذه النافذة حاليًا.');
+      setToolUpdateMessage(message); setActivity(message); return;
     }
-
-    setUpdatingToolName(toolName);
+    toolRunRef.current = { busy: true, canceled: false };
+    setToolBatchItems(names.map(name => ({ name, phase: 'queued' })));
+    setToolStopRequested(false);
+    setUpdatingToolName(names[0]);
     setToolInstallProgress(undefined);
-    setToolUpdateMessage(preferences.locale === 'ar' ? `جارٍ تحديث ${toolName}...` : `Updating ${toolName}...`);
-    setActivity(preferences.locale === 'ar' ? `جارٍ تحديث ${toolName}...` : `Updating ${toolName}...`);
-
     try {
-      const result = await window.loaderly.updateTool(toolName);
-      const message = friendlyToolUpdateResult(toolName, result.ok, result.message);
-      setToolUpdateMessage(message);
-      setActivity(message);
-
-      if (result.ok && result.status) setToolStatuses(previous => [...previous.filter(item => item.name !== toolName), result.status!]);
-    } catch (error) {
-      const message = friendlyToolUpdateResult(toolName, false, error instanceof Error ? error.message : undefined);
-      setToolUpdateMessage(message);
-      setActivity(message);
+      const finished = await runToolSequence(names, name => window.loaderly!.updateTool(name), {
+        shouldStop: () => toolRunRef.current.canceled,
+        onItem: (item, result) => {
+          if (item.phase === 'running') {
+            toolRunRef.current.active = item.name;
+            setUpdatingToolName(item.name); setToolInstallProgress(undefined);
+          }
+          setToolBatchItems(previous => previous.map(row => row.name === item.name ? item : row));
+          if (result?.ok) {
+            const statuses = result.statuses ?? (result.status ? [result.status] : []);
+            setToolStatuses(previous => [...previous.filter(row => !statuses.some(status => status.name === row.name)), ...statuses]);
+          }
+        }
+      });
+      const ready = finished.filter(item => item.phase === 'ready').length;
+      const failed = finished.filter(item => item.phase === 'failed').length;
+      const canceled = finished.filter(item => item.phase === 'canceled').length;
+      setActivity(uiText(preferences.locale, `${ready} ready · ${failed} failed · ${canceled} canceled`, `جاهز: ${ready} · تعذر: ${failed} · أُلغي: ${canceled}`));
     } finally {
-      setUpdatingToolName(undefined);
-      setToolInstallProgress(undefined);
+      toolRunRef.current = { busy: false, canceled: false };
+      setUpdatingToolName(undefined); setToolInstallProgress(undefined); setToolStopRequested(false);
     }
+  }
+
+  async function cancelToolBatch() {
+    if (!toolRunRef.current.busy || toolRunRef.current.canceled) return;
+    toolRunRef.current.canceled = true;
+    setToolStopRequested(true);
+    try { await window.loaderly?.cancelToolInstall(); }
+    catch { setToolUpdateMessage(uiText(preferences.locale, 'The current tool will finish; remaining tools are canceled.', 'ستكتمل الأداة الحالية؛ أُلغيت الأدوات المتبقية.')); }
   }
 
   function selectNavigation(key: NavigationKey) {
@@ -2659,14 +2797,35 @@ export function App() {
     }
   }
 
+  async function receiveQuickCapture(request: CaptureRequest) {
+    const ack = () => void window.loaderly?.quickCapture({ action: 'ack', id: request.id });
+    if (receivedCaptures.current.has(request.id) || mediaRowsRef.current.some(row => row.quickCaptureId === request.id)) { ack(); return; }
+    receivedCaptures.current.add(request.id);
+    if (receivedCaptures.current.size > 500) receivedCaptures.current.delete(receivedCaptures.current.values().next().value!);
+    const quality = request.kind === 'audio' ? 'audio' : preferences.quality === 'audio' ? 'best' : preferences.quality;
+    if (mediaRowsRef.current.some(row => row.source === request.url && (row.quality === 'audio') === (quality === 'audio') && downloadAudioMode(row) === downloadAudioMode(request) && (row.status === 'downloading' || row.status === 'queued' || request.automatic && (row.status === 'ready' || row.status === 'edited')))) { ack(); return; }
+    if (youtubePlaylistUrl(request.url)) {
+      setActiveNav('downloads');
+      void window.loaderly?.quickCapture({ action: 'focus' });
+      // Explicit selection is required even when capture normally starts immediately.
+      await prepareDownloads(request.url, quality, downloadAudioMode(request), true).catch(() => setActivity(uiText(preferences.locale,'Could not add this playlist. Paste its link in Downloads to retry.','تعذرت إضافة القائمة. الصق رابطها في التنزيلات لإعادة المحاولة.'))).finally(ack);
+      return;
+    }
+    const row: MediaRow = { id: allocateMediaId(), title: request.url.replace(/^https?:\/\//, ''), source: request.url, duration: '00:00', status: 'queued', progress: 0, progressKnown: false, size: '0 MB', quality, audioMode: downloadAudioMode(request), quickCaptureId: request.id, downloadTarget: downloadLocationFor(preferences, quality), sourceType: 'download', mediaKind: request.kind, thumbnailUrl: youtubeThumbnailUrl(request.url), createdAtMs: Date.now() };
+    setMediaRows(rows => [row, ...rows]);
+    setActivity(uiText(preferences.locale, 'Copied link added to downloads.', 'أُضيف الرابط المنسوخ إلى التنزيلات.'));
+    ack();
+    void startUrlDownload(row.id, row.source, quality, row.downloadTarget, row);
+  }
+
   async function addDownload() {
     if(addingDownloads.current)return;
     addingDownloads.current=true;
     try { await prepareDownloads(); } finally { addingDownloads.current=false; }
   }
 
-  async function prepareDownloads() {
-    const sources = splitBatchSources(urlValue);
+  async function prepareDownloads(input = urlValue, quality = preferences.quality, audioMode = preferences.audioMode, forceStart = false) {
+    const sources = splitBatchSources(input);
 
     if (sources.length === 0) {
       setActivity(editorText.emptyUrl);
@@ -2722,10 +2881,11 @@ export function App() {
         progressKnown: false,
         downloadPhase: 'preparing',
         size: '0 MB',
-        quality: preferences.quality,
-        downloadTarget: downloadLocationFor(preferences, preferences.quality, downloadLocationId),
+        quality,
+        audioMode,
+        downloadTarget: downloadLocationFor(preferences, quality, forceStart ? undefined : downloadLocationId),
         sourceType: 'download',
-        mediaKind: mediaKindForPath(undefined, preferences.quality),
+        mediaKind: mediaKindForPath(undefined, quality),
         createdAtMs: Date.now() + index
       };
     });
@@ -2755,13 +2915,13 @@ export function App() {
       }
     }
 
-    if (preferences.downloadStartMode === 'auto' && window.loaderly?.downloadUrl) {
+    if ((forceStart || preferences.downloadStartMode === 'auto') && window.loaderly?.downloadUrl) {
       void startDownloadBatch(createdRows);
     }
   }
 
-  async function startUrlDownload(rowId: number, sourceOverride?: string, qualityOverride?: DownloadQuality, targetOverride?: MediaRow['downloadTarget']) {
-    const queuedRow = mediaRows.find((row) => row.id === rowId);
+  async function startUrlDownload(rowId: number, sourceOverride?: string, qualityOverride?: DownloadQuality, targetOverride?: MediaRow['downloadTarget'], createdRow?: MediaRow) {
+    const queuedRow = mediaRowsRef.current.find((row) => row.id === rowId) ?? createdRow;
     const source = normalizeRemoteSourceUrl(sourceOverride ?? queuedRow?.source ?? queuedRow?.title ?? '');
 
     if (queuedRow?.status === 'downloading' || downloadInFlightIdsRef.current.has(rowId)) {
@@ -2780,6 +2940,7 @@ export function App() {
             ? {
                 ...row,
                 status: 'failed',
+                downloadHidden: false,
                 progress: 0,
                 progressKnown: true,
                 downloadPhase: 'failed',
@@ -2806,6 +2967,7 @@ export function App() {
           ? {
               ...row,
               status: 'downloading',
+              downloadHidden: false,
               progress: 0,
               progressKnown: false,
               downloadPhase: 'preparing',
@@ -2827,8 +2989,13 @@ export function App() {
       const target = targetOverride ?? queuedRow?.downloadTarget ?? downloadLocationFor(preferences, requestedQuality);
       const shouldWriteSubtitles = preferences.subtitleDownloadMode === 'auto' && requestedQuality !== 'audio';
       const result = await window.loaderly.downloadUrl({
+        downloadEngine: preferences.downloadEngine,
         rowId,
-        knownFiles:mediaRowsRef.current.flatMap(row=>row.filePath?[row.filePath]:[]),
+        audioMode: queuedRow ? downloadAudioMode(queuedRow) : preferences.audioMode,
+        originalPath: queuedRow?.originalPath,
+        originalSubtitlePath: queuedRow?.originalSubtitlePath,
+        scheduledAt: queuedRow?.downloadScheduledAt,
+        knownFiles:mediaRowsRef.current.flatMap(row=>row.originalPath?[row.originalPath]:row.filePath?[row.filePath]:[]),
         locale:preferences.locale,
         url: source,
         quality: requestedQuality,
@@ -2838,6 +3005,10 @@ export function App() {
         subtitleLanguages: shouldWriteSubtitles ? subtitleLanguagesForProfile(preferences.subtitleLanguageProfile) : undefined
       });
 
+      if((result as {paused?:boolean})?.paused){
+        setMediaRows(rows=>rows.map(row=>row.id===rowId?{...row,status:'queued',downloadPaused:true,downloadScheduledAt:undefined}:row));
+        return;
+      }
       if(result?.skipped){
         setMediaRows(rows=>rows.filter(row=>row.id!==rowId));
         setActivity(uiText(preferences.locale,'Skipped duplicate. The existing file was kept.','تم تخطي التكرار والإبقاء على الملف الموجود.'));
@@ -2846,6 +3017,7 @@ export function App() {
       if (!result?.ok || result.path === undefined || result.fileUrl === undefined) {
         const rawErrorMessage = result?.message ?? 'unknown error';
         const errorMessage = friendlyDownloadError(rawErrorMessage, preferences.locale);
+        if (/LOCAL_(MODEL|RUNTIME)_NOT_INSTALLED/.test(rawErrorMessage)) { setActiveNav('downloads'); if (queuedRow?.quickCaptureId) void window.loaderly?.quickCapture({ action: 'focus' }); }
 
         setMediaRows((rows) =>
           rows.map((row) =>
@@ -2857,7 +3029,8 @@ export function App() {
                   progressKnown: true,
                   downloadPhase: 'failed',
                   startedAtMs: undefined,
-                  errorMessage: rawErrorMessage
+                  errorMessage: rawErrorMessage,
+                  originalPath: result.originalPath ?? row.originalPath
                 }
               : row
           )
@@ -2884,8 +3057,9 @@ export function App() {
                 sourceType: 'download',
                 mediaKind: mediaKindForPath(result.path, requestedQuality),
                 filePath: result.path,
+                originalPath: result.originalPath ?? row.originalPath,
                 fileUrl: result.fileUrl,
-                thumbnailUrl: result.thumbnailUrl,
+                thumbnailUrl: result.thumbnailUrl ?? row.thumbnailUrl,
                 completedAtMs: Date.now(),
                 errorMessage: undefined
               }
@@ -3125,7 +3299,7 @@ export function App() {
     if (!row.filePath || !window.loaderly?.extractAudio || extractingAudio) return;
     setExtractingAudio(true);setActivity(uiText(preferences.locale,'Checking your saved audio…','جارٍ التحقق من الصوت المحفوظ…'));
     try {
-      const request:ExtractAudioRequest={sourcePath:row.filePath,source:row.source||row.filePath,knownAudio:mediaRowsRef.current.flatMap(item=>item.mediaKind==='audio'&&item.filePath&&(item.status==='ready'||item.status==='edited')?[{path:item.filePath,source:item.source}]:[])};
+      const request:ExtractAudioRequest={sourcePath:row.filePath,source:row.source||row.filePath,audioMode:downloadAudioMode(row),knownAudio:mediaRowsRef.current.flatMap(item=>item.mediaKind==='audio'&&item.filePath&&(item.status==='ready'||item.status==='edited')?[{path:item.filePath,source:item.source,audioMode:downloadAudioMode(item)}]:[])};
       let result=await window.loaderly.extractAudio(request);
       if(!result.canceled&&'existing' in result){
         const existing=result.existing;
@@ -3137,26 +3311,27 @@ export function App() {
       if(result.canceled||'existing' in result)return;
       const completed=result;
       const existingRow=mediaRowsRef.current.find(item=>item.filePath===(completed.replacedPath||completed.path));
-      const next:MediaRow={...(existingRow??{}),id:existingRow?.id??allocateMediaId(),title:result.name,source:existingRow?.source||row.source||row.filePath,sourceType:existingRow?.sourceType??'local',mediaKind:'audio',status:result.reused&&existingRow?.status==='edited'?'edited':'ready',progress:100,progressKnown:true,downloadPhase:'completed',duration:formatDuration(result.durationSeconds),durationSeconds:result.durationSeconds,size:formatBytes(result.sizeBytes),filePath:result.path,fileUrl:result.reused?result.fileUrl:`${result.fileUrl}?extracted=${Date.now()}`,thumbnailUrl:existingRow?.thumbnailUrl??row.thumbnailUrl,createdAtMs:existingRow?.createdAtMs??Date.now(),completedAtMs:Date.now()};
+      const next:MediaRow={...(existingRow??{}),id:existingRow?.id??allocateMediaId(),title:result.name,source:existingRow?.source||row.source||row.filePath,sourceType:existingRow?.sourceType??'local',mediaKind:'audio',audioMode:downloadAudioMode(row),status:result.reused&&existingRow?.status==='edited'?'edited':'ready',progress:100,progressKnown:true,downloadPhase:'completed',duration:formatDuration(result.durationSeconds),durationSeconds:result.durationSeconds,size:formatBytes(result.sizeBytes),filePath:result.path,fileUrl:result.reused?result.fileUrl:`${result.fileUrl}?extracted=${Date.now()}`,thumbnailUrl:existingRow?.thumbnailUrl??row.thumbnailUrl,createdAtMs:existingRow?.createdAtMs??Date.now(),completedAtMs:Date.now()};
       setMediaRows(rows=>existingRow?rows.map(item=>item.id===existingRow.id?next:item):[next,...rows]);openSelectedMediaEditor(next);setAudioInspectorOpen(true);
       if(completed.replacedPath){
         const duration=completed.durationSeconds??row.durationSeconds??0;
-        const clean:EditorUiSnapshot={...(readSavedEditorSnapshot(existingRow??next)??captureEditorSnapshot()),selectedLayerId:'cuts',audioSettings:defaultAudioSettings,audioSections:[],blurItems:[],zoomItems:[],speedItems:[],reframeItems:[],textOverlays:[],cutOutRanges:[],subtitleFile:undefined,subtitlesVisible:false,selectedEffectItemId:undefined,selectedTextOverlayId:undefined,selectedCutOutId:undefined,trimStartSeconds:0,trimEndSeconds:duration,playheadSeconds:0,blurStrength:0,zoomScale:1,speedRate:1,blurWindow:{startSeconds:0,endSeconds:duration},zoomWindow:{startSeconds:0,endSeconds:duration},speedWindow:{startSeconds:0,endSeconds:duration},reframeWindow:{startSeconds:0,endSeconds:duration}};
+        const clean:EditorUiSnapshot={...(readSavedEditorSnapshot(existingRow??next)??captureEditorSnapshot()),selectedLayerId:'cuts',audioSettings:defaultAudioSettings,studio:emptyStudioEdits(),studioTranscript:undefined,audioSections:[],blurItems:[],zoomItems:[],speedItems:[],reframeItems:[],textOverlays:[],cutOutRanges:[],subtitleFile:undefined,subtitlesVisible:false,selectedEffectItemId:undefined,selectedTextOverlayId:undefined,selectedCutOutId:undefined,trimStartSeconds:0,trimEndSeconds:duration,playheadSeconds:0,blurStrength:0,zoomScale:1,speedRate:1,blurWindow:{startSeconds:0,endSeconds:duration},zoomWindow:{startSeconds:0,endSeconds:duration},speedWindow:{startSeconds:0,endSeconds:duration},reframeWindow:{startSeconds:0,endSeconds:duration}};
         try{
           for(const key of new Set([...editorSessionStorageKeys(completed.replacedPath),...editorSessionStorageKeys(completed.path)]))localStorage.removeItem(key);
-          for(const key of editorSessionStorageKeys(completed.path))localStorage.setItem(key,JSON.stringify(clean));
+          for(const key of editorSessionStorageKeys(completed.path).slice(0,1))localStorage.setItem(key,JSON.stringify(clean));
         }catch{/* The verified replacement remains usable when local session storage is unavailable. */}
         applyEditorSnapshot(clean);setEditorUndoStack([]);setEditorRedoStack([]);setSelectedAudioSectionId(undefined);setIsPlaying(false);
       }
       setActivity(uiText(preferences.locale,result.reused?'Opened your saved audio. No extra file was created.':result.replacedPath?'Audio replaced. Your video is unchanged.':'Audio extracted. Your video is unchanged.',result.reused?'فُتح الصوت المحفوظ دون إنشاء ملف آخر.':result.replacedPath?'استُبدل الصوت. بقي الفيديو الأصلي كما هو.':'استُخرج الصوت. بقي الفيديو الأصلي كما هو.'));
-    } catch(error) {setActivity(uiText(preferences.locale,`Could not extract audio: ${error instanceof Error?error.message:'Unknown error'}`,'تعذّر استخراج الصوت. تحقق من وجود مسار صوتي وأداة FFmpeg.'));} finally {setExtractingAudio(false)}
+    } catch(error) {setActivity(audioExtractionError(error, preferences.locale === 'ar'));} finally {setExtractingAudio(false)}
   }
 
   function mediaOutputPayload(kind: QuickCopyOutputKind, label: string, whole = false) {
     const outputWindow = whole ? {startSeconds:0,endSeconds:selectedDurationSeconds} : outputRangeForKind(kind);
     const plan = renderPlanForKind(kind,whole);
     const exportBlurItems = plan.blurItems.flatMap((item) =>
-      regionSegmentsForExport(item.region, item.trackingEnabled ? item.keyframes : undefined, item.startTime, item.endTime).map((segment) => ({
+      regionSegmentsForExport(item.region, undefined, item.startTime, item.endTime).map((segment) => ({
+        trackingKeyframes:item.trackingEnabled?item.keyframes:undefined,
         strength: blurStrengthForItem(item),
         shape: item.shape ?? 'rectangle',
         style: item.style ?? 'normal',
@@ -3169,7 +3344,8 @@ export function App() {
       }))
     );
     const exportZoomItems = plan.zoomItems.flatMap((item) =>
-      regionSegmentsForExport(item.region, item.trackingEnabled ? item.keyframes : undefined, item.startTime, item.endTime).map((segment) => ({
+      regionSegmentsForExport(item.region, undefined, item.startTime, item.endTime).map((segment) => ({
+        trackingKeyframes:item.trackingEnabled?item.keyframes:undefined,
         scale: item.trackingEnabled ? zoomScaleForRegion(segment.region) : item.scale,
         x: segment.region.x,
         y: segment.region.y,
@@ -3186,6 +3362,8 @@ export function App() {
       sourcePath: selectedMedia.filePath ?? '',
       audio: audioSettings,
       audioSections: audioSectionsForOutput(audioSections,{ranges:keptRangesFromCutOuts(outputWindow,plan.cutOutRanges.map(s=>({startSeconds:s.startTime,endSeconds:s.endTime}))),speeds:plan.speedItems}),
+      studio: studioEdits,
+      transcriptWords: studioTranscript?.words,
       kind,
       label,
       startSeconds: outputWindow.startSeconds,
@@ -3205,8 +3383,8 @@ export function App() {
         fontFamily: editorTextFontOptionFor(overlay.fontFamily).value,
         color: overlay.color
       })),
-      subtitlePath: subtitlesVisible ? plan.subtitle?.subtitlePath : undefined,
-      subtitleCues: subtitlesVisible ? plan.subtitle?.cues : undefined,
+      subtitlePath: subtitlesVisible && !studioEdits.wordCaptions ? plan.subtitle?.subtitlePath : undefined,
+      subtitleCues: subtitlesVisible && !studioEdits.wordCaptions ? plan.subtitle?.cues : undefined,
       effects: {
         speeds: plan.speedItems.map(item=>({rate:item.rate,mode:item.mode??'preserve-pitch',startSeconds:item.startTime,endSeconds:item.endTime})),
         blurs: exportBlurItems,
@@ -3301,8 +3479,8 @@ export function App() {
           finally { if (!result?.replacedSource && player && source) { player.src = source; player.load(); player.currentTime = position; } }
           if (result.ok && result.replacedSource) {
             const duration=result.durationSeconds??Math.max(.1,effectiveTrimEnd-trimStartSeconds);
-            const clean:EditorUiSnapshot={...captureEditorSnapshot(),audioSettings:defaultAudioSettings,audioSections:[],blurItems:[],zoomItems:[],speedItems:[],reframeItems:[],textOverlays:[],cutOutRanges:[],subtitleFile:undefined,subtitlesVisible:false,selectedEffectItemId:undefined,selectedTextOverlayId:undefined,selectedCutOutId:undefined,trimStartSeconds:0,trimEndSeconds:duration,playheadSeconds:0,blurStrength:0,zoomScale:1,speedRate:1,blurWindow:{startSeconds:0,endSeconds:duration},zoomWindow:{startSeconds:0,endSeconds:duration},speedWindow:{startSeconds:0,endSeconds:duration},reframeWindow:{startSeconds:0,endSeconds:duration}};
-            try { for(const key of editorSessionStorageKeys(selectedMedia.filePath))localStorage.setItem(key,JSON.stringify(clean)); } catch { /* The media was saved; storage failure must not report an export failure. */ }
+            const clean:EditorUiSnapshot={...captureEditorSnapshot(),audioSettings:defaultAudioSettings,studio:emptyStudioEdits(),studioTranscript:undefined,audioSections:[],blurItems:[],zoomItems:[],speedItems:[],reframeItems:[],textOverlays:[],cutOutRanges:[],subtitleFile:undefined,subtitlesVisible:false,selectedEffectItemId:undefined,selectedTextOverlayId:undefined,selectedCutOutId:undefined,trimStartSeconds:0,trimEndSeconds:duration,playheadSeconds:0,blurStrength:0,zoomScale:1,speedRate:1,blurWindow:{startSeconds:0,endSeconds:duration},zoomWindow:{startSeconds:0,endSeconds:duration},speedWindow:{startSeconds:0,endSeconds:duration},reframeWindow:{startSeconds:0,endSeconds:duration}};
+            try { for(const key of editorSessionStorageKeys(selectedMedia.filePath).slice(0,1))localStorage.setItem(key,JSON.stringify(clean)); } catch { /* The media was saved; storage failure must not report an export failure. */ }
             applyEditorSnapshot(clean);setEditorUndoStack([]);setEditorRedoStack([]);setSelectedAudioSectionId(undefined);setIsPlaying(false);
             setMediaRows(rows=>rows.map(row=>row.id===selectedMedia.id?{...row,durationSeconds:duration,duration:formatDuration(duration),size:result!.sizeBytes!==undefined?formatBytes(result!.sizeBytes):row.size,fileUrl:`${(result!.fileUrl||row.fileUrl||source||'').split('?')[0]}?saved=${Date.now()}`,status:'ready'}:row));
           }
@@ -3403,7 +3581,7 @@ export function App() {
   }
 
   async function runToolCheck() {
-    if (toolCheckBusyRef.current) {
+    if (toolCheckBusyRef.current || toolRunRef.current.busy) {
       return;
     }
 
@@ -3426,13 +3604,14 @@ export function App() {
       const missingTools = statuses.filter((status) => !status.available).map((status) => status.name);
       const installed = statuses.length - missingTools.length;
       const missing = missingTools.length > 0 ? t('missingTools', { tools: missingTools.join(', ') }) : t('noMissingTools');
-      const updates = new Set(statuses.filter(status => status.updateAvailable).map(status => status.name === 'ffprobe' ? 'ffmpeg' : status.name)).size;
+      const updates = toolBatchCandidates(statuses, 'updates').length;
       const failed = statuses.some(status => status.checkError);
       const toolUpdateStatus = failed
         ? uiText(preferences.locale, 'Installed tools checked. Update checks are temporarily unavailable. Try again in a minute.', 'فُحصت الأدوات المثبتة. تعذر فحص بعض التحديثات مؤقتًا. أعد المحاولة بعد دقيقة.')
         : uiText(preferences.locale, `Check complete. ${updates} updates available.`, `اكتمل الفحص. ${updates} تحديثات متاحة.`);
 
       setToolStatuses(statuses);
+      setToolBatchItems([]);
       setToolUpdateMessage(toolUpdateStatus);
       setActivity(t('toolsChecked', { installed, total: statuses.length, missing }));
     } catch (error) {
@@ -3504,7 +3683,9 @@ export function App() {
   }
 
   function readSavedEditorSnapshot(row: MediaRow): EditorUiSnapshot | undefined {
-    const keys = editorSessionStorageKeys(row.filePath);
+    const candidates = editorSessionStorageKeys(row.filePath);
+    const ambiguousLegacy = row.filePath?.startsWith('/') && mediaRows.some(other=>other.filePath && other.filePath!==row.filePath && other.filePath.toLowerCase()===row.filePath!.toLowerCase());
+    const keys = ambiguousLegacy ? candidates.filter(key=>!key.startsWith('loaderly:editor-session:v2:')) : candidates;
 
     if (keys.length === 0) {
       return undefined;
@@ -3525,6 +3706,8 @@ export function App() {
 
       return {
         selectedLayerId: value.selectedLayerId ?? 'cuts',
+        studio: normalizeStudioEdits(value.studio, row.durationSeconds),
+        studioTranscript: normalizeTranscript(value.studioTranscript),
         playheadSeconds: finiteOr(value.playheadSeconds, 0),
         trimStartSeconds: finiteOr(value.trimStartSeconds, 0),
         trimEndSeconds: finiteOr(value.trimEndSeconds, row.durationSeconds ?? 8),
@@ -3579,6 +3762,8 @@ export function App() {
 
   function captureEditorSnapshot(): EditorUiSnapshot {
     return {
+      studio: studioEdits,
+      studioTranscript,
       selectedLayerId,
       playheadSeconds: playheadSecondsRef.current,
       trimStartSeconds,
@@ -3617,6 +3802,8 @@ export function App() {
   }
 
   function applyEditorSnapshot(snapshot: EditorUiSnapshot) {
+    setStudioEdits(normalizeStudioEdits(snapshot.studio, selectedDurationSeconds));
+    setStudioTranscript(normalizeTranscript(snapshot.studioTranscript));
     setAudioSettings(normalizeAudioSettings(snapshot.audioSettings));
     setAudioSections(normalizeAudioSections(snapshot.audioSections));
     if(snapshot.visualizerSettings)setVisualizerSettings(normalizeVisualizer(snapshot.visualizerSettings));
@@ -3650,8 +3837,8 @@ export function App() {
     setSelectedTextOverlayId(isAudioEditor ? undefined : snapshot.selectedTextOverlayId);
     setCutOutRanges(snapshot.cutOutRanges);
     setSelectedCutOutId(snapshot.selectedCutOutId);
-    setSubtitleFile(isAudioEditor ? undefined : snapshot.subtitleFile);
-    setSubtitlesVisible(isAudioEditor ? false : snapshot.subtitlesVisible);
+    setSubtitleFile(snapshot.subtitleFile);
+    setSubtitlesVisible(snapshot.subtitlesVisible);
     updatePlayhead(snapshot.playheadSeconds);
   }
 
@@ -5590,20 +5777,34 @@ export function App() {
         const ready = isMediaReadyForEditor(row);
         const title = displayMediaTitle(row);
         const running = row.status === 'downloading';
-        return <article className="download-entry" key={row.id}>
+        const downloaded = running && ['processing','subtitles','finalizing','waiting-audio','removing-music','saving-audio'].includes(row.downloadPhase??'');
+        const removable = canRemoveDownloadHistory(row, downloadQueue.entries.map(entry => entry.id));
+        return <article className={`download-entry${downloadSelecting ? ' download-entry--selecting' : ''}${downloadSelecting && removable && downloadSelection.includes(row.id) ? ' selected' : ''}`} key={row.id}>
+          {downloadSelecting && <input className="download-entry__select" type="checkbox" checked={removable && downloadSelection.includes(row.id)} disabled={!removable} aria-label={uiText(preferences.locale, `Select ${title}`, `تحديد ${title}`)} data-tooltip={!removable ? uiText(preferences.locale, 'Finish the download before removing its history.', 'انتظر انتهاء التنزيل لإزالته من السجل.') : undefined} onChange={() => toggleDownloadSelection(row.id)}/>}
           <div className="download-entry__thumbnail">{renderMediaThumbnail(row)}</div>
           <div className="download-entry__body">
-            <strong className="download-entry__title" data-tooltip={title}><bdi>{title}</bdi></strong>
-            <div className="download-entry__metadata"><span className={`download-entry__state ${statusClass(row.status)}`}>{running ? <Download size={12}/> : ready ? <Check size={12}/> : row.status==='failed' ? <AlertTriangle size={12}/> : <Clock3 size={12}/>} {running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : displayStatus(row.status)}</span><span data-tooltip={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{row.downloadTarget?.path && <span data-tooltip={row.downloadTarget.path}>{row.downloadTarget.name || row.downloadTarget.path}</span>}{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
-            {running ? <div className="download-entry__progress"><div className={`download-progress${row.progressKnown === false ? ' indeterminate' : ''}`} role="progressbar" dir={preferences.locale === 'ar' ? 'rtl' : 'ltr'} aria-valuetext={mediaProgressLabel(row)} aria-label={uiText(preferences.locale, 'Download progress', 'تقدم التنزيل')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progressKnown === false ? undefined : row.progress}><span style={{inlineSize: `${Math.max(0, Math.min(100, row.progress))}%`}} /></div><small><DownloadElapsedLabel fallbackDownloadingLabel={downloadPhaseLabel(row)} locale={preferences.locale} row={row} /></small></div> : null}
+            <strong className="download-entry__title"><bdi>{title}</bdi></strong>
+            <div className="download-entry__metadata"><span className={`download-entry__state ${statusClass(row.status)}`}>{running ? downloaded ? <span className="download-stage-spinner"/> : <Download size={12}/> : ready ? <Check size={12}/> : row.status==='failed' ? <AlertTriangle size={12}/> : <Clock3 size={12}/>} {running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : displayStatus(row.status)}</span><span data-tooltip={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{row.downloadTarget?.path && <span data-tooltip={row.downloadTarget.path}>{row.downloadTarget.name || row.downloadTarget.path}</span>}{downloadAudioMode(row) !== 'original' && <span>{downloadAudioLabel(downloadAudioMode(row), preferences.locale === 'ar')}</span>}{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
+            {running ? <div className="download-entry__progress">
+              {downloaded ? <div className="download-stage-summary" role="status"><span><Check size={14}/>{uiText(preferences.locale,'Download complete','اكتمل التنزيل')}</span></div> : <div className={`download-progress${row.progressKnown === false ? ' indeterminate' : ''}`} role="progressbar" dir={preferences.locale === 'ar' ? 'rtl' : 'ltr'} aria-valuetext={mediaProgressLabel(row)} aria-label={uiText(preferences.locale, 'Download progress', 'تقدم التنزيل')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progressKnown === false ? undefined : row.progress}><span style={{inlineSize: `${Math.max(0, Math.min(100, row.progress))}%`}} /></div>}
+              {row.downloadPhase === 'removing-music' && <progress className="music-processing-progress" aria-label={uiText(preferences.locale,'Audio separation progress','تقدم فصل الصوت')} value={row.progressKnown ? row.progress : undefined} max={100}/>}
+              <small><DownloadElapsedLabel fallbackDownloadingLabel={downloadPhaseLabel(row)} locale={preferences.locale} row={row} /></small>
+              {downloadAudioMode(row) !== 'original' && <p className="download-entry__stage-hint">{row.downloadPhase === 'saving-audio'
+                ? uiText(preferences.locale, 'Audio separation is complete. Saving your new copy and keeping the original.', 'انتهى فصل الصوت. جارٍ حفظ النسخة الجديدة مع الاحتفاظ بالأصل.')
+                : row.downloadPhase === 'removing-music' || row.downloadPhase === 'waiting-audio'
+                  ? uiText(preferences.locale, 'The file has downloaded. Audio is now processed on your device. This depends on the clip length and your device’s speed.', 'اكتمل تنزيل الملف. يُفصل الصوت الآن على جهازك، وتعتمد المدة على طول المقطع وسرعة الجهاز.')
+                  : uiText(preferences.locale, 'Audio separation starts on your device after the download. The time remaining above is for downloading only.', 'يبدأ فصل الصوت على جهازك بعد اكتمال التنزيل. الوقت المتبقي أعلاه يخص التنزيل فقط.')}</p>}
+            </div> : null}
             {row.status === 'failed' && row.errorMessage ? <p className="download-entry__error">{friendlyDownloadError(row.errorMessage, preferences.locale)}</p> : null}
           </div>
           <div className="download-entry__actions">
+            {row.originalPath && <button className="button secondary" onClick={() => void window.loaderly?.showItemInFolder(row.originalPath!)}><FolderOpen size={14}/>{uiText(preferences.locale,'Show original','عرض الأصل')}</button>}
+
             {row.status === 'failed' && downloadFolderProblem(row.errorMessage ?? '') ? <button className="button secondary" onClick={async()=>{const picked=await window.loaderly?.pickDownloadDirectory();if(picked&&!picked.canceled&&picked.path)setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:{path:picked.path!,groupByPlatform:item.downloadTarget?.groupByPlatform??false,name:''}}:item));}} type="button"><FolderOpen size={14}/>{uiText(preferences.locale, 'Choose folder', 'اختيار مجلد')}</button> : null}
-            {row.status === 'queued' || row.status === 'failed' ? <DesktopMenu ariaLabel={t('quality')} options={qualityMenuOptions} value={row.quality ?? preferences.quality} valueLabel={qualityLabel(row.quality ?? preferences.quality, preferences.locale)} onChange={(quality) => updateQueuedMediaQuality(row.id, quality)} /> : null}
-            {row.status==='queued'||row.status==='failed'?<DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={preferences.downloadLocations.find(l=>l.path===row.downloadTarget?.path)?.id??''} valueLabel={row.downloadTarget?.name||row.downloadTarget?.path||uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===((row.quality??preferences.quality)==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={id=>setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:downloadLocationFor(preferences,item.quality??preferences.quality,id)}:item))}/>:null}
-            {ready ? <button className="button secondary" onClick={() => { selectMediaRow(row.id); selectNavigation('library'); }} type="button"><Library size={14} />{uiText(preferences.locale, 'View in library', 'عرض في المكتبة')}</button> : !running ? <button className="button secondary" onClick={() => retryDownload(row)} type="button"><Play size={14} />{row.status === 'failed' ? uiText(preferences.locale, 'Retry', 'إعادة المحاولة') : uiText(preferences.locale, 'Start', 'بدء')}</button> : null}
-            <button aria-label={uiText(preferences.locale, `Remove ${title}`, `حذف ${title}`)} data-tooltip={uiText(preferences.locale, 'Remove item', 'إزالة العنصر')} className="download-remove" disabled={running} onClick={() => requestRemoveMedia(row.id)} type="button"><X size={16} /></button>
+            {!row.originalPath && (row.status === 'queued' || row.status === 'failed') ? <DesktopMenu ariaLabel={t('quality')} options={qualityMenuOptions} layout="detailed" value={row.quality ?? preferences.quality} valueLabel={qualityLabel(row.quality ?? preferences.quality, preferences.locale)} onChange={(quality) => updateQueuedMediaQuality(row.id, quality)} /> : null}
+            {!row.originalPath && (row.status==='queued'||row.status==='failed')?<DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={preferences.downloadLocations.find(l=>l.path===row.downloadTarget?.path)?.id??''} valueLabel={row.downloadTarget?.name||row.downloadTarget?.path||uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===((row.quality??preferences.quality)==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={id=>setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:downloadLocationFor(preferences,item.quality??preferences.quality,id)}:item))}/>:null}
+            {ready ? <button className="button secondary" onClick={() => { selectMediaRow(row.id); selectNavigation('library'); }} type="button"><Library size={14} />{uiText(preferences.locale, 'View in library', 'عرض في المكتبة')}</button> : !running ? <button className="button secondary" onClick={() => retryDownload(row)} type="button"><Play size={14} />{row.originalPath && downloadAudioMode(row) !== 'original' ? uiText(preferences.locale, 'Retry audio separation', 'إعادة فصل الصوت') : row.status === 'failed' ? uiText(preferences.locale, 'Retry', 'إعادة المحاولة') : uiText(preferences.locale, 'Start', 'بدء')}</button> : null}
+            <button aria-label={uiText(preferences.locale, `Remove from history: ${title}`, `إزالة من السجل: ${title}`)} data-tooltip={uiText(preferences.locale, 'Remove from download history', 'إزالة من سجل التنزيلات')} className="download-remove" disabled={!removable} onClick={() => removeDownloadHistory([row.id])} type="button"><X size={16} /></button>
           </div>
         </article>;
       })}
@@ -6276,7 +6477,7 @@ export function App() {
       <>
         <span className="timeline-toolbar-chip">
           <Scissors aria-hidden="true" size={13} />
-          {editorText.keepRange}: {formatTimelineRange(trimWindow)}
+          {editorText.keepRange}: <bdi dir="ltr">{formatTimelineRange(trimWindow)}</bdi>
         </span>
         <span className="timeline-toolbar-chip">
           {editorText.snapOn}
@@ -6548,13 +6749,7 @@ export function App() {
               {t('subtitles')}
             </span>
             <div className="timeline-row__track">
-              {renderSegment({
-                layerId: 'subtitles',
-                label: subtitleFile ? subtitleFile.name : editorText.noSubtitle,
-                windowValue: trimWindow,
-                tone: 'subtitle',
-                enabled: Boolean(subtitleFile)
-              })}
+              {subtitleFile?.cues.map((cue,index)=><button key={index} type="button" className={`timeline-segment timeline-segment--subtitle${index===activeSubtitleCueIndex?' active selected':''}`} aria-label={`${cue.text}: ${formatTimelineRange(cue)}`} data-tooltip={`${cue.text}: ${formatTimelineRange(cue)}`} onPointerDown={event=>event.stopPropagation()} onClick={()=>{openEditorTool('subtitles');updatePlayhead(cue.startSeconds+.002);}} style={segmentStyle(cue)}><span dir="auto">{cue.text}</span></button>)}
             </div>
           </div>
           ) : null}
@@ -6606,8 +6801,8 @@ export function App() {
         return lastSavedAt
           ? uiText(
               preferences.locale,
-              `Saved locally ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-              `محفوظ محليًا ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              `Saved locally ${new Date(lastSavedAt).toLocaleTimeString(preferences.locale === 'ar' ? 'ar-u-nu-latn' : 'en', { hour: '2-digit', minute: '2-digit' })}`,
+              `محفوظ محليًا ${new Date(lastSavedAt).toLocaleTimeString(preferences.locale === 'ar' ? 'ar-u-nu-latn' : 'en', { hour: '2-digit', minute: '2-digit' })}`
             )
           : uiText(preferences.locale, 'Saved locally', 'محفوظ محليًا');
       case 'failed':
@@ -7282,7 +7477,7 @@ export function App() {
   }
 
   function renderSoundPresets() {
-    return <SoundPresetControls targetLabel={audioSections.some(section=>section.id===selectedAudioSectionId)?uiText(preferences.locale,'Selected audio section','القسم الصوتي المحدد'):displayMediaTitle(selectedMedia)} ar={preferences.locale==='ar'} value={{audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}} initialCode={pendingSoundCode} speedAvailable={!!selectedSpeedItem&&!selectedSpeedItem.locked} onApply={(preset,includeSpeed)=>{pushEditorHistory();if(audioSections.some(section=>section.id===selectedAudioSectionId))setAudioSections(sections=>sections.map(section=>section.id===selectedAudioSectionId?{...section,settings:{...preset.audio,fadeIn:0,fadeOut:0}}:section));else setAudioSettings(preset.audio);if(includeSpeed&&preset.speed&&selectedSpeedItem&&!selectedSpeedItem.locked)updateSpeedItem(selectedSpeedItem.id,preset.speed);setPendingSoundCode(undefined);}}/>;
+    return <SoundPresetControls targetLabel={audioSections.some(section=>section.id===selectedAudioSectionId)?uiText(preferences.locale,'Selected audio section','القسم الصوتي المحدد'):displayMediaTitle(selectedMedia)} ar={preferences.locale==='ar'} value={{processing:studioEdits.audio,audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}} initialCode={pendingSoundCode} speedAvailable={!!selectedSpeedItem&&!selectedSpeedItem.locked} onApply={(preset,includeSpeed)=>{pushEditorHistory();if(preset.processing)setStudioEdits(edits=>({...edits,audio:{...edits.audio,...preset.processing}}));if(audioSections.some(section=>section.id===selectedAudioSectionId))setAudioSections(sections=>sections.map(section=>section.id===selectedAudioSectionId?{...section,settings:{...preset.audio,fadeIn:0,fadeOut:0}}:section));else setAudioSettings(preset.audio);if(includeSpeed&&preset.speed&&selectedSpeedItem&&!selectedSpeedItem.locked)updateSpeedItem(selectedSpeedItem.id,preset.speed);setPendingSoundCode(undefined);}}/>;
   }
 
   function renderSpeedInspector() {
@@ -7616,19 +7811,16 @@ export function App() {
             {renderInspectorNumberField(inspectorText.size, selectedTextOverlay.fontSize, (value) => updateSelectedTextOverlay({ fontSize: clampRangeValue(value, 10, 160) }), { min: 10, max: 160, step: 1, suffix: 'px' })}
             {renderInspectorNumberField(inspectorText.layer, selectedTextOverlay.zIndex, (value) => updateSelectedTextOverlay({ zIndex: Math.max(0, Math.round(value)) }), { min: 0, step: 1 })}
           </div>
-          <label className="inspector-field">
+          <div className="inspector-field">
             <span>{inspectorText.font}</span>
-            <select
-              onChange={(event) => updateSelectedTextOverlay({ fontFamily: editorTextFontOptionFor(event.currentTarget.value).value })}
+            <DesktopMenu
+              ariaLabel={inspectorText.font}
+              onChange={(value) => updateSelectedTextOverlay({ fontFamily: editorTextFontOptionFor(value).value })}
               value={editorTextFontOptionFor(selectedTextOverlay.fontFamily).value}
-            >
-              {editorTextFontOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              valueLabel={editorTextFontOptionFor(selectedTextOverlay.fontFamily).label}
+              options={editorTextFontOptions}
+            />
+          </div>
           <ColorField ar={preferences.locale === 'ar'} label={inspectorText.color}
             onChange={(color, recordHistory) => updateSelectedTextOverlay({ color }, recordHistory)}
             value={selectedTextOverlay.color ?? '#ffffff'} />
@@ -7641,6 +7833,8 @@ export function App() {
   function renderSubtitleInspector() {
     return (
       <InspectorPanel title={t('subtitles')} subtitle={subtitleFile ? `${subtitleFile.name} / ${subtitleFile.cues.length}` : editorText.noSubtitle}>
+        {isAudioEditor&&<div className="inspector-section"><p>{uiText(preferences.locale,'Read along while listening. To share visible text, export a subtitle file or an MP4. Audio files contain sound only.','اقرأ النص أثناء الاستماع. لمشاركة النص، صدّر ملف ترجمة أو فيديو MP4. الملف الصوتي يحفظ الصوت فقط.')}</p>{subtitleFile?.cues.length? <div className="inspector-actions"><button className="button secondary" onClick={()=>{setSubtitlesVisible(true);setAudioInspectorOpen(true);setAudioPanelTab('video');}}><Film size={15}/>{uiText(preferences.locale,'Video with subtitles','فيديو بالترجمة')}</button><button className="button secondary" onClick={()=>void window.loaderly?.studio({action:'export-subtitles',cues:[...subtitleFile.cues],subtitleFormat:'srt',locale:preferences.locale}).then(result=>{setActivity(result.ok&&!result.canceled?uiText(preferences.locale,'Subtitle file saved.','حُفظ ملف الترجمة.'):result.canceled?'':uiText(preferences.locale,'Could not save subtitles.','تعذر حفظ الترجمة.'));}).catch(()=>setActivity(uiText(preferences.locale,'Could not save subtitles.','تعذر حفظ الترجمة.')))}><Download size={15}/>{uiText(preferences.locale,'Save SRT','حفظ SRT')}</button></div>:null}</div>}
+
         <div className="inspector-section">
           <strong>{uiText(preferences.locale, 'Subtitle file', 'ملف الترجمة')}</strong>
           <div className="inspector-actions">
@@ -7683,6 +7877,7 @@ export function App() {
               {subtitleFile.edited ? ` / ${editorText.editedSubtitle}` : ''}
             </strong>
             <small>{activeSubtitleCue ? `${activeSubtitleCueIndex + 1} / ${subtitleFile.cues.length}` : editorText.noCueAtPlayhead}</small>
+            <div className="subtitle-inspector-list" aria-label={uiText(preferences.locale,'Subtitle lines','سطور الترجمة')}>{subtitleFile.cues.map((cue,index)=><button type="button" key={index} aria-current={index===activeSubtitleCueIndex?'true':undefined} onClick={()=>updatePlayhead(cue.startSeconds+.002)}><bdi>{formatTimecode(cue.startSeconds)}</bdi><span dir="auto">{cue.text}</span></button>)}</div>
             {activeSubtitleCue ? (
               <>
                 <textarea
@@ -7938,10 +8133,10 @@ export function App() {
           queueMicrotask(() => { if (document.activeElement === button && !document.querySelector('[role="menu"], dialog[open]')) button.blur(); });
         }
       }} aria-label={uiText(preferences.locale, 'Media editor', 'محرر الوسائط')} className={`${className} editor-studio${isAudioEditor ? ' editor-studio--audio' : ''}`}>
-        <div className="editor-command-bar">
+        <div className="editor-command-bar" dir={preferences.locale==='ar'?'rtl':'ltr'}>
           <div className="editor-command-bar__media">
             <button className="editor-back-button" onClick={leaveEditorToWorkspace} type="button">
-              <ArrowLeft aria-hidden="true" size={15} />
+              {preferences.locale==='ar'?<ArrowRight aria-hidden="true" size={15}/>:<ArrowLeft aria-hidden="true" size={15}/>}
               {t('library')}
             </button>
             <div>
@@ -7961,7 +8156,7 @@ export function App() {
             <span aria-live="polite" className={`autosave-status autosave-status--${autosaveState}`} role="status" data-tooltip={autosaveLabel()}>{autosaveState==='saved'?<><Check size={13} aria-hidden="true"/>{uiText(preferences.locale,'Saved','محفوظ')}</>:autosaveLabel()}</span>
           </div>
           <div className="panel-actions">
-            <div className="editor-edit-actions"><a className="button secondary editor-guide-link" href={`${documentationUrl}${isAudioEditor ? 'audio' : 'editor'}/`} target="_blank" rel="noopener noreferrer" data-tooltip={uiText(preferences.locale, 'Open the editor guide', 'فتح دليل المحرر')}>
+            <div className="editor-edit-actions">{renderStudioTools()}<a className="button secondary editor-guide-link" href={`${documentationUrl}${isAudioEditor ? 'audio' : 'editor'}/`} target="_blank" rel="noopener noreferrer" data-tooltip={uiText(preferences.locale, 'Open the editor guide', 'فتح دليل المحرر')}>
               <BookOpen aria-hidden="true" size={15} />
               {uiText(preferences.locale, 'Help', 'مساعدة')}
             </a>
@@ -7996,6 +8191,7 @@ export function App() {
               }
             }}
             ref={editorStageRef}
+            popover={isPreviewFocusMode ? 'manual' : undefined}
             role={isPreviewFocusMode ? 'dialog' : 'region'}
             tabIndex={isPreviewFocusMode ? -1 : undefined}
           >
@@ -8015,7 +8211,7 @@ export function App() {
             >
             {selectedMedia.fileUrl ? selectedMedia.mediaKind === 'audio' ? (
               <div className="preview-audio audio-scene" style={{left:'50%',top:'50%',transform:'translate(-50%, -50%)',width:audioSceneRect.width,height:audioSceneRect.height,background:visualizerSettings.backgroundGradient ? `linear-gradient(145deg,${visualizerSettings.background},${visualizerSettings.backgroundEnd})` : visualizerSettings.background}}>
-                <AudioVisualizer analyser={audioAnalyser} playing={isPlaying} settings={visualizerSettings} scene={{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}/>
+                <AudioVisualizer analyser={audioAnalyser} playing={isPlaying} settings={visualizerSettings} scene={{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}} caption={activeSubtitleText}/>
                 <audio
                   className="preview-audio__element"
                   crossOrigin="anonymous"
@@ -8101,7 +8297,8 @@ export function App() {
                   }}
                   onLoadedMetadata={(event) => {
                     const duration = event.currentTarget.duration;
-                    const { videoHeight, videoWidth } = event.currentTarget;
+                    const proxy=studioProxy&&studioProxy.source===selectedMedia.filePath&&studioProxy.url===selectedMedia.fileUrl?studioProxy:undefined;
+                    const { videoHeight, videoWidth } = proxy?{videoHeight:proxy.size.height,videoWidth:proxy.size.width}:event.currentTarget;
 
                     if (Number.isFinite(duration) && duration > 0) {
                       updateSelectedMediaDuration(duration);
@@ -8171,7 +8368,8 @@ export function App() {
                   }}
                   onLoadedMetadata={(event) => {
                     const duration = event.currentTarget.duration;
-                    const { videoHeight, videoWidth } = event.currentTarget;
+                    const proxy=studioProxy&&studioProxy.source===selectedMedia.filePath&&studioProxy.url===selectedMedia.fileUrl?studioProxy:undefined;
+                    const { videoHeight, videoWidth } = proxy?{videoHeight:proxy.size.height,videoWidth:proxy.size.width}:event.currentTarget;
 
                     if (Number.isFinite(duration) && duration > 0) {
                       updateSelectedMediaDuration(duration);
@@ -8391,7 +8589,7 @@ export function App() {
                 {overlay.text}
               </button>
             ))}
-            {activeSubtitleText ? <div className="subtitle-preview-overlay">{activeSubtitleText}</div> : null}
+            {activeSubtitleText ? <div className={isAudioEditor?'audio-caption-text sr-only':'subtitle-preview-overlay'} dir="auto">{activeSubtitleText}</div> : null}
             {hasRealMedia && (!isAudioEditor || (visualizerSettings.showBadges && !cleanAudioView)) ? <div className="preview-tool-chip">{audioInspectorOpen ? uiText(preferences.locale, 'Audio', 'الصوت') : selectedLayerIdForMedia === 'text' || selectedTextOverlay ? editorText.textLayer : t(selectedLayer.labelKey)}</div> : null}
               {!isAudioEditor || (visualizerSettings.showBadges && !cleanAudioView) ? <div className={`play-state${isPlaying ? ' running' : ''}`}>{isPlaying ? t('previewPlaying') : t('previewPaused')}</div> : null}
             </PreviewCanvas>
@@ -8485,7 +8683,7 @@ export function App() {
 
           {audioInspectorOpen ? <InspectorPanel title={uiText(preferences.locale,'Audio','الصوت')} subtitle={uiText(preferences.locale,'Sound and visualizer settings','إعدادات الصوت والطيف')}>
             {isAudioEditor ? <div className="segmented-control audio-panel-tabs">{(['sound','visualizer','video'] as const).map(tab=><button key={tab} type="button" aria-pressed={audioPanelTab===tab} className={audioPanelTab===tab?'active':''} onClick={()=>setAudioPanelTab(tab)}>{tab==='sound'?<SlidersHorizontal size={14} aria-hidden="true"/>:tab==='video'?<Film size={14} aria-hidden="true"/>:<AudioLines size={14} aria-hidden="true"/>}{tab==='sound'?uiText(preferences.locale,'Sound','الصوت'):tab==='video'?uiText(preferences.locale,'Video','الفيديو'):uiText(preferences.locale,'Visualizer','الطيف')}</button>)}</div> : null}
-            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : isAudioEditor && audioPanelTab==='video' ? <VisualizerVideoExport busy={videoExportBusy} ar={preferences.locale==='ar'} analyser={audioAnalyser} playing={isPlaying} onBusy={setVideoExportBusy} options={{...visualizerVideo,scene:{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}} onChange={value=>setVisualizerVideo({size:value.size,resolution:value.resolution,image:value.scene.image,imageMode:value.scene.imageMode,logoSize:value.scene.logoSize,logoX:value.scene.logoX,logoY:value.scene.logoY})} payload={whole=>mediaOutputPayload(QuickCopyOutputKind.Audio,'Visualizer video',whole)}/> : <>{renderSoundPresets()}<AudioSectionControls base={audioSettings} sections={audioSections} selectedId={selectedAudioSectionId} onSelect={setSelectedAudioSectionId} onBase={value=>{pushEditorHistory();setAudioSettings(value);}} onSections={value=>{pushEditorHistory();setAudioSections(value);}} duration={timelineDuration} playhead={playheadSeconds} onSeek={updatePlayhead} ar={preferences.locale==='ar'} loop={isAudioEditor?loopPlayback:undefined} onLoopChange={setLoopPlayback}/></>}
+            {isAudioEditor && audioPanelTab==='visualizer' ? <VisualizerControls value={visualizerSettings} onChange={setVisualizerSettings} ar={preferences.locale==='ar'} onCleanView={openCleanAudioView}/> : isAudioEditor && audioPanelTab==='video' ? <VisualizerVideoExport captionTime={playheadSeconds} captionsVisible={subtitlesVisible} onCaptionsVisible={value=>{pushEditorHistory();setSubtitlesVisible(value);}} busy={videoExportBusy} ar={preferences.locale==='ar'} analyser={audioAnalyser} playing={isPlaying} onBusy={setVideoExportBusy} options={{...visualizerVideo,captions:subtitleFile?.cues,scene:{...visualizerVideo,settings:visualizerSettings,title:displayMediaTitle(selectedMedia)}}} onChange={value=>setVisualizerVideo({size:value.size,resolution:value.resolution,image:value.scene.image,imageMode:value.scene.imageMode,logoSize:value.scene.logoSize,logoX:value.scene.logoX,logoY:value.scene.logoY})} payload={whole=>mediaOutputPayload(QuickCopyOutputKind.Audio,'Visualizer video',whole)}/> : <>{renderSoundPresets()}<AudioSectionControls base={audioSettings} sections={audioSections} selectedId={selectedAudioSectionId} onSelect={setSelectedAudioSectionId} onBase={value=>{pushEditorHistory();setAudioSettings(value);}} onSections={value=>{pushEditorHistory();setAudioSections(value);}} duration={timelineDuration} playhead={playheadSeconds} onSeek={updatePlayhead} ar={preferences.locale==='ar'} loop={isAudioEditor?loopPlayback:undefined} onLoopChange={setLoopPlayback}/></>}
           </InspectorPanel> : renderEditorInspector()}
         </div>
 
@@ -8496,7 +8694,7 @@ export function App() {
   }
 
   function renderDownloadsSurface() {
-    const downloadRows = mediaRows.filter((row) => row.sourceType !== 'local');
+    const downloadRows = mediaRows.filter(isDownloadHistoryRow);
     const downloadingRows = downloadRows.filter((row) => row.status === 'downloading');
     const queuedRows = downloadRows.filter((row) => row.status === 'queued');
     const completedRows = downloadRows.filter((row) => row.status === 'ready' || row.status === 'edited');
@@ -8523,9 +8721,14 @@ export function App() {
       { value: 'failed', label: uiText(preferences.locale, 'Failed', 'متعثر'), count: failedRows.length }
     ];
     const hasQueuedDownloads = queuedRows.some((row) => Boolean(row.source));
+    const busyDownloadIds = downloadQueue.entries.map(entry => entry.id);
+    const removableRows = filteredDownloadRows.filter(row => canRemoveDownloadHistory(row, busyDownloadIds));
+    const selectedDownloadIds = removableRows.filter(row => downloadSelection.includes(row.id)).map(row => row.id);
+    const allDownloadsSelected = removableRows.length > 0 && selectedDownloadIds.length === removableRows.length;
 
     return (
       <section className="route-page downloads-page">
+
         <header className="page-heading"><div><h1>{t('downloads')}</h1><p>{uiText(preferences.locale, 'Paste a link to download. Completed files are saved in your library.', 'الصق رابطًا للتنزيل. الملفات المكتملة تُحفظ في مكتبتك.')}</p></div></header>
           <section className="command-bar download-composer" aria-label={uiText(preferences.locale, 'Download command', 'إضافة تنزيل')}>
             <div className="command-bar__controls">
@@ -8533,10 +8736,10 @@ export function App() {
                 <Link aria-hidden="true" size={17} />
                 <textarea
                   aria-label={uiText(preferences.locale, 'Media URL', 'رابط الوسائط')}
-                  dir="auto"
+                  dir={urlValue ? 'auto' : preferences.locale === 'ar' ? 'rtl' : 'ltr'}
                   onChange={(event) => setUrlValue(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                    if (isDownloadShortcut(event.nativeEvent, window.loaderly?.platform ?? 'win32')) {
                       event.preventDefault();
                       void addDownload();
                     }
@@ -8546,35 +8749,49 @@ export function App() {
                   value={urlValue}
                 />
               </label>
-              <div className="command-bar__actions">
-                <DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={downloadLocationId} valueLabel={downloadLocationId ? preferences.downloadLocations.find(l=>l.id===downloadLocationId)?.name ?? uiText(preferences.locale,'Automatic location','المكان التلقائي') : uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===(preferences.quality==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={setDownloadLocationId}/>
-                <DesktopMenu
-                  ariaLabel={t('quality')}
-                  onChange={(quality) => {
-                    updatePreferences({ quality });
-                    setActivity(t('qualitySet', { quality: qualityLabel(quality, preferences.locale) }));
-                  }}
-                  options={qualityMenuOptions}
-                  value={preferences.quality}
-                  valueLabel={qualityLabel(preferences.quality, preferences.locale)}
-                />
-
-                <button className="button primary" onClick={() => void addDownload()} type="button">
-                  <Download aria-hidden="true" size={15} />
-                  {preferences.downloadStartMode === 'auto'
-                    ? uiText(preferences.locale, 'Download now', 'تنزيل الآن')
-                    : uiText(preferences.locale, 'Add to queue', 'إضافة إلى قائمة الانتظار')}
-                </button>
+            </div>
+            <div className="download-composer__fields">
+              <div className="location-field"><span className="location-field__label">{uiText(preferences.locale, 'Format & quality', 'الصيغة والجودة')}</span>
+                <DesktopMenu ariaLabel={t('quality')} onChange={quality => { updatePreferences({ quality }); setActivity(t('qualitySet', { quality: qualityLabel(quality, preferences.locale) })); }} options={qualityMenuOptions} layout="detailed" value={preferences.quality} valueLabel={qualityLabel(preferences.quality, preferences.locale)}/>
               </div>
+              <div className="location-field"><span className="location-field__label">{uiText(preferences.locale, 'Save to', 'الحفظ في')}</span>
+                <DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={downloadLocationId} valueLabel={downloadLocationId ? preferences.downloadLocations.find(l=>l.id===downloadLocationId)?.name ?? uiText(preferences.locale,'Automatic location','المكان التلقائي') : uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===(preferences.quality==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={setDownloadLocationId}/>
+              </div>
+            <MusicDownloadOptions composer ar={preferences.locale==='ar'} mode={preferences.audioMode} onChange={audioMode => updatePreferences({ audioMode })} setupRequired={downloadRows.some(row => downloadAudioMode(row) !== 'original' && /LOCAL_(MODEL|RUNTIME)_NOT_INSTALLED/.test(row.errorMessage ?? ''))}/>
+            </div>
+
+            <div className="download-composer__footer">
+              <div className="download-composer__start">
+              <small>{uiText(preferences.locale, 'Start with', 'للبدء')} <kbd dir="ltr">{shortcutLabel('Mod+Enter', window.loaderly?.platform ?? 'win32')}</kbd></small>
+              <button className="button primary" onClick={() => void addDownload()} type="button"><Download aria-hidden="true" size={15}/>{preferences.downloadStartMode === 'auto' ? uiText(preferences.locale, 'Download now', 'تنزيل الآن') : uiText(preferences.locale, 'Add to queue', 'إضافة إلى قائمة الانتظار')}</button>
+              </div>
+              <QuickCaptureBar ar={preferences.locale==='ar'} value={preferences.quickCapture} state={quickCaptureState} onChange={quickCapture => updatePreferences({quickCapture})}/>
             </div>
           </section>
         <article className="card-panel download-queue">
+
+
           <div className="download-queue__toolbar">
             <div className="download-filters" aria-label={uiText(preferences.locale, 'Download status', 'حالة التنزيل')}>
-              {downloadFilterOptions.map(option => <button className={downloadFilter === option.value ? 'active' : ''} aria-pressed={downloadFilter === option.value} key={option.value} onClick={() => setDownloadFilter(option.value)} type="button">{option.label}<span>{option.count}</span></button>)}
+              {downloadFilterOptions.map(option => <button className={downloadFilter === option.value ? 'active' : ''} aria-pressed={downloadFilter === option.value} key={option.value} onClick={() => { setDownloadSelection([]); setDownloadFilter(option.value); }} type="button">{option.label}<span>{option.count}</span></button>)}
             </div>
+            <div className="download-queue__actions">
+              <button className="button secondary" type="button" disabled={!downloadSelecting && !removableRows.length} aria-pressed={downloadSelecting} onClick={() => { setDownloadSelecting(value => !value); setDownloadSelection([]); }}>{downloadSelecting ? <X size={15}/> : <Check size={15}/>} {uiText(preferences.locale, downloadSelecting ? 'Done selecting' : 'Select downloads', downloadSelecting ? 'إنهاء التحديد' : 'تحديد التنزيلات')}</button>
+        <DownloadQueueControls ar={preferences.locale==='ar'} state={downloadQueue} rows={downloadRows}
+          onStart={id=>{const row=mediaRows.find(r=>r.id===id);if(row)retryDownload(row);}}
+          onSchedule={(id,at)=>setMediaRows(rows=>rows.map(row=>row.id===id?{...row,downloadScheduledAt:at}:row))}/>
             {hasQueuedDownloads ? <button className="button secondary" onClick={startAllQueuedDownloads} type="button"><Play size={14} />{uiText(preferences.locale, 'Start queued', 'بدء المنتظر')}</button> : null}
+            </div>
           </div>
+          {downloadSelecting && <div className="download-selection">
+            <div className="download-selection__actions">
+              <button className="button secondary" disabled={!removableRows.length} aria-pressed={allDownloadsSelected} onClick={() => setDownloadSelection(allDownloadsSelected ? [] : removableRows.map(row => row.id))} type="button"><Check size={15}/>{uiText(preferences.locale, allDownloadsSelected ? 'Clear selection' : downloadFilter === 'all' ? 'Select all' : 'Select all results', allDownloadsSelected ? 'إلغاء التحديد' : downloadFilter === 'all' ? 'تحديد الكل' : 'تحديد كل النتائج')}</button>
+              <span role="status">{uiText(preferences.locale, `Selected: ${selectedDownloadIds.length}`, `المحدد: ${selectedDownloadIds.length}`)}</span>
+              <button className="button secondary" disabled={!selectedDownloadIds.length} onClick={() => removeDownloadHistory(selectedDownloadIds)} type="button"><Trash2 size={15}/>{uiText(preferences.locale, 'Remove selected', 'إزالة المحدد')}</button>
+            </div>
+            <small>{uiText(preferences.locale, 'Remove completed or failed downloads from history. Library files stay saved.', 'أزل التنزيلات المكتملة أو المتعثرة من السجل. تبقى ملفات المكتبة محفوظة.')}</small>
+          </div>}
+          {!!removedDownloadIds.length && <div className="download-history-notice"><span role="status">{uiText(preferences.locale, 'Removed from download history. Library files are unchanged.', 'أُزيلت من سجل التنزيلات. ملفات المكتبة محفوظة.')}</span><button className="button secondary" onClick={() => { setMediaRows(rows => restoreDownloadHistory(rows, removedDownloadIds)); setRemovedDownloadIds([]); }} type="button"><Undo2 size={14}/>{uiText(preferences.locale, 'Undo', 'تراجع')}</button><button className="icon-button" aria-label={uiText(preferences.locale, 'Dismiss message', 'إغلاق الرسالة')} onClick={() => setRemovedDownloadIds([])} type="button"><X size={15}/></button></div>}
           {renderDownloadCards(filteredDownloadRows)}
         </article>
       </section>
@@ -8585,6 +8802,7 @@ export function App() {
     const libraryRows = mediaRows.filter((row) => row.status === 'ready' || row.status === 'edited');
     const normalizedSearch = librarySearch.trim().toLocaleLowerCase(preferences.locale);
     const filteredLibraryRows = libraryRows
+      .filter(row=>!libraryCollectionFilter||libraryCollections.find(c=>c.id===libraryCollectionFilter)?.members.includes(row.id))
       .filter((row) => libraryFilter === 'all' || mediaKindForRow(row) === libraryFilter)
       .filter((row) => {
         if (!normalizedSearch) {
@@ -8633,12 +8851,21 @@ export function App() {
 
         <div className={`route-workspace route-workspace--collection${selectedLibraryItem.id > 0 ? " has-selection" : ""}`}>
           <article className="card-panel route-panel route-panel--large">
+            <LibraryWorkspaceTools ar={preferences.locale==='ar'} rows={libraryRows} selected={librarySelecting?librarySelection:selectedLibraryItem.id?[selectedLibraryItem.id]:[]} collections={libraryCollections} filter={libraryCollectionFilter} onFilter={value=>{setLibraryCollectionFilter(value);setLibrarySelection([]);setLibrarySelecting(false);setLibrarySearch('');setLibraryFilter('all');}}
+              onCollections={value=>{try{localStorage.setItem('loaderly:collections:v1',JSON.stringify(value));setLibraryCollections(value);return true;}catch{setActivity(uiText(preferences.locale,'Collection could not be saved.','تعذر حفظ المجموعة.'));return false;}}}
+              onDuplicates={paths=>{setLibrarySelecting(true);setLibrarySelection(libraryRows.filter(r=>r.filePath&&paths.includes(r.filePath)).map(r=>r.id));}}
+              onRelink={(id,file)=>{
+                const old=mediaRows.find(r=>r.id===id);if(!old)return;
+                const snapshot=readSavedEditorSnapshot(old);
+                try{if(snapshot)localStorage.setItem(editorSessionStorageKeys(file.path)[0],JSON.stringify(snapshot));}catch{setActivity(uiText(preferences.locale,'Could not preserve the edits. The file was not relinked.','تعذر حفظ التعديلات. لم يُربط الملف.'));return;}
+                setMediaRows(rows=>rows.map(row=>row.id===id?{...row,source:row.sourceType==='local'?file.path:row.source,filePath:file.path,fileUrl:file.fileUrl,thumbnailUrl:file.thumbnailUrl,title:file.name,duration:formatDuration(file.durationSeconds),durationSeconds:file.durationSeconds,size:formatBytes(file.sizeBytes),missing:false}:row));
+              }}/>
             <div className="library-toolbar library-toolbar--rich">
               <label className="toolbar-search">
                 <Search aria-hidden="true" size={15} />
                 <input
                   aria-label={uiText(preferences.locale, 'Search library', 'البحث في المكتبة')}
-                  dir="auto"
+                  dir={librarySearch ? 'auto' : preferences.locale === 'ar' ? 'rtl' : 'ltr'}
                   onChange={(event) => setLibrarySearch(event.currentTarget.value)}
                   placeholder={uiText(preferences.locale, 'Search title or source', 'ابحث بالعنوان أو المصدر')}
                   type="search"
@@ -8693,10 +8920,10 @@ export function App() {
                     <List aria-hidden="true" size={15} />
                   </button>
                 </div>
+              <button className="button secondary" disabled={!libraryRows.length} aria-pressed={librarySelecting} onClick={()=>{setLibrarySelecting(value=>!value);setLibrarySelection([]);}}>{librarySelecting?<X size={15}/>:<Check size={15}/>} {uiText(preferences.locale,librarySelecting?'Done selecting':'Select files',librarySelecting?'إنهاء التحديد':'تحديد ملفات')}</button>
               </div>
             </div>
-            <div className="library-bulk-toolbar" hidden={!libraryRows.length}>
-              <button className="button secondary" disabled={!libraryRows.length} aria-pressed={librarySelecting} onClick={()=>{setLibrarySelecting(value=>!value);setLibrarySelection([]);}}>{librarySelecting?<X size={15}/>:<Check size={15}/>} {uiText(preferences.locale,librarySelecting?'Done selecting':'Select files',librarySelecting?'إنهاء التحديد':'تحديد ملفات')}</button>
+            <div className="library-bulk-toolbar" hidden={!libraryRows.length||!librarySelecting}>
               {librarySelecting&&<><button className="button secondary" onClick={()=>setLibrarySelection(filteredLibraryRows.map(row=>row.id))}><Check size={15}/>{uiText(preferences.locale,librarySearch||libraryFilter!=='all'?'Select all results':'Select all',librarySearch||libraryFilter!=='all'?'تحديد كل النتائج':'تحديد الكل')}</button><button className="button secondary" disabled={!librarySelection.length} onClick={()=>setLibrarySelection([])}><X size={15}/>{uiText(preferences.locale,'Clear selection','إلغاء التحديد')}</button><span role="status">{librarySelection.length} {uiText(preferences.locale,'selected','محدد')}</span><button className="button secondary" disabled={!librarySelection.length} onClick={()=>setLibraryRemoval([...librarySelection])}><Trash2 size={15}/>{uiText(preferences.locale,'Remove selected','إزالة المحدد')}</button></>}
             </div>
             <div className={`library-grid library-grid--${libraryViewMode}`}>
@@ -8706,18 +8933,19 @@ export function App() {
                     <Search aria-hidden="true" size={24} />
                   </span>
                   <div>
-                    <strong>{uiText(preferences.locale, 'No matching media', 'لا توجد ملفات مطابقة')}</strong>
-                    <small>{uiText(preferences.locale, 'Clear the search or switch the media filter.', 'امسح البحث أو غيّر فلتر الوسائط.')}</small>
+                    <strong>{uiText(preferences.locale, libraryCollectionFilter&&!librarySearch&&libraryFilter==='all'?'This collection is empty':'No matching media', libraryCollectionFilter&&!librarySearch&&libraryFilter==='all'?'هذه المجموعة فارغة':'لا توجد ملفات مطابقة')}</strong>
+                    <small>{uiText(preferences.locale, libraryCollectionFilter?'Use Add files above to choose from your library. Your other files are still in All files.':'Clear the search or switch the media filter.', libraryCollectionFilter?'اختر «إضافة ملفات» أعلاه. باقي ملفاتك موجودة في «كل الملفات».':'امسح البحث أو غيّر فلتر الوسائط.')}</small>
                   </div>
                   <button
                     className="button secondary"
                     onClick={() => {
                       setLibrarySearch('');
                       setLibraryFilter('all');
+                      setLibraryCollectionFilter('');
                     }}
                     type="button"
                   >
-                    {uiText(preferences.locale, 'Reset filters', 'إعادة ضبط الفلاتر')}
+                    {uiText(preferences.locale, libraryCollectionFilter?'Show all files':'Reset filters', libraryCollectionFilter?'عرض كل الملفات':'إعادة ضبط الفلاتر')}
                   </button>
                 </div>
               ) : renderLibraryCards(filteredLibraryRows, selectedLibraryItem.id)}
@@ -8764,12 +8992,68 @@ export function App() {
     );
   }
 
+  function renderStudioTools() {
+    return (hasRealMedia && selectedMedia.filePath && <StudioPanel key={selectedMedia.id}
+          onOpen={pausePlaybackForPreciseRegionEdit} ar={preferences.locale === 'ar'} source={selectedMedia.filePath} mediaKind={isAudioEditor?'audio':'video'} title={displayMediaTitle(selectedMedia)}
+          duration={selectedDurationSeconds} playhead={playheadSeconds} start={trimStartSeconds} end={effectiveTrimEnd}
+          value={studioEdits} onChange={value => { pushEditorHistory(); setStudioEdits(value); }}
+          pendingTemplate={pendingEditorTemplate?.name} pendingTemplateCode={pendingEditorTemplate?.code} onApplyTemplate={()=>{
+            const preset=pendingEditorTemplate&&decodeEditorPreset(pendingEditorTemplate.code);if(!preset)return;
+            pushEditorHistory();setStudioEdits({...applyEditorPreset(preset,selectedDurationSeconds),ranges:studioEdits.ranges,markers:studioEdits.markers});setPendingEditorTemplate(undefined);
+          }} onCancelTemplate={()=>setPendingEditorTemplate(undefined)}
+          capture={captureEditorSnapshot} restore={value => {
+            const snapshot = value as EditorUiSnapshot;
+            if (!snapshot || !Array.isArray(snapshot.textOverlays) || !Array.isArray(snapshot.cutOutRanges)) return;
+            pushEditorHistory(); applyEditorSnapshot({...captureEditorSnapshot(),...snapshot});
+          }}
+          openProject={openStudioProject} payload={studioOutputPayload} onSeek={updatePlayhead}
+          onCuts={ranges => { pushEditorHistory(); setCutOutRanges(previous => [...previous, ...ranges.map((range, i) => ({ ...range, id: Date.now() + i }))]); }}
+          cues={subtitleFile?.cues ?? []} onCues={cues => { pushEditorHistory(); setSubtitleFile(previous => ({ ...previous, path: previous?.path ?? '', name: previous?.name ?? 'Transcript.srt', cues, edited: true })); setSubtitlesVisible(true); }}
+          transcript={studioTranscript} onTranscript={value=>{pushEditorHistory();setStudioTranscript(value);}}
+          onImportTranscript={value=>{
+            if(!value.cues.length)return;
+            pushEditorHistory();setStudioTranscript(value);
+            setSubtitleFile({path:'',name:'Transcript.srt',cues:value.cues,edited:true});
+            setSubtitlesVisible(true);
+          }}
+          onReviewCaptions={video=>{
+            setSubtitlesVisible(true);setAudioInspectorOpen(video);setAudioPanelTab('video');
+            if(!video){openEditorTool('subtitles');updatePlayhead(subtitleFile?.cues[0]?.startSeconds??0);}
+          }}
+          onProxy={async path => {
+            const result = await window.loaderly?.prepareMediaPreview(path);
+            if (!result || result.canceled) throw new Error('MISSING_MEDIA');
+            setStudioProxy(path===selectedMedia.filePath?undefined:{source:selectedMedia.filePath!,url:result.fileUrl,size:previewMediaSize});
+            setMediaRows(rows => rows.map(row => row.id === selectedMedia.id ? { ...row, fileUrl: result.fileUrl } : row));
+          }} />);
+  }
+
   function renderEditorSurface() {
     return (
       <section className="route-surface route-surface--editor">
         {renderEditorPanel('editor-panel route-panel--large')}
+
       </section>
     );
+  }
+
+  function studioOutputPayload(range?: NamedRange) {
+    const payload = mediaOutputPayload(isAudioEditor ? QuickCopyOutputKind.Audio : QuickCopyOutputKind.Video, range?.name ?? displayMediaTitle(selectedMedia), true);
+    const window = { startSeconds: range?.start ?? trimStartSeconds, endSeconds: range?.end ?? effectiveTrimEnd };
+    return { ...payload, ...window, kind: isAudioEditor ? 'audio' as const : range?.preset?.kind ?? studioEdits.outputPreset?.kind ?? payload.kind, outputPreset: range?.preset ?? studioEdits.outputPreset, audioSections: audioSectionsForOutput(audioSections, { ranges: keptRangesFromCutOuts(window, cutOutRanges), speeds: speedItems }) };
+  }
+
+  async function openStudioProject(project: PortableProject) {
+    const result = await window.loaderly?.prepareMediaPreview(project.sourcePath);
+    if (!result || result.canceled) throw new Error('MISSING_MEDIA');
+    persistEditorSnapshotNow(selectedMedia);
+    const id = allocateMediaId();
+    const row: MediaRow = { id, title: result.name, source: project.sourcePath, sourceType: 'local', mediaKind: mediaKindForPath(project.sourcePath), status: 'ready', progress: 100, progressKnown: true, downloadPhase: 'completed', duration: formatDuration(result.durationSeconds), durationSeconds: result.durationSeconds, size: formatBytes(result.sizeBytes), filePath: project.sourcePath, fileUrl: result.fileUrl, thumbnailUrl: result.thumbnailUrl, createdAtMs: Date.now(), completedAtMs: Date.now() };
+    const snapshot: Record<string, unknown> = { ...project.snapshot, studio: project.edits, studioTranscript: project.transcript };
+    if (!Array.isArray(snapshot.textOverlays) || !Array.isArray(snapshot.cutOutRanges)) throw new Error('INVALID_PROJECT');
+    localStorage.setItem(editorSessionStorageKeys(project.sourcePath)[0], JSON.stringify(snapshot));
+    localStorage.setItem(`loaderly:studio-revisions:${project.sourcePath}`, JSON.stringify(project.revisions));
+    setMediaRows(rows => [row, ...rows]); setSelectedMediaId(id); setOpenedEditorMediaId(id); setActiveNav('editor');
   }
 
   function outputFormatForAction(kind: EditorOutputActionKind): string {
@@ -8896,51 +9180,80 @@ export function App() {
   }
 
   function renderToolsSurface() {
-    const tools = [
-      { name: 'yt-dlp', title: 'yt-dlp', description: uiText(preferences.locale, 'Downloads video and audio from links.', 'تنزيل الفيديو والصوت من الروابط.') },
-      { name: 'ffmpeg', title: 'FFmpeg + FFprobe', description: uiText(preferences.locale, 'Video editing, exports and media information. Updated together.', 'تعديل الفيديو والتصدير ومعلومات الملفات. يحُدّثهما معًا.') },
-      { name: 'deno', title: 'Deno', description: uiText(preferences.locale, 'JavaScript runtime used for YouTube downloads.', 'محرك JavaScript المستخدم لتنزيلات يوتيوب.') }
+    const text = (en: string, ar: string) => uiText(preferences.locale, en, ar);
+    const tools: { name: ToolPackageName; title: string; description: string }[] = [
+      { name: 'yt-dlp', title: 'yt-dlp', description: text('Downloads video and audio from links.', 'تنزيل الفيديو والصوت من الروابط.') },
+      { name: 'ffmpeg', title: 'FFmpeg + FFprobe', description: text('Video editing, exports and media information. Updated together.', 'تعديل الفيديو والتصدير ومعلومات الملفات. يُحدَّثان معًا.') },
+      { name: 'pytubefix', title: 'pytubefix', description: text('Optional YouTube backup. Automatic switches on compatible failures after installation. Other sites use yt-dlp.', 'احتياطي اختياري ليوتيوب. يستخدمه الوضع التلقائي عند تعذر المحرك الأساسي بعد تثبيته. تستخدم بقية المواقع yt-dlp.') },
+      { name: 'deno', title: 'Deno', description: text('JavaScript runtime used for YouTube downloads.', 'محرك JavaScript المستخدم لتنزيلات يوتيوب.') }
     ];
+    const updates = toolBatchCandidates(toolStatuses, 'updates');
+    const missingTools = toolBatchCandidates(toolStatuses, 'missing');
+    const failed = toolBatchItems.filter(item => item.phase === 'failed');
+    const ready = toolBatchItems.filter(item => item.phase === 'ready').length;
+    const canceled = toolBatchItems.filter(item => item.phase === 'canceled').length;
+    const busy = Boolean(updatingToolName);
+    const locked = toolCheckBusy || busy;
+    const current = tools.find(tool => tool.name === updatingToolName);
+    const position = toolBatchItems.findIndex(item => item.name === updatingToolName) + 1;
+    const summary = busy ? text(`Working on ${position} of ${toolBatchItems.length}: ${current?.title}`, `جارٍ تجهيز الأداة ${position} من ${toolBatchItems.length}: ${current?.title}`)
+      : toolBatchItems.length ? [text(`${ready} ready`, `جاهز: ${ready}`), ...(failed.length ? [text(`${failed.length} failed`, `تعذر: ${failed.length}`)] : []), ...(canceled ? [text(`${canceled} canceled`, `أُلغي: ${canceled}`)] : [])].join(' · ')
+      : toolUpdateMessage;
+    const phaseText = toolStopRequested ? text('Canceling the current operation and remaining tools…', 'جارٍ إلغاء العملية الحالية والأدوات المتبقية…')
+      : toolInstallProgress?.phase === 'downloading'
+        ? text(`Downloading ${(Number(toolInstallProgress.received ?? 0) / 1048576).toFixed(1)} MB${toolInstallProgress.total ? ` / ${(toolInstallProgress.total / 1048576).toFixed(1)} MB` : ''}`, `جارٍ التنزيل: ${(Number(toolInstallProgress.received ?? 0) / 1048576).toFixed(1)}${toolInstallProgress.total ? ` / ${(toolInstallProgress.total / 1048576).toFixed(1)}` : ''} ميجابايت`)
+        : toolInstallProgress?.phase === 'preparing-runtime' ? text('Preparing a private runtime…', 'جارٍ تجهيز بيئة التشغيل الخاصة…')
+        : toolInstallProgress?.phase === 'installing' ? text('Installing the engine and its dependencies…', 'جارٍ تثبيت المحرك ومتطلباته…')
+        : toolInstallProgress?.phase === 'verifying' ? text('Verifying and starting the tool…', 'جارٍ التحقق وتشغيل الأداة…')
+        : toolInstallProgress?.phase === 'activating' ? text('Finishing installation…', 'جارٍ إنهاء التثبيت…') : text('Checking the verified package…', 'جارٍ فحص حزمة الأداة…');
     return (
       <section className="route-page tools-page">
-        {renderRouteHero({ eyebrow: uiText(preferences.locale, 'APP TOOLS', 'أدوات التطبيق'), title: t('tools'),
-          description: uiText(preferences.locale, 'Everything Loaderly needs to download, edit and export.', 'كل ما يحتاجه Loaderly للتنزيل والتعديل والتصدير.'),
-          actions: <button className="button secondary" disabled={toolCheckBusy || Boolean(updatingToolName)} onClick={() => void runToolCheck()} type="button"><RefreshCcw size={15} />{toolCheckBusy ? uiText(preferences.locale, 'Checking…', 'جارٍ الفحص…') : uiText(preferences.locale, 'Check for updates', 'فحص التحديثات')}</button>
+        {renderRouteHero({ eyebrow: text('APP TOOLS', 'أدوات التطبيق'), title: t('tools'),
+          description: text('Everything Loaderly needs to download, edit and export.', 'كل ما يحتاجه Loaderly للتنزيل والتعديل والتصدير.'),
+          actions: <button className="button secondary" disabled={locked} onClick={() => void runToolCheck()} type="button"><RefreshCcw size={15} />{toolCheckBusy ? text('Checking…', 'جارٍ الفحص…') : text('Check for updates', 'فحص التحديثات')}</button>
         })}
-        <article className="card-panel tools-manager" aria-busy={toolCheckBusy || Boolean(updatingToolName)}>
-          <div className="tools-update-notice" role="status" aria-live="polite"><Wrench size={16} /><span dir="auto">{toolUpdateMessage}</span></div>
-          {updatingToolName && <div className="tool-install-progress" role="status" aria-live="polite">
-            <span>{toolInstallProgress?.phase === 'downloading'
-              ? uiText(preferences.locale, `Downloading ${(Number(toolInstallProgress.received ?? 0) / 1048576).toFixed(1)} MB${toolInstallProgress.total ? ` / ${(toolInstallProgress.total / 1048576).toFixed(1)} MB` : ''}`, `جارٍ التنزيل: ${(Number(toolInstallProgress.received ?? 0) / 1048576).toFixed(1)} ميجابايت`)
-              : toolInstallProgress?.phase === 'verifying' ? uiText(preferences.locale, 'Verifying and starting the tool. The first run can take up to 90 seconds on macOS.', 'جارٍ التحقق وتشغيل الأداة. قد يستغرق التشغيل الأول على الماك حتى 90 ثانية.')
-              : toolInstallProgress?.phase === 'activating' ? uiText(preferences.locale, 'Finishing installation…', 'جارٍ إنهاء التثبيت…') : uiText(preferences.locale, 'Checking the verified package…', 'جارٍ فحص حزمة الأداة…')}</span>
-            <button className="button secondary" type="button" onClick={() => void window.loaderly?.cancelToolInstall()}>{uiText(preferences.locale, 'Cancel', 'إلغاء')}</button>
+        <article className="card-panel tools-manager" aria-busy={locked}>
+          <div className="tools-batch-bar">
+            <div className="tools-update-notice" role="status" aria-live="polite"><Wrench size={16} /><span dir="auto">{summary}</span></div>
+            <div className="tools-batch-actions">
+              <button className="button primary" type="button" disabled={locked || !updates.length} onClick={() => void updateBundledTools(updates)}><RefreshCcw size={15}/>{text('Update all', 'تحديث الكل')}{updates.length > 0 && ` (${updates.length})`}</button>
+              <button className={`button ${!updates.length && missingTools.length ? 'primary' : 'secondary'}`} type="button" disabled={locked || !missingTools.length} onClick={() => void updateBundledTools(missingTools)}><Download size={15}/>{text('Install missing', 'تثبيت الناقص')}{missingTools.length > 0 && ` (${missingTools.length})`}</button>
+              {!busy && failed.length > 0 && <button className="button secondary" type="button" disabled={toolCheckBusy} onClick={() => void updateBundledTools(failed.map(item => item.name))}><RefreshCcw size={15}/>{text('Retry failed', 'إعادة محاولة الفاشلة')} ({failed.length})</button>}
+            </div>
+          </div>
+          {busy && <div className="tool-install-progress" role="status" aria-live="polite">
+            <span dir="auto">{phaseText}</span>
+            <button className="button secondary" type="button" disabled={toolStopRequested} onClick={() => void cancelToolBatch()}>{text(toolBatchItems.length > 1 ? 'Cancel all' : 'Cancel', toolBatchItems.length > 1 ? 'إلغاء الكل' : 'إلغاء')}</button>
           </div>}
           <div className="tools-list">
             {tools.map(tool => {
-              const status = toolStatuses.find(item => item.name === tool.name);
-              const probe = tool.name === 'ffmpeg' ? toolStatuses.find(item => item.name === 'ffprobe') : undefined;
-              const missing = status && (!status.available || (probe && !probe.available));
-              const update = status?.updateAvailable || probe?.updateAvailable;
-              const working = updatingToolName === tool.name;
-              const badge = !status ? uiText(preferences.locale, 'Not checked', 'لم يُفحص') : missing ? uiText(preferences.locale, 'Not installed', 'غير مثبت') : status.checkError ? uiText(preferences.locale, 'Installed', 'مثبت') : update ? uiText(preferences.locale, 'Update available', 'تحديث متاح') : status.updateAvailable === false ? uiText(preferences.locale, 'Up to date', 'محدّث') : uiText(preferences.locale, 'Installed', 'مثبت');
-              return <div className="tool-entry" key={tool.name}>
-                <span className="tool-entry__icon"><Wrench size={22} /></span>
-                <div className="tool-entry__copy"><div className="tool-entry__heading"><h2>{tool.title}</h2><span className={`tool-row__badge${missing ? ' missing' : update ? ' pending' : ' current'}`}>{badge}</span></div>
+              const { status, probe, missing, update, supported } = toolPackageState(toolStatuses, tool.name);
+              const job = toolBatchItems.find(item => item.name === tool.name);
+              const working = busy && updatingToolName === tool.name;
+              const error = status?.checkError || probe?.checkError;
+              const badge = job?.phase === 'running' ? text('In progress', 'قيد التنفيذ') : job?.phase === 'queued' ? text('Waiting', 'في الانتظار')
+                : job?.phase === 'failed' ? text('Failed', 'تعذر التثبيت') : job?.phase === 'canceled' ? text('Canceled', 'أُلغي') : job?.phase === 'ready' ? text('Ready', 'جاهز')
+                : !status ? text('Not checked', 'لم يُفحص') : missing ? text('Not installed', 'غير مثبت') : error ? text('Installed', 'مثبت') : update ? text('Update available', 'تحديث متاح') : status.updateAvailable === false ? text('Up to date', 'محدّث') : text('Installed', 'مثبت');
+              return <div className="tool-entry" key={tool.name} data-tool={tool.name} data-phase={job?.phase}>
+                <span className="tool-entry__icon">{working ? <RefreshCcw className="spin" size={22}/> : <Wrench size={22}/>}</span>
+                <div className="tool-entry__copy"><div className="tool-entry__heading"><h2 dir="ltr">{tool.title}</h2><span className={`tool-row__badge${job?.phase === 'failed' || missing ? ' missing' : update || working || job?.phase === 'queued' ? ' pending' : ' current'}`}>{badge}</span></div>
                   <p>{tool.description}</p>
-                  <div className="tool-entry__versions"><span data-tooltip={status?.path}>{uiText(preferences.locale, 'Installed', 'المثبت')}: <b>{status?.available ? parseToolVersion(status.version ?? '') ?? status.version : 'N/A'}</b></span>
-                  <span>{uiText(preferences.locale, 'Latest', 'الأحدث')}: <b>{status?.latestVersion ?? 'N/A'}</b></span></div>
-                  {status?.checkError ? <small className="tool-entry__error" dir="auto">{uiText(preferences.locale, status.checkError, status.checkError.includes('limited requests') ? 'خدمة التحديثات حدّت الطلبات مؤقتًا. أعد المحاولة لاحقًا.' : status.checkError.includes('too long') ? 'تأخرت استجابة خدمة التحديثات. أعد المحاولة بعد دقيقة.' : status.checkError.includes('reach the update service') ? 'تعذر الاتصال بخدمة التحديثات. تحقق من اتصالك وأعد المحاولة بعد دقيقة.' : 'تعذر فحص التحديثات الآن. أعد المحاولة لاحقًا.')}</small> : null}
-                  {status?.message && !status.available && status.path ? <small className="tool-entry__error" dir="auto">{uiText(preferences.locale,status.message,'تعذّر تشغيل الأداة. أعد تثبيتها من هنا ثم حاول مجددًا.')}</small> : null}
+                  <div className="tool-entry__versions"><span data-tooltip={status?.path}>{text('Installed', 'المثبت')}: <b dir="auto">{status?.available ? parseToolVersion(status.version ?? '') ?? status.version : text('Not installed', 'غير مثبت')}</b></span>
+                  {status?.latestVersion && <span>{text('Latest', 'الأحدث')}: <b dir="ltr">{status.latestVersion}</b></span>}</div>
+                  {job?.phase === 'failed' && <small className="tool-entry__error" dir="auto">{toolInstallError(job.message)}</small>}
+                  {job?.phase === 'failed' && job.message && <details className="tool-entry__diagnostics"><summary>{text('Error details','تفاصيل الخطأ')}</summary><pre dir="ltr">{job.message}</pre></details>}
+                  {error && job?.phase !== 'failed' && <small className="tool-entry__error" dir="auto">{text(error, error.includes('limited requests') ? 'خدمة التحديثات حدّت الطلبات مؤقتًا. أعد المحاولة لاحقًا.' : 'تعذر فحص التحديثات الآن. تحقق من اتصالك وأعد المحاولة.')}</small>}
+                  {status && !supported && <small className="tool-entry__support">{missing ? text('Install or update Loaderly to restore this tool on this system.', 'ثبّت Loaderly أو حدّثه لاستعادة هذه الأداة على هذا النظام.') : text('Updated with Loaderly on this system.', 'تُحدَّث مع Loaderly على هذا النظام.')}</small>}
+                  {status?.message && !status.available && status.path && job?.phase !== 'failed' && <small className="tool-entry__error" dir="auto">{text(status.message, 'تعذّر تشغيل الأداة. أعد تثبيتها ثم حاول مجددًا.')}</small>}
                 </div>
-                <button className={`button ${missing || update ? 'primary' : 'secondary'}`} disabled={!status?.updateSupported || toolCheckBusy || Boolean(updatingToolName) || (!missing && !update)} onClick={() => void updateBundledTool(tool.name)} type="button">
-                  {working ? <RefreshCcw className="spin" size={15} /> : missing || update ? <Download size={15} /> : <Check size={15} />}
-                  {working ? uiText(preferences.locale, 'Installing…', 'جارٍ التثبيت…') : missing ? uiText(preferences.locale, 'Install', 'تثبيت') : update ? uiText(preferences.locale, 'Update', 'تحديث') : !status ? uiText(preferences.locale, 'Check first', 'افحص أولًا') : uiText(preferences.locale, 'Installed', 'مثبت')}
+                <button className={`button ${missing || update ? 'primary' : 'secondary'}`} disabled={!supported || locked || (!missing && !update)} onClick={() => void updateBundledTools([tool.name])} type="button">
+                  {working ? <RefreshCcw className="spin" size={15}/> : missing || update ? <Download size={15}/> : <Check size={15}/>}
+                  {working ? text('Installing…', 'جارٍ التثبيت…') : job?.phase === 'failed' ? text('Retry', 'إعادة المحاولة') : !status ? text('Check first', 'افحص أولًا') : !supported ? text('Managed with app', 'تُدار مع التطبيق') : missing ? text('Install', 'تثبيت') : update ? text('Update', 'تحديث') : text('Installed', 'مثبت')}
                 </button>
               </div>;
             })}
           </div>
-          <p className="tools-manager__footnote">{uiText(preferences.locale, 'Tools are installed for Loaderly only. Your files and projects stay in place.', 'يتم تثبيت الأدوات لـ Loaderly فقط. تبقى ملفاتك ومشاريعك كما هي.')}</p>
+          <p className="tools-manager__footnote">{text('Tools run one at a time. A failed tool will not stop the others. Your files and projects stay in place.', 'تُجهَّز الأدوات بالتتابع. تعذّر أداة لا يوقف البقية. تبقى ملفاتك ومشاريعك كما هي.')}</p>
         </article>
       </section>
     );
@@ -9048,6 +9361,7 @@ export function App() {
   function renderSettingsSurface() {
     const tabs = [
       { id: 'general', label: uiText(preferences.locale, 'General', 'عام'), icon: Settings },
+      { id: 'appearance', label: uiText(preferences.locale, 'Appearance', 'المظهر'), icon: Sun },
       { id: 'downloads', label: t('downloads'), icon: Download },
       { id: 'translation', label: uiText(preferences.locale, 'Subtitles & AI', 'الترجمة'), icon: Languages },
       { id: 'about', label: uiText(preferences.locale, 'About', 'حول البرنامج'), icon: Wrench }
@@ -9061,34 +9375,11 @@ export function App() {
       </div>
       <article className="card-panel settings-panel"><div className="settings-list" data-section={settingsTab} key={settingsTab}>
         {settingsTab === 'general' ? <>
-            <div className="setting-section-heading">
-              <Sun aria-hidden="true" size={17} />
-              <span>
-                <strong>{uiText(preferences.locale, 'Appearance', 'المظهر')}</strong>
-                <small>{uiText(preferences.locale, 'Theme, language, and interface direction', 'المظهر واللغة واتجاه الواجهة')}</small>
-              </span>
-            </div>
-            <div className="setting-row">
-              <span>
-                <strong>{t('theme')}</strong>
-                <small>{t('appearance')}</small>
-              </span>
-              <DesktopMenu
-                ariaLabel={t('theme')}
-                icon={preferences.themeMode === 'dark' ? <Moon aria-hidden="true" size={15} /> : <Sun aria-hidden="true" size={15} />}
-                onChange={(themeMode) => {
-                  updatePreferences({ themeMode });
-                  setActivity(t('themeSet', { theme: themeLabel(themeMode, preferences.locale) }));
-                }}
-                options={themeMenuOptions}
-                value={preferences.themeMode}
-                valueLabel={themeLabel(preferences.themeMode, preferences.locale)}
-              />
-            </div>
-            <div className="setting-row">
-              <span>
+          <div className="settings-general">
+            <div className="preference-row">
+              <span className="preference-row__copy">
                 <strong>{t('language')}</strong>
-                <small>{localeLabel(preferences.locale)}</small>
+                <small>{uiText(preferences.locale, 'Interface language and reading direction.', 'لغة الواجهة واتجاه القراءة.')}</small>
               </span>
               <DesktopMenu
                 ariaLabel={t('language')}
@@ -9104,37 +9395,47 @@ export function App() {
                 valueLabel={localeLabel(preferences.locale)}
               />
             </div>
+            <StartupSettings ar={preferences.locale === 'ar'} />
+          </div>
+        </> : null}
+        {settingsTab === 'appearance' ? <>
+            <div className="preference-row settings-color-mode">
+              <span className="preference-row__copy">
+                <strong>{uiText(preferences.locale, 'Color mode', 'وضع الألوان')}</strong>
+                <small>{uiText(preferences.locale, 'Choose a light or dark interface.', 'اختر واجهة فاتحة أو داكنة.')}</small>
+              </span>
+              <DesktopMenu
+                ariaLabel={uiText(preferences.locale, 'Color mode', 'وضع الألوان')}
+                icon={preferences.themeMode === 'dark' ? <Moon aria-hidden="true" size={15} /> : <Sun aria-hidden="true" size={15} />}
+                onChange={(themeMode) => {
+                  updatePreferences({ themeMode });
+                  setActivity(t('themeSet', { theme: themeLabel(themeMode, preferences.locale) }));
+                }}
+                options={themeMenuOptions}
+                value={preferences.themeMode}
+                valueLabel={themeLabel(preferences.themeMode, preferences.locale)}
+              />
+            </div>
+            <div className="settings-appearance-heading"><h2>{uiText(preferences.locale, 'Customize appearance', 'تخصيص المظهر')}</h2><p>{uiText(preferences.locale, 'Choose a theme, then adjust its colors, transparency and layout. The preview updates as you change it.', 'اختر ثيمًا ثم اضبط ألوانه وشفافيته وتنسيقه. تتحدث المعاينة مع كل تغيير.')}</p></div>
             <AppearanceSettings value={preferences.appearance} onChange={appearance => updatePreferences({appearance})} ar={preferences.locale === 'ar'} dark={preferences.themeMode === 'dark'} />
         </> : null}
-        {settingsTab === 'downloads' ? <>
-            <div className="setting-section-heading">
-              <Download aria-hidden="true" size={17} />
-              <span>
-                <strong>{uiText(preferences.locale, 'Downloads', 'التنزيلات')}</strong>
-                <small>{uiText(preferences.locale, 'Quality, start behavior, and file organization', 'الجودة وطريقة البدء وتنظيم الملفات')}</small>
-              </span>
-            </div>
-            <div className="setting-row">
-              <span>
-                <strong>{t('quality')}</strong>
-                <small>{t('downloadProfile')}</small>
-              </span>
+        {settingsTab === 'downloads' ? <div className="download-preferences">
+          <section className="download-settings-section" aria-label={uiText(preferences.locale, 'Download defaults', 'إعدادات التنزيل الافتراضية')}>
+            <header className="download-settings-heading"><Download size={18} aria-hidden="true"/><div><h2>{uiText(preferences.locale, 'Download defaults', 'إعدادات التنزيل الافتراضية')}</h2><p>{uiText(preferences.locale, 'Used when you add links on the Downloads page.', 'تُستخدم عند إضافة الروابط في صفحة التنزيلات.')}</p></div></header>
+            <div className="download-defaults-fields">
+            <DownloadPreference label={uiText(preferences.locale, 'Format & quality', 'الصيغة والجودة')} description={uiText(preferences.locale, 'Choose video quality or audio only.', 'اختر جودة الفيديو أو تنزيل الصوت فقط.')}>
               <DesktopMenu
                 ariaLabel={t('quality')}
                 onChange={(quality) => {
                   updatePreferences({ quality });
                   setActivity(t('qualitySet', { quality: qualityLabel(quality, preferences.locale) }));
                 }}
-                options={qualityMenuOptions}
+                options={qualityMenuOptions} layout="detailed"
                 value={preferences.quality}
                 valueLabel={qualityLabel(preferences.quality, preferences.locale)}
               />
-            </div>
-            <div className="setting-row">
-              <span>
-                <strong>{preferences.locale === 'ar' ? 'بدء التنزيل' : 'Download start'}</strong>
-                <small>{preferences.downloadStartMode === 'manual' ? (preferences.locale === 'ar' ? 'إضافة إلى قائمة الانتظار فقط' : 'Queue only') : (preferences.locale === 'ar' ? 'تنزيل فوري' : 'Start immediately')}</small>
-              </span>
+            </DownloadPreference>
+            <DownloadPreference label={uiText(preferences.locale, 'Download start', 'بدء التنزيل')} description={uiText(preferences.locale, 'Start immediately or keep links in the queue.', 'ابدأ فورًا أو أضف الروابط إلى قائمة الانتظار.')}>
               <DesktopMenu
                 ariaLabel={preferences.locale === 'ar' ? 'بدء التنزيل' : 'Download start'}
                 onChange={(downloadStartMode) => {
@@ -9149,22 +9450,20 @@ export function App() {
                 value={preferences.downloadStartMode}
                 valueLabel={downloadStartModeOptions.find((option) => option.value === preferences.downloadStartMode)?.label ?? 'Auto'}
               />
+            </DownloadPreference>
             </div>
-            <DownloadLocationsSettings preferences={preferences} onChange={updatePreferences}/>
-            <details className="default-download-location" open={!preferences.audioLocationId||!preferences.videoLocationId?true:undefined}>
-            <summary>{uiText(preferences.locale, 'Default location', 'المكان الافتراضي')}</summary>
-            <p>{uiText(preferences.locale, 'Used when no audio or video location is selected above.', 'يُستخدم عندما لا تختار مكانًا للصوت أو الفيديو أعلاه.')}</p>
-            <div className="default-download-location__fields">
+            <MusicDownloadOptions ar={preferences.locale==='ar'} mode={preferences.audioMode} onChange={audioMode => updatePreferences({ audioMode })}/>
+          </section>
+          <section className="download-settings-section">
+            <DownloadPreference label={uiText(preferences.locale,'YouTube download engine','محرك تنزيل يوتيوب')} description={uiText(preferences.locale,'Automatic tries yt-dlp first and uses the optional backup when needed. Install or update the backup from Tools. Other sites always use yt-dlp.','يبدأ الوضع التلقائي بـ yt-dlp ويستخدم الاحتياطي عند الحاجة. ثبّت الاحتياطي أو حدّثه من الأدوات. تستخدم بقية المواقع yt-dlp دائمًا.')}>
+              <DesktopMenu ariaLabel={uiText(preferences.locale,'YouTube download engine','محرك تنزيل يوتيوب')} value={preferences.downloadEngine} valueLabel={preferences.downloadEngine==='auto'?uiText(preferences.locale,'Automatic','تلقائي'):preferences.downloadEngine} options={[{value:'auto',label:uiText(preferences.locale,'Automatic','تلقائي')},{value:'yt-dlp',label:'yt-dlp'},{value:'pytubefix',label:'pytubefix'}]} onChange={downloadEngine=>updatePreferences({downloadEngine})}/>
+            </DownloadPreference>
+          </section>
+          <QuickCaptureSettings ar={preferences.locale==='ar'} value={preferences.quickCapture} state={quickCaptureState} onChange={quickCapture => updatePreferences({quickCapture})}/>
+          <section className="download-settings-section download-save-settings" aria-label={uiText(preferences.locale, 'Save locations', 'أماكن الحفظ')}>
+            <header className="download-settings-heading"><FolderOpen size={18} aria-hidden="true"/><div><h2>{uiText(preferences.locale, 'Save locations', 'أماكن الحفظ')}</h2><p>{uiText(preferences.locale, 'Choose a default folder or separate locations for video and audio.', 'اختر مجلدًا افتراضيًا أو مكانًا منفصلًا للفيديو والصوت.')}</p></div></header>
             <DownloadFolderSetting folder={preferences.downloadDirectory} ar={preferences.locale === 'ar'} onChoose={chooseDownloadDirectory} onDefault={() => updatePreferences({ downloadDirectory: '' })} />
-            <div className="setting-row">
-              <span>
-                <strong>{uiText(preferences.locale, 'Platform folders', 'مجلدات المنصات')}</strong>
-                <small>
-                  {preferences.groupDownloadsByPlatform
-                    ? uiText(preferences.locale, 'YouTube, TikTok, Instagram, and other sources get their own folders', 'يوتيوب وتيك توك وإنستقرام وغيرها يكون لكل منصة مجلد')
-                    : uiText(preferences.locale, 'All downloads stay in the selected folder', 'كل التنزيلات تبقى في المجلد المحدد')}
-                </small>
-              </span>
+            <DownloadPreference label={uiText(preferences.locale, 'Organize the default folder', 'تنظيم المجلد الافتراضي')} description={uiText(preferences.locale, 'Keep downloads together or create a folder for each website.', 'اجمع التنزيلات في مكان واحد أو أنشئ مجلدًا لكل موقع.')}>
               <DesktopMenu
                 ariaLabel={uiText(preferences.locale, 'Platform folders', 'مجلدات المنصات')}
                 onChange={(value) => updatePreferences({ groupDownloadsByPlatform: value === 'platform' })}
@@ -9187,15 +9486,17 @@ export function App() {
                     : uiText(preferences.locale, 'Single folder', 'مجلد واحد')
                 }
               />
-            </div>
-            </div></details>
-        </> : null}
+            </DownloadPreference>
+            <DownloadLocationsSettings preferences={preferences} onChange={updatePreferences}/>
+          </section>
+        </div> : null}
         {settingsTab === 'translation' ? <>
+          <section className="translation-settings-section">
             <div className="setting-section-heading">
               <Captions aria-hidden="true" size={17} />
               <span>
                 <strong>{uiText(preferences.locale, 'Subtitles', 'الترجمة')}</strong>
-                <small>{uiText(preferences.locale, 'Download language and caption behavior', 'لغة التنزيل وطريقة التعامل مع الترجمة')}</small>
+                <small>{uiText(preferences.locale, 'Include available captions when downloading a video.', 'أضف ملفات الترجمة المتاحة عند تنزيل الفيديو.')}</small>
               </span>
             </div>
             <div className="setting-row">
@@ -9204,7 +9505,7 @@ export function App() {
                 <small>
                   {preferences.subtitleDownloadMode === 'auto'
                     ? uiText(preferences.locale, 'Download subtitle files when available', 'تنزيل ملفات الترجمة عند توفرها')
-                    : uiText(preferences.locale, 'Skip subtitle download requests', 'تخطي طلبات تنزيل الترجمة')}
+                    : uiText(preferences.locale, 'Off. You can still add or edit subtitles in the editor.', 'متوقف. يمكنك إضافة الترجمة وتحريرها داخل المحرر.')}
                 </small>
               </span>
               <DesktopMenu
@@ -9229,26 +9530,20 @@ export function App() {
                 valueLabel={subtitleLanguageOptions.find((option) => option.value === preferences.subtitleLanguageProfile)?.label ?? 'Best available'}
               />
             </div>
-            ) : (
-              <div className="setting-note">
-                {uiText(
-                  preferences.locale,
-                  'Subtitle downloads are off. If you need captions for a video, enable them here before downloading.',
-                  'تنزيل الترجمة متوقف. إذا احتجت ترجمة للمقطع، فعّلها من هنا قبل التنزيل.'
-                )}
-              </div>
-            )}
+            ) : null}
+          </section>
+          <section className="translation-settings-section">
             <div className="setting-section-heading">
               <Languages aria-hidden="true" size={17} />
               <span>
                 <strong>{uiText(preferences.locale, 'AI translation', 'الترجمة بالذكاء الاصطناعي')}</strong>
-                <small>{uiText(preferences.locale, 'Provider, model, and session credentials', 'المزود والنموذج وبيانات الجلسة')}</small>
+                <small>{uiText(preferences.locale, 'Translate subtitles from the editor using your chosen provider.', 'ترجم النصوص داخل المحرر باستخدام المزود الذي تختاره.')}</small>
               </span>
             </div>
             <div className="setting-row">
               <span>
                 <strong>{uiText(preferences.locale, 'AI translation provider', 'مزود الترجمة بالذكاء الاصطناعي')}</strong>
-                <small>{uiText(preferences.locale, 'Choose a provider before using auto-translate', 'اختر المزود قبل استخدام الترجمة الآلية')}</small>
+                <small>{preferences.aiTranslationProvider === 'off' ? uiText(preferences.locale, 'Optional. Choose a provider to set up automatic translation.', 'اختياري. اختر مزودًا لإعداد الترجمة الآلية.') : uiText(preferences.locale, 'Configure this provider below.', 'أكمل إعدادات هذا المزود أدناه.')}</small>
               </span>
               <DesktopMenu
                 ariaLabel={uiText(preferences.locale, 'AI translation provider', 'مزود الترجمة بالذكاء الاصطناعي')}
@@ -9260,16 +9555,15 @@ export function App() {
                   })
                 }
                 options={fullAiTranslationProviderOptions}
-                placement="top"
                 value={preferences.aiTranslationProvider}
                 valueLabel={fullAiTranslationProviderOptions.find((option) => option.value === preferences.aiTranslationProvider)?.label ?? 'Disabled'}
               />
             </div>
             {preferences.aiTranslationProvider !== 'off' ? (
-              <div className="setting-stack">
+              <div className="translation-provider-settings">
                 <div className="setting-input-grid">
                   {aiProviderNeedsApiKey(preferences.aiTranslationProvider) || preferences.aiTranslationProvider === 'custom' ? (
-                    <label className="setting-field">
+                    <label className="setting-field setting-field--wide">
                       <span>
                         {uiText(preferences.locale, 'API key', 'مفتاح API')}
                         <small>{uiText(preferences.locale, 'Used this session. Never saved on disk.', 'يُستخدم خلال الجلسة ولا يُحفظ على الجهاز')}</small>
@@ -9284,7 +9578,7 @@ export function App() {
                     </label>
                   ) : null}
                   {aiProviderNeedsBaseUrl(preferences.aiTranslationProvider) ? (
-                    <label className="setting-field">
+                    <label className="setting-field setting-field--wide">
                       <span>{uiText(preferences.locale, 'Server URL', 'رابط الخادم')}</span>
                       <input
                         className="setting-input"
@@ -9295,9 +9589,11 @@ export function App() {
                       />
                     </label>
                   ) : null}
-                  <div className="setting-field setting-field--wide model-picker"><span>{uiText(preferences.locale,'Available models','النماذج المتاحة')}</span><DesktopMenu ariaLabel={uiText(preferences.locale,'Choose model','اختيار النموذج')} value={preferences.aiTranslationModel} valueLabel={preferences.aiTranslationModel || uiText(preferences.locale,'Choose a model','اختر نموذجًا')} options={(modelChoices.length?modelChoices:providerModels[preferences.aiTranslationProvider]).map(value=>({value,label:value}))} onChange={aiTranslationModel=>updatePreferences({aiTranslationModel})}/><button className="button secondary" disabled={modelsBusy} onClick={()=>void refreshAiModels()}>{uiText(preferences.locale,modelsBusy?'Loading…':'Refresh models',modelsBusy?'جارٍ الجلب…':'تحديث النماذج')}</button></div>
-                  <label className="setting-field setting-field--wide">
-                    <span>{uiText(preferences.locale, 'Model', 'النموذج')}</span>
+                  <div className="setting-field setting-field--wide translation-model-picker"><span>{uiText(preferences.locale,'Model','النموذج')}</span><div><DesktopMenu ariaLabel={uiText(preferences.locale,'Choose model','اختيار النموذج')} value={preferences.aiTranslationModel} valueLabel={preferences.aiTranslationModel || uiText(preferences.locale,'Choose a model','اختر نموذجًا')} options={[...new Set([preferences.aiTranslationModel,...(modelChoices.length?modelChoices:providerModels[preferences.aiTranslationProvider])].filter(Boolean))].map(value=>({value,label:value}))} onChange={aiTranslationModel=>updatePreferences({aiTranslationModel})}/><button className="button secondary" disabled={modelsBusy} onClick={()=>void refreshAiModels()}>{uiText(preferences.locale,modelsBusy?'Loading…':'Refresh models',modelsBusy?'جارٍ الجلب…':'تحديث النماذج')}</button></div></div>
+                  <details className="setting-field--wide translation-custom-model" key={preferences.aiTranslationProvider}>
+                    <summary>{uiText(preferences.locale, 'Enter a different model', 'إدخال نموذج آخر')}</summary>
+                    <label className="setting-field">
+                    <span>{uiText(preferences.locale, 'Model ID from your provider', 'معرّف النموذج لدى المزود')}</span>
                     <input
                       className="setting-input"
                       onChange={(event) => updatePreferences({ aiTranslationModel: event.currentTarget.value })}
@@ -9306,8 +9602,9 @@ export function App() {
                       value={preferences.aiTranslationModel}
                     />
                   </label>
+                  </details>
                 </div>
-                <p role="status">{aiMessage}</p>
+                {aiMessage ? <p className="setting-status" role="status">{aiMessage}</p> : null}
                 <p aria-live="polite" className={`setting-status${aiProviderReady(preferences) ? ' ready' : ''}`} role="status">
                   {aiProviderReady(preferences)
                     ? uiText(preferences.locale, 'Settings complete. Refresh models to check provider access.', 'اكتملت الإعدادات. حدّث النماذج للتحقق من الاتصال بالمزود.')
@@ -9315,25 +9612,27 @@ export function App() {
                 </p>
               </div>
             ) : null}
+          </section>
         </> : null}
-        {settingsTab === 'about' ? <>
+        {settingsTab === 'about' ? <div className="about-content">
           <div className="loaderly-about">
             <img alt="Loaderly" src="./assets/loaderly-64.png" />
             <div>
               <strong><bdi dir="ltr">Loaderly</bdi></strong>
-              <p className="about-meta"><bdi className="about-version" dir="ltr">{window.loaderly?.appVersion ?? '…'}</bdi><span aria-hidden="true">·</span><bdi dir="ltr">{platformDisplayLabel(window.loaderly?.platform, window.loaderly?.arch)}</bdi></p>
+              <p className="about-description">{uiText(preferences.locale,'Download, organize and edit your video and audio.','نزّل الفيديو والصوت ونظّم ملفاتك وعدّلها.')}</p><p className="about-meta"><bdi className="about-version" dir="ltr">{window.loaderly?.appVersion ?? '…'}</bdi><span aria-hidden="true">·</span><bdi dir="ltr">{platformDisplayLabel(window.loaderly?.platform, window.loaderly?.arch)}</bdi></p>
             </div>
             <button className="button secondary whats-new-button" onClick={()=>window.dispatchEvent(new Event('loaderly:whats-new'))}>{uiText(preferences.locale,"What’s new","ما الجديد؟")}</button>
           </div>
           <ProgramUpdates beforeInstall={()=>!hasRealMedia||persistEditorSnapshotNow()} ar={preferences.locale==='ar'} busy={videoExportBusy||Boolean(outputBusy)||mediaRows.some(row=>row.status==='downloading')||copyJobs.some(job=>job.status==='rendering')}/>
-          <footer className="loaderly-copyright about-links"><nav aria-label={uiText(preferences.locale,'Help & project links','روابط المساعدة والمشروع')}><a className="text-link" href={documentationUrl} target="_blank" rel="noopener noreferrer">{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</a><a className="text-link" href="https://github.com/voidksa/Loaderly" target="_blank" rel="noopener noreferrer"><bdi dir="ltr">GitHub</bdi></a></nav><bdi dir="ltr">© 2026 VOIDKSA</bdi></footer>
-        </> : null}
+          <footer className="loaderly-copyright about-links"><nav aria-label={uiText(preferences.locale,'Help & project links','روابط المساعدة والمشروع')}><a className="button secondary" href={documentationUrl} target="_blank" rel="noopener noreferrer"><BookOpen size={16}/>{uiText(preferences.locale, 'Help & guides', 'المساعدة والوثائق')}</a><a className="button secondary" href="https://github.com/voidksa/Loaderly" target="_blank" rel="noopener noreferrer"><GitHubIcon size={16}/><bdi dir="ltr">GitHub</bdi></a></nav><bdi dir="ltr">© 2026 VOIDKSA</bdi></footer>
+        </div> : null}
       </div></article>
     </section>;
   }
 
   function renderActiveSurface() {
-    if(communityOpen)return <CommunityLibrary initialDraftId={communityDraftId} initialStudio={communityCreatorOpen} ar={preferences.locale==='ar'} dark={preferences.themeMode==='dark'} currentCode={kind=>kind==='sound'?encodeSoundPreset({audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}):kind==='theme'?encodeTheme(preferences.appearance):encodeVisualizer(visualizerSettings)} onApply={look=>{
+    if(communityOpen)return <CommunityLibrary initialDraftId={communityDraftId} initialStudio={communityCreatorOpen} ar={preferences.locale==='ar'} dark={preferences.themeMode==='dark'} currentCode={kind=>kind==='editor'?encodeEditorPreset({duration:selectedDurationSeconds||10,edits:studioEdits}):kind==='sound'?encodeSoundPreset({processing:studioEdits.audio,audio:audioSections.find(section=>section.id===selectedAudioSectionId)?.settings??audioSettings,speed:selectedSpeedItem?{rate:selectedSpeedItem.rate,mode:selectedSpeedItem.mode??'preserve-pitch'}:undefined}):kind==='theme'?encodeTheme(preferences.appearance):encodeVisualizer(visualizerSettings)} onApply={look=>{
+      if(look.kind==='editor'){const previous=pendingEditorTemplate;setPendingEditorTemplate({name:look.name,code:look.code});if(isMediaReadyForEditor(selectedMedia)){setOpenedEditorMediaId(selectedMediaId);selectNavigation('editor');}else selectNavigation('library');return()=>setPendingEditorTemplate(previous);}
       if(look.kind==='sound'){const previous=pendingSoundCode;setPendingSoundCode(look.code);if(isMediaReadyForEditor(selectedMedia)){setOpenedEditorMediaId(selectedMediaId);selectNavigation('editor');setAudioPanelTab('sound');setAudioInspectorOpen(true);}return()=>setPendingSoundCode(previous);}
       if(look.kind==='theme'){const previous=preferences.appearance;updatePreferences({appearance:decodeTheme(look.code)});return()=>updatePreferences({appearance:previous});}
       const previous=visualizerSettings,value=decodeVisualizer(look.code);if(value){setVisualizerSettings(value);if(isMediaReadyForEditor(selectedMedia)&&selectedMedia.mediaKind==='audio'){setOpenedEditorMediaId(selectedMediaId);selectNavigation('editor');setAudioPanelTab('visualizer');setAudioInspectorOpen(true);}}return()=>setVisualizerSettings(previous);
@@ -9395,7 +9694,7 @@ export function App() {
           </button>
         </div>}
       </header>
-          {activityNotice && <div className="activity-notice" role={savedOutputPath?"status":"alert"} dir="auto"><span>{activityNotice}</span>{savedOutputPath && <button className="notice-folder" onClick={() => void window.loaderly?.showItemInFolder(savedOutputPath)}>{uiText(preferences.locale, "Show in folder", "عرض في المجلد")}</button>}<button type="button" aria-label={preferences.locale==='ar'?'إغلاق':'Dismiss'} onClick={()=>setActivityNotice('')}><X size={15}/></button></div>}
+          {activityNotice && <FloatingNotice role={savedOutputPath?"status":"alert"} dir="auto"><span>{activityNotice}</span>{savedOutputPath && <button className="notice-folder" onClick={() => void window.loaderly?.showItemInFolder(savedOutputPath)}>{uiText(preferences.locale, "Show in folder", "عرض في المجلد")}</button>}<button type="button" aria-label={preferences.locale==='ar'?'إغلاق':'Dismiss'} onClick={()=>setActivityNotice('')}><X size={15}/></button></FloatingNotice>}
 
       {saveRequest && <SaveOutputDialog sourcePath={saveRequest.sourcePath} extension={saveRequest.extension} ar={preferences.locale === "ar"} onChoose={mode => { saveRequest.resolve(mode); setSaveRequest(undefined); }}/>}
       <WhatsNew ar={preferences.locale === "ar"} noticeVisible={!!activityNotice} supportBusy={isPlaying||isPreviewFocusMode||extractingAudio||videoExportBusy||Boolean(outputBusy)||mediaRows.some(row=>row.status==='downloading')||copyJobs.some(job=>job.status==='rendering')}/>
@@ -9425,6 +9724,19 @@ export function App() {
             </div>
           </nav>
           <div className="product-nav__utilities">
+            <CommandPalette ar={preferences.locale==='ar'} commands={[
+              {id:'library',en:'Open library',ar:'فتح المكتبة',run:()=>selectNavigation('library')},
+              {id:'downloads',en:'Open downloads',ar:'فتح التنزيلات',run:()=>selectNavigation('downloads')},
+              {id:'settings',en:'Open preferences',ar:'فتح الإعدادات',run:()=>selectNavigation('settings')},
+              {id:'community',en:'Community library',ar:'مكتبة المجتمع',run:()=>selectNavigation('community')},
+              {id:'import',en:'Import media',ar:'استيراد وسائط',run:()=>void importLocalVideo()},
+              {id:'editor',en:'Edit selected media',ar:'تحرير الوسائط المحددة',disabled:!isMediaReadyForEditor(selectedMedia),reason:uiText(preferences.locale,'Select an available media file first.','حدد ملف وسائط متاحًا أولًا.'),run:()=>openSelectedMediaEditor()},
+              {id:'tools',en:'Media tools',ar:'أدوات الوسائط',run:()=>selectNavigation('tools')},
+              {id:'start-downloads',en:'Start queued downloads',ar:'بدء التنزيلات المنتظرة',disabled:!mediaRows.some(row=>row.sourceType!=='local'&&row.status==='queued'&&row.source),reason:uiText(preferences.locale,'No queued downloads to start.','لا توجد تنزيلات منتظرة.'),run:startAllQueuedDownloads},
+              {id:'undo',en:'Undo editor change',ar:'التراجع عن تعديل',disabled:activeNav!=='editor'||cleanAudioView||!editorUndoStack.length,reason:uiText(preferences.locale,'No editor change to undo.','لا يوجد تعديل في المحرر للتراجع عنه.'),run:undoEditorAction},
+              {id:'redo',en:'Redo editor change',ar:'إعادة التعديل',disabled:activeNav!=='editor'||cleanAudioView||!editorRedoStack.length,reason:uiText(preferences.locale,'No editor change to redo.','لا يوجد تعديل لإعادته.'),run:redoEditorAction},
+              ...(['cut','blur','zoom','speed','text','subtitles'] as const).map(tool=>({id:`tool-${tool}`,en:`Editor: ${tool}`,ar:`المحرر: ${{cut:'القص',blur:'التمويه',zoom:'التكبير',speed:'السرعة',text:'النص',subtitles:'الترجمة'}[tool]}`,disabled:activeNav!=='editor'||cleanAudioView,reason:uiText(preferences.locale,'Open a media file in the editor first.','افتح ملفًا في المحرر أولًا.'),run:()=>handleEditorShortcutAction({type:'activate-tool',tool})}))
+            ]}/>
             <button aria-current={activeNav === 'tools' ? 'page' : undefined} className={`product-nav__utility${activeNav === 'tools' ? ' active' : ''}`} onClick={() => { selectNavigation('tools'); if (!toolStatuses.length) void runToolCheck(); }} type="button">
               <SlidersHorizontal aria-hidden="true" size={15} />
               <span>{t('tools')}</span>

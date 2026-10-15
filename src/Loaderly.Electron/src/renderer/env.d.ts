@@ -9,7 +9,12 @@ type LoaderlySubtitleCue = {
 declare global {
   interface Window {
     readonly loaderly?: {
-      readonly onDuplicatePrompt:(callback:(value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt)=>void)=>()=>void;
+      readonly startup: (request: import('../shared/startup').StartupRequest) => Promise<import('../shared/startup').StartupState>;
+      readonly downloadControl:(request:import('../shared/downloadControl').DownloadControlRequest)=>Promise<import('../shared/downloadControl').DownloadControlState>;
+      readonly onDownloadQueue:(callback:(state:import('../shared/downloadControl').DownloadControlState)=>void)=>()=>void;
+      readonly studio:(request:import('../shared/studioApi').StudioRequest)=>Promise<import('../shared/studioApi').StudioResponse>;
+      readonly onStudioJobs:(callback:(jobs:import('../main/studioQueue').StudioJob[])=>void)=>()=>void;
+      readonly onDuplicatePrompt:(callback:(value:import('../shared/download-url/mediaIdentity').DuplicateDownloadPrompt|undefined)=>void)=>()=>void;
       readonly duplicateChoice:(id:string,choice:import('../shared/download-url/mediaIdentity').DuplicateChoice)=>Promise<{ok:boolean}>;
       readonly onDownloadIdentity:(callback:(value:import('../shared/download-url/mediaIdentity').DownloadIdentity)=>void)=>()=>void;
       readonly onDownloadProgress:(callback:(value:import('../shared/downloadProgress').DownloadProgress)=>void)=>()=>void;
@@ -106,29 +111,10 @@ declare global {
           }
       >;
       readonly filePathForDrop: (file: File) => string;
-      readonly downloadUrl: (payload: {
-        readonly rowId?:number;
-    readonly knownFiles?: readonly string[];
-        readonly locale?: 'en'|'ar';
-        readonly url: string;
-        readonly quality: 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
-        readonly downloadDirectory?: string;
-        readonly groupDownloadsByPlatform?: boolean;
-        readonly writeSubtitles?: boolean;
-        readonly subtitleLanguages?: string;
-      }) => Promise<{
-        readonly ok: boolean;
-        readonly skipped?: boolean;
-        readonly replacedPath?: string;
-        readonly path?: string;
-        readonly fileUrl?: string;
-        readonly thumbnailUrl?: string;
-        readonly name?: string;
-        readonly sizeBytes?: number;
-        readonly durationSeconds?: number;
-        readonly subtitlePath?: string;
-        readonly message?: string;
-      }>;
+      readonly quickCapture: (request: import('../shared/quickCapture').QuickCaptureCommand) => Promise<import('../shared/quickCapture').QuickCaptureState>;
+      readonly onQuickCapture: (callback: (request: import('../shared/quickCapture').CaptureRequest) => void) => () => void;
+      readonly onQuickCaptureState: (callback: (state: import('../shared/quickCapture').QuickCaptureState) => void) => () => void;
+      readonly downloadUrl: (payload: import('../shared/downloadRequest').DownloadUrlPayload) => Promise<import('../shared/downloadRequest').DownloadUrlResult>;
       readonly copyMediaOutput: (payload: {
         readonly sourcePath: string;
         readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
@@ -310,27 +296,12 @@ declare global {
       >;
         readonly cancelToolInstall: () => Promise<{ ok: boolean }>;
         readonly onToolInstallProgress: (callback: (value: import('../shared/tool-manager/toolStatus').ToolInstallProgress) => void) => () => void;
-        readonly updateTool: (toolName: string) => Promise<{
-        readonly ok: boolean;
-        readonly name: string;
-        readonly message?: string;
-        readonly status?: {
-          readonly name: string;
-          readonly available: boolean;
-          readonly path?: string;
-          readonly version?: string;
-          readonly message?: string;
-          readonly updateSupported?: boolean;
-          readonly latestVersion?: string;
-          readonly updateAvailable?: boolean;
-          readonly checkError?: string;
-        };
-      }>;
+        readonly updateTool: (toolName: string) => Promise<import('../shared/tool-manager/toolStatus').ToolInstallResult>;
       readonly getWindowState: () => Promise<{ok:boolean;maximized:boolean}>;
       readonly onWindowState: (callback:(state:{maximized:boolean})=>void) => () => void;
       readonly getWindowAppearanceSupport: () => Promise<{supported:boolean;reduced:boolean}>;
       readonly onWindowAppearanceChanged: (callback:(state:{desktopGlass:boolean;supported:boolean;reduced:boolean})=>void) => () => void;
-      readonly setTitlebarTheme: (themeMode: 'light' | 'dark', locale?: 'en' | 'ar', appearance?: unknown) => Promise<{ readonly ok: boolean; readonly desktopGlass?: boolean }>;
+      readonly setTitlebarTheme: (themeMode: 'light' | 'dark', locale?: 'en' | 'ar', appearance?: unknown) => Promise<{ readonly ok: boolean; readonly desktopGlass?: boolean; readonly backdropBlur?: boolean }>;
       readonly trayAction: (action: 'open' | 'downloads' | 'editor' | 'settings' | 'exit') => Promise<{ readonly ok: boolean }>;
       readonly windowControl: (action: 'minimize' | 'toggleMaximize' | 'close') => Promise<{
         readonly ok: boolean;

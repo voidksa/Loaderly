@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import { studioProcess } from './studioProcess';
 import type { TransferProgress } from '../shared/downloadProgress';
 
 const marker = '__LOADERLY_TRANSFER__';
@@ -63,23 +63,16 @@ export function createDownloadProgressReader(notify:(state:TransferProgress)=>vo
   };
 }
 
-export function runDownloadProcess(tool:string,args:readonly string[],notify:(state:TransferProgress)=>void):Promise<{stdout:string}> {
+export async function runDownloadProcess(tool:string,args:readonly string[],notify:(state:TransferProgress)=>void,signal?:AbortSignal):Promise<{stdout:string}> {
   const read=createDownloadProgressReader(notify);
-  return new Promise((resolve,reject)=>{
-    const child=execFile(tool,[...args],{timeout:30*60*1000,windowsHide:true,maxBuffer:4*1024*1024,encoding:'utf8'},(error,stdout,stderr)=>{
-      if(error){Object.assign(error,{stdout,stderr});reject(error);}else resolve({stdout});
-    });
-    for(const stream of [child.stdout,child.stderr]){
-      const decoder=new StringDecoder('utf8');let pending='';
-      const consume=(chunk:string)=>{
-        pending+=chunk;
-        let end:number;
-        while((end=pending.search(/[\r\n]/))>=0){read(pending.slice(0,end));pending=pending.slice(end+1);}
-        // Output records are bounded even if a third-party tool prints a huge line.
-        if(pending.length>256*1024)pending='';
-      };
-      stream?.on('data',(chunk:Buffer)=>consume(decoder.write(chunk)));
-      stream?.on('end',()=>{consume(decoder.end());if(pending)read(pending);});
-    }
-  });
+  const decoder=new StringDecoder('utf8');let pending='',stdout='';
+  const consume=(chunk:string)=>{
+    stdout=(stdout+chunk).slice(-4*1024*1024);pending+=chunk;
+    let end:number;
+    while((end=pending.search(/[\r\n]/))>=0){read(pending.slice(0,end));pending=pending.slice(end+1);}
+    if(pending.length>256*1024)pending='';
+  };
+  await studioProcess(tool,args,{signal:AbortSignal.any([AbortSignal.timeout(30*60*1000),...(signal?[signal]:[])]),onData:chunk=>consume(decoder.write(chunk)),onErrorLine:read});
+  consume(decoder.end());if(pending)read(pending);
+  return {stdout};
 }

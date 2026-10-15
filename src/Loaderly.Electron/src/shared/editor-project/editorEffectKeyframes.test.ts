@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { regionAtKeyframeTime, regionSegmentsForExport, upsertRegionKeyframe } from './editorEffectKeyframes';
 
 describe('editor effect keyframes', () => {
+  it('samples rapid motion at frame intervals and compresses stationary intervals',()=>{
+    const base={x:10,y:10,width:20,height:20},end={...base,x:90};
+    const moving=regionSegmentsForExport(base,[{timeSeconds:0,region:base},{timeSeconds:1,region:end}],0,1);
+    expect(moving.length).toBe(60);expect(moving[0].region.x).toBeCloseTo(10.7,1);
+    expect(regionSegmentsForExport(base,[{timeSeconds:0,region:base},{timeSeconds:3600,region:base}],0,3600)).toHaveLength(1);
+  });
   it('returns the base region without keyframes', () => {
     expect(regionAtKeyframeTime({ x: 10, y: 20, width: 30, height: 40 }, [], 4)).toEqual({
       x: 10,

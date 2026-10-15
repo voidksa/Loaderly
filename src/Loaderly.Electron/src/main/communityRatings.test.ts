@@ -1,9 +1,44 @@
 import {it,expect,vi,afterEach} from 'vitest';
-import {mkdtemp,rm,readdir} from 'node:fs/promises';
+import {mkdtemp,rm,readdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';import {tmpdir} from 'node:os';
-vi.mock('electron',()=>({safeStorage:{isEncryptionAvailable:()=>false,getSelectedStorageBackend:()=> 'basic_text'}}));
+vi.mock('electron',()=>({safeStorage:{isEncryptionAvailable:vi.fn(()=>false),getSelectedStorageBackend:vi.fn(()=> 'basic_text'),decryptString:vi.fn(),encryptString:vi.fn()}}));
+import {safeStorage} from 'electron';
 import {CommunityRatings} from './communityRatings';
-afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers();});
+afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers();vi.resetAllMocks();});
+it.each(['darwin','linux'] as const)('browses publicly on %s without touching protected storage, then restores only on sign-in',async platform=>{
+ const dir=await mkdtemp(join(tmpdir(),'loaderly-auth-')),token='gho_'+'x'.repeat(36);
+ vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true);
+ vi.mocked(safeStorage.getSelectedStorageBackend).mockReturnValue('gnome_libsecret');
+ vi.mocked(safeStorage.decryptString).mockReturnValue(token);
+ const fetcher=vi.fn(async(_url:string,init:RequestInit)=>Response.json({ratings:[],...((init.headers as Record<string,string>).Authorization?{user:{login:'tester'}}:{})}));vi.stubGlobal('fetch',fetcher);
+ try{
+  await writeFile(join(dir,'community-github.bin'),'encrypted fixture');
+  const service=new CommunityRatings(dir,platform);
+  expect((await service.ratings()).account).toEqual({savedSession:true});
+  expect((await service.drafts({action:'list'})).error).toBe('sign-in-required');
+  expect((await service.ratings('example',5)).account?.error).toBe('sign-in-required');
+  expect(safeStorage.isEncryptionAvailable).not.toHaveBeenCalled();
+  expect(safeStorage.decryptString).not.toHaveBeenCalled();
+  expect((fetcher.mock.calls[0][1].headers as Record<string,string>).Authorization).toBeUndefined();
+  expect(await service.begin()).toEqual({login:'tester'});
+  expect(safeStorage.decryptString).toHaveBeenCalledTimes(1);
+  expect((await service.ratings()).account).toEqual({login:'tester'});
+  expect(safeStorage.decryptString).toHaveBeenCalledTimes(1);
+  await service.logout();expect((await service.ratings()).account).toEqual({});
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+it('keeps silent Windows session restoration and never asks the OS for a nonexistent session',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'loaderly-auth-')),token='gho_'+'x'.repeat(36);
+ vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true);vi.mocked(safeStorage.decryptString).mockReturnValue(token);
+ vi.stubGlobal('fetch',vi.fn(async(_url:string,init:RequestInit)=>Response.json({ratings:[],...((init.headers as Record<string,string>).Authorization?{user:{login:'tester'}}:{})})));
+ try{
+  expect((await new CommunityRatings(dir,'win32').ratings()).account).toEqual({});
+  expect(safeStorage.isEncryptionAvailable).not.toHaveBeenCalled();
+  await writeFile(join(dir,'community-github.bin'),'encrypted fixture');
+  expect((await new CommunityRatings(dir,'win32').ratings()).account).toEqual({login:'tester'});
+  expect(safeStorage.decryptString).toHaveBeenCalledTimes(1);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
 it('uses public-only device login, enforces polling interval, never exposes or stores an unencrypted token, and logs out',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'loaderly-auth-'));const token='gho_'+'x'.repeat(36);let polls=0;
  vi.useFakeTimers();vi.setSystemTime(new Date('2026-10-10T10:00:00Z'));

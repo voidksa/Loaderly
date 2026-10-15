@@ -1,5 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
-import { hasLinuxTrayHost } from './linuxTray';
+import { hasLinuxTrayHost, linuxTrayAnchor, linuxTrayUsesNativeMenu } from './linuxTray';
+
+describe('Linux tray activation',()=>{
+ it('places a popup by the cursor when StatusNotifierItem reports zero bounds',()=>{
+  expect(linuxTrayAnchor({x:0,y:0,width:0,height:0},{x:0,y:0},{x:1810,y:1060})).toEqual({x:1810,y:1060,width:1,height:1});
+ });
+ it('honors activation coordinates and negative monitor coordinates',()=>{
+  expect(linuxTrayAnchor(undefined,{x:-1200,y:1020},{x:20,y:20})).toEqual({x:-1200,y:1020,width:1,height:1});
+ });
+ it('uses reported icon bounds when the host provides them',()=>{
+  const bounds={x:900,y:1050,width:24,height:24};
+  expect(linuxTrayAnchor(bounds,{x:200,y:200},{x:20,y:20})).toEqual(bounds);
+ });
+ it('avoids inventing a position when X11 cannot supply a current cursor',()=>{
+  expect(linuxTrayAnchor({x:0,y:0,width:0,height:0},{x:0,y:0},undefined)).toBeUndefined();
+  expect(linuxTrayAnchor(undefined,{x:NaN,y:0},{x:0,y:NaN})).toBeUndefined();
+  expect(linuxTrayAnchor(undefined,{x:0,y:0},{x:0,y:0})).toEqual({x:0,y:0,width:1,height:1});
+ });
+ it('keeps native menus on Wayland where popup positioning is unavailable',()=>{
+  expect(linuxTrayUsesNativeMenu({XDG_SESSION_TYPE:'wayland'})).toBe(true);
+  expect(linuxTrayUsesNativeMenu({XDG_SESSION_TYPE:'x11'})).toBe(false);
+ });
+});
 
 const properties = (host: boolean, items = ['org.kde.StatusNotifierItem-123-1/StatusNotifierItem']) => `
   array [

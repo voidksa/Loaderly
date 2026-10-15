@@ -2,6 +2,22 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+type Point = {x: number; y: number};
+type Bounds = Point & {width: number; height: number};
+
+export function linuxTrayUsesNativeMenu(environment = process.env): boolean {
+  return environment.XDG_SESSION_TYPE === 'wayland' || !!environment.WAYLAND_DISPLAY;
+}
+
+export function linuxTrayAnchor(bounds: Bounds|undefined, position: Point|undefined, cursor: Point|undefined): Bounds|undefined {
+  if (bounds && bounds.width > 0 && bounds.height > 0 && [bounds.x,bounds.y,bounds.width,bounds.height].every(Number.isFinite)) return bounds;
+  // StatusNotifierItem has no getBounds implementation. Use the activation
+  // point, or a freshly queried X11 cursor in DIP when activation is (0, 0).
+  // Do not substitute Electron's potentially stale last-known cursor here.
+  const point = position && Number.isFinite(position.x) && Number.isFinite(position.y) && (position.x !== 0 || position.y !== 0) ? position : cursor;
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+  return {...point, width: 1, height: 1};
+}
 type BusCall = (destination: string, path: string, method: string, args: string[]) => Promise<string>;
 
 const callSessionBus: BusCall = async (destination, path, method, args) => {

@@ -1,7 +1,7 @@
 import type {BrowserWindow, BrowserWindowConstructorOptions} from 'electron';
 import {createRequire} from 'node:module';
 
-type GlassWindow = Pick<BrowserWindow, 'getNativeWindowHandle'|'setVibrancy'|'isDestroyed'|'webContents'|'once'|'setWindowButtonVisibility'>;
+type GlassWindow = Pick<BrowserWindow, 'getNativeWindowHandle'|'setVibrancy'|'isDestroyed'|'webContents'|'on'|'once'|'removeListener'|'setWindowButtonVisibility'>;
 type LiquidGlass = {addView(handle:Buffer, options:{cornerRadius:number;opaque:boolean}):number};
 type Environment = {platform:NodeJS.Platform;systemVersion:string;arch:string};
 
@@ -36,8 +36,15 @@ export function createMacLiquidGlass(environment:Environment,load:()=>LiquidGlas
     refresh();
    };
    win.webContents.on('did-finish-load',onLoad);
+   // AppKit can change the window backing during a Space transition. Reapply
+   // the background afterwards while preserving the single native glass view.
+   const onFullScreen=()=>{if(state.ready&&!win.isDestroyed())refresh();};
+   win.on('enter-full-screen',onFullScreen);
+   win.on('leave-full-screen',onFullScreen);
    win.once('closed',()=>{
     windows.delete(win);
+    win.removeListener('enter-full-screen',onFullScreen);
+    win.removeListener('leave-full-screen',onFullScreen);
     if(!win.webContents.isDestroyed())win.webContents.removeListener('did-finish-load',onLoad);
    });
   },

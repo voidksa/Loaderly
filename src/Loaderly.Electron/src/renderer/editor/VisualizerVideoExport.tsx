@@ -5,7 +5,8 @@ import {AudioVisualizer} from './AudioPreview';
 import {RangeInput} from './RangeInput';
 import type {VisualizerVideoOptions, VisualizerExportProgress} from '../../shared/editor-project/visualizerVideo';
 
-export function VisualizerVideoExport({ar, options, onChange, payload, analyser, playing, onBusy, busy}: {
+export function VisualizerVideoExport({ar, options, onChange, payload, analyser, playing, onBusy, busy, captionTime, captionsVisible, onCaptionsVisible}: {
+  captionTime:number; captionsVisible:boolean; onCaptionsVisible:(value:boolean)=>void;
   busy: boolean; ar: boolean; options: VisualizerVideoOptions;
   onChange: (v: VisualizerVideoOptions) => void;
   payload: (whole: boolean) => Parameters<NonNullable<Window['loaderly']>['saveMediaOutput']>[0];
@@ -20,7 +21,7 @@ export function VisualizerVideoExport({ar, options, onChange, payload, analyser,
     if (!window.loaderly || busy) return;
     onBusy(true); setMessage(''); setProgress(undefined);
     try {
-      const result = await window.loaderly.exportVisualizerVideo({...payload(whole), options, whole});
+      const result = await window.loaderly.exportVisualizerVideo({...payload(whole), options:{...options,captions:captionsVisible?options.captions:[]}, whole});
       if (result.canceled) setProgress({phase: 'canceled', percent: 0});
       else if (!result.ok) setMessage(ar ? 'تعذّر التصدير. تحقق من مجلد الحفظ وأدوات الوسائط.' : result.message ?? 'Export failed.');
     } catch { setMessage(t('Could not export. Check your output folder and media tools.', 'تعذّر التصدير. تحقق من مجلد الحفظ وأدوات الوسائط.')); }
@@ -29,7 +30,7 @@ export function VisualizerVideoExport({ar, options, onChange, payload, analyser,
   const patchScene = (patch: Partial<VisualizerVideoOptions['scene']>) => onChange({...options, scene: {...options.scene, ...patch}});
   const addImage = async (file: File) => {
     setMessage('');
-    if (file.size > 8_000_000) { setMessage(t('Choose an image under 8 MB.', 'اختر صورة أقل من ٨ ميجابايت.')); return; }
+    if (file.size > 8_000_000) { setMessage(t('Choose an image under 8 MB.', 'اختر صورة أقل من 8 ميجابايت.')); return; }
     const url = URL.createObjectURL(file);
     try {
       const image = new Image(); image.src = url; await image.decode();
@@ -58,6 +59,7 @@ export function VisualizerVideoExport({ar, options, onChange, payload, analyser,
         </div>
       </div>
       <label className="video-export-range"><input type="checkbox" checked={whole} onChange={e => setWhole(e.target.checked)}/><span><strong>{t('Use the whole track', 'استخدام المقطع كاملًا')}</strong><small>{t('Keeps your cuts and sound edits. Turn off to export the selected range.', 'يحتفظ بالقص وتعديلات الصوت. أوقفه لتصدير النطاق المحدد فقط.')}</small></span></label>
+      {Boolean(options.captions?.length)&&<label className="video-export-range"><input type="checkbox" checked={captionsVisible} onChange={e=>onCaptionsVisible(e.target.checked)}/><span><strong>{t('Include subtitles','تضمين الترجمة')}</strong><small>{t('Text from this project follows your cuts and speed changes in the MP4.','يظهر نص المشروع داخل MP4 متزامنًا مع القص وتغييرات السرعة.')}</small></span></label>}
       <section className="video-export-artwork"><div className="video-export-section-heading"><strong>{t('Cover or logo', 'الغلاف أو الشعار')}</strong><small>{t('Optional', 'اختياري')}</small></div>
         <button type="button" className="button secondary" onClick={() => fileInput.current?.click()}><ImagePlus size={15}/>{options.scene.image ? t('Replace image', 'استبدال الصورة') : t('Choose image', 'اختيار صورة')}</button>
         <input ref={fileInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={e => {const file = e.target.files?.[0]; e.target.value = ''; if (file) void addImage(file);}}/>
@@ -72,7 +74,7 @@ export function VisualizerVideoExport({ar, options, onChange, payload, analyser,
       </section>
     </fieldset>
     <details className="video-export-preview-group"><summary>{t('Video preview', 'معاينة الفيديو')}</summary>
-      <div className="visualizer-export-preview" style={{aspectRatio: options.size === 'portrait' ? '9/16' : options.size === 'square' ? '1/1' : '16/9', maxWidth: options.size === 'portrait' ? 144 : options.size === 'square' ? 256 : undefined}}><AudioVisualizer analyser={analyser} playing={playing} settings={options.scene.settings} scene={options.scene}/></div>
+      <div className="visualizer-export-preview" style={{aspectRatio: options.size === 'portrait' ? '9/16' : options.size === 'square' ? '1/1' : '16/9', maxWidth: options.size === 'portrait' ? 144 : options.size === 'square' ? 256 : undefined}}><AudioVisualizer analyser={analyser} playing={playing} settings={options.scene.settings} scene={options.scene} caption={captionsVisible?options.captions?.filter(cue=>captionTime>=cue.startSeconds&&captionTime<cue.endSeconds).map(cue=>cue.text).join('\n'):undefined}/></div>
       <small>{t('The exported video uses this layout.', 'يستخدم الفيديو المُصدّر هذا التنسيق.')}</small>
     </details>
     <div className="video-export-actions">

@@ -8,6 +8,12 @@ import { ToolManager } from './toolManager';
 vi.mock('node:child_process', () => ({
   execFile: (_path: string, _args: string[], _options: unknown, callback: (error: Error | null, value?: unknown) => void) => callback(null, { stdout: '2026.10.01\n', stderr: '' })
 }));
+vi.mock('./toolArchive', () => ({
+  extractToolZip: async (_archive: string, stage: string, names: string[]) => {
+    const { writeFile } = await import('node:fs/promises');
+    for (const name of names) await writeFile(join(stage, name), 'verified paired fixture');
+  }
+}));
 
 const payload = Buffer.from('verified-test-binary');
 const digest = createHash('sha256').update(payload).digest('hex');
@@ -19,6 +25,22 @@ beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'loaderly-tool-test
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); await rm(root, { recursive: true, force: true }); });
 
 describe('managed tool installation', () => {
+  it('returns fresh states for both FFmpeg and FFprobe after one verified activation', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('api.github.com') ? Response.json({
+      tag_name: '2026.10.01', assets: [{ name: 'ffmpeg-2026.10.01-essentials_build.zip', digest: `sha256:${digest}`, browser_download_url: 'https://github.com/GyanD/codexffmpeg/releases/download/2026.10.01/ffmpeg.zip' }]
+    }) : new Response(payload)));
+    const manager = new ToolManager(root, () => undefined, { platform: 'win32', arch: 'x64' });
+    expect((await manager.check('ffprobe')).available).toBe(false);
+    const result = await manager.install('ffmpeg');
+    expect(result.ok).toBe(true);
+    expect(result.statuses?.map(item => item.name)).toEqual(['ffmpeg', 'ffprobe']);
+    for (const status of result.statuses!) {
+      expect(status).toMatchObject({ available: true, version: '2026.10.01', updateAvailable: false });
+      expect(status.path).toBe(manager.resolve(status.name as 'ffmpeg' | 'ffprobe'));
+      expect((await manager.check(status.name as 'ffmpeg' | 'ffprobe')).available).toBe(true);
+    }
+    expect(result.statuses![0].path).not.toBe(result.statuses![1].path);
+  });
   it('coalesces repeated checks, backs off network failures, and retries after a minute', async () => {
     let now = 100_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);

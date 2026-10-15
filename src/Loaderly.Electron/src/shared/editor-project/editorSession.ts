@@ -25,7 +25,8 @@ export function mediaIdentityForPath(filePath: string | undefined): string | und
     return undefined;
   }
 
-  return trimmed.replaceAll('\\', '/').toLowerCase();
+  const normalized = trimmed.replaceAll('\\', '/');
+  return /^[a-z]:\//i.test(normalized) || normalized.startsWith('//') ? normalized.toLowerCase() : normalized;
 }
 
 export function editorSessionStorageKeys(filePath: string | undefined): readonly string[] {
@@ -36,6 +37,10 @@ export function editorSessionStorageKeys(filePath: string | undefined): readonly
   }
 
   const legacyKey = filePath ? `${legacyEditorSessionStoragePrefix}${filePath}` : undefined;
+  if(identity.startsWith('/')&&!identity.startsWith('//'))return [
+    `loaderly:editor-session:v3:${encodeURIComponent(identity)}`,
+    legacyKey!, `${editorSessionStoragePrefix}${encodeURIComponent(identity.toLowerCase())}`
+  ];
   const primaryKey = `${editorSessionStoragePrefix}${encodeURIComponent(identity)}`;
 
   return legacyKey && legacyKey !== primaryKey ? [primaryKey, legacyKey] : [primaryKey];

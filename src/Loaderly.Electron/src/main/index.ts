@@ -1,20 +1,43 @@
+import { PytubeDownload } from './pytubeDownload';
+import { isYouTubeMediaUrl, normalizeDownloadEngine, shouldTryBackup } from '../shared/downloadEngine';
+import { QuickCapture } from './quickCapture';
+import { FloatingCapture } from './floatingCapture';
+import type { QuickCaptureCommand } from '../shared/quickCapture';
+import type { DownloadUrlPayload, DownloadUrlResult } from '../shared/downloadRequest';
+import { appendTrackedBlur, appendTrackedZoom } from './trackedEffects';
+import type { EffectRegionKeyframe } from '../shared/editor-project/editorProject';
 import { release as hostRelease } from 'node:os';
+import { StudioService } from './studioService';
+import { studioProcess } from './studioProcess';
+import { DownloadCoordinator } from './downloadCoordinator';
+import { normalizeDownloadControls, type DownloadControlRequest } from '../shared/downloadControl';
+import { atomicJson } from './studioFiles';
+import { applyStudioOutput } from './studioRender';
+import { hasStudioProcessing, normalizeStudioEdits, type StudioEdits, type TranscriptWord } from '../shared/editor-project/studio';
+import type { StudioRequest } from '../shared/studioApi';
 import {exportVisualizerVideo,runEncoder} from './visualizerExport';
+import {audioCaptionsForOutput} from '../shared/editor-project/audioCaptions';
 import type {VisualizerVideoOptions} from '../shared/editor-project/visualizerVideo';
 import { communityCatalog } from './communityCatalog';
 import {applyWindowAppearance,retainInactiveWindowGlass,supportsDesktopGlass} from './windowAppearance';
 import {macLiquidGlass} from './macLiquidGlass';
+import {linuxGlass} from './linuxGlass';
 import {buildTrayPopupHtml,fitTrayPopupContentSize,supportsNativeTrayCorners,trayPopupRadius,trayPopupShape} from './trayPopup';
 import { CommunityRatings } from './communityRatings';
 import { ProgramUpdates } from './programUpdates';
 import { AutomaticUpdateChecks } from './automaticUpdateChecks';
+import { createStartupManager } from './startupIntegration';
+import { validateStartupRequest } from '../shared/startup';
+import type { StartupManager } from './startup';
 import { prepareDownloadDirectory } from './downloadDirectory';
 import { suggestedMediaOutputFileName } from './mediaOutputFileName';
 import { reserveEditedCopy, saveMediaFile } from './saveMediaFile';
+import { downloadAudioMode } from '../shared/downloadAudio';
 import { extractAudioFile } from './extractAudio';
 import type { ExtractAudioRequest, ExtractAudioResult } from '../shared/audioExtraction';
 import { retryMediaTransfer } from './downloadRetry';
 import { downloadProgressArgs, runDownloadProcess } from './downloadProgress';
+import { downloadNetworkArgs } from './downloadNetwork';
 import type { TransferProgress } from '../shared/downloadProgress';
 import { downloadFolderProblem } from '../shared/download-destination/downloadFolderError';
 import {inspectPlaylist} from './playlist';
@@ -32,12 +55,12 @@ import { blurAmount, pixelBlockSize, blurShapeAlpha } from '../shared/editor-pro
 import { ToolManager } from './toolManager';
 import { textFontCandidates, toolCandidates } from './desktopPlatform';
 import { macApplicationMenu, textContextMenu } from './desktopMenus';
-import { hasLinuxTrayHost } from './linuxTray';
+import { hasLinuxTrayHost, linuxTrayAnchor, linuxTrayUsesNativeMenu } from './linuxTray';
 import { pathToFileURL } from 'node:url';
 import type { ToolName, ToolStatus } from '../shared/tool-manager/toolStatus';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, protocol, screen, shell, Tray, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile, rename, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, parse, resolve } from 'node:path';
@@ -138,6 +161,7 @@ if (isExportValidationRun) {
 
 let visualizerExportController: AbortController | undefined;
 let programUpdater: ProgramUpdates;
+let startupManager: StartupManager;
 let automaticUpdateChecks: AutomaticUpdateChecks | undefined;
 let activeWork = 0;
 let installingProgramUpdate = false;
@@ -148,10 +172,20 @@ let currentThemeMode: ThemeMode = 'light';
 let currentAppearance = defaultAppearance;
 let currentLocale: AppLocale = 'en';
 let isQuitting = false;
+let floatingCapture: FloatingCapture | undefined;
+const downloadCoordinator = new DownloadCoordinator<DownloadUrlResult>(() => ({ok:false, paused:true}), state => {
+  if(mainWindowRef && !mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:download-queue',state);
+  floatingCapture?.updateQueue(state);
+});
+let downloadControlsLoaded: Promise<void> | undefined;
+let downloadControlsWrite: Promise<void> = Promise.resolve();
+function loadDownloadControls() {
+  return downloadControlsLoaded ??= readFile(join(app.getPath('userData'),'download-controls.json'),'utf8').then(value=>downloadCoordinator.configure(normalizeDownloadControls(JSON.parse(value)))).catch(()=>{});
+}
 
 const trayWindowSize = {
-  width: 232,
-  height: 216
+  width: 286,
+  height: 366
 } as const;
 
 type CopyQuickItemPayload = {
@@ -174,32 +208,6 @@ type PickMediaFileResult =
       readonly durationSeconds?: number;
       readonly subtitlePath?: string;
     };
-
-type DownloadUrlPayload = {
-  readonly rowId?:number;
-  readonly knownFiles?: readonly string[];
-  readonly locale?: 'en'|'ar';
-  readonly url: string;
-  readonly quality: 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
-  readonly downloadDirectory?: string;
-  readonly groupDownloadsByPlatform?: boolean;
-  readonly writeSubtitles?: boolean;
-  readonly subtitleLanguages?: string;
-};
-
-type DownloadUrlResult = {
-  readonly ok: boolean;
-  readonly skipped?: boolean;
-  readonly replacedPath?: string;
-  readonly path?: string;
-  readonly fileUrl?: string;
-  readonly thumbnailUrl?: string;
-  readonly name?: string;
-  readonly sizeBytes?: number;
-  readonly durationSeconds?: number;
-  readonly subtitlePath?: string;
-  readonly message?: string;
-};
 
 type SubtitleCue = {
   readonly startSeconds: number;
@@ -231,6 +239,7 @@ type TextOverlayPayload = {
 };
 
 type BlurEffectPayload = {
+  readonly trackingKeyframes?: readonly EffectRegionKeyframe[];
   readonly strength: number;
   readonly shape?: 'rectangle' | 'ellipse' | 'face' | 'rounded';
   readonly style?: 'normal' | 'light' | 'strong' | 'pixelated';
@@ -243,6 +252,7 @@ type BlurEffectPayload = {
 };
 
 type ZoomEffectPayload = {
+  readonly trackingKeyframes?: readonly EffectRegionKeyframe[];
   readonly scale: number;
   readonly x: number;
   readonly y: number;
@@ -280,6 +290,9 @@ type MediaEffectsPayload = {
 };
 
 type CopyMediaOutputPayload = {
+  readonly outputPreset?: import('../shared/editor-project/studio').StudioOutputPreset;
+  readonly studio?: StudioEdits;
+  readonly transcriptWords?: TranscriptWord[];
   readonly saveMode?: 'beside' | 'replace' | 'choose';
   readonly sourcePath: string;
   readonly kind: 'video' | 'image' | 'gif' | 'snapshot' | 'audio';
@@ -319,13 +332,14 @@ type ToolUpdateResult = {
   readonly name: string;
   readonly message?: string;
   readonly status?: ToolStatus;
+  readonly statuses?: readonly ToolStatus[];
 };
 
 type WindowControlAction = 'minimize' | 'toggleMaximize' | 'close' | 'state';
 type ThemeMode = 'light' | 'dark';
 type AppLocale = 'en' | 'ar';
 type SpeedEffectMode = 'normal' | 'preserve-pitch' | 'warm' | 'bright' | 'radio';
-type TrayAction = 'open' | 'downloads' | 'editor' | 'settings' | 'exit';
+type TrayAction = 'open' | 'downloads' | 'editor' | 'settings' | 'exit' | 'capture-video' | 'capture-audio' | 'stop-capture' | 'toggle-floating';
 type RelativeEffectRange = {
   readonly startSeconds: number;
   readonly endSeconds: number;
@@ -365,7 +379,37 @@ function handleTrustedIpc<Args extends unknown[], Result>(
 }
 
 const duplicatePrompts=new DuplicatePrompts();
+let studioService: StudioService | undefined;
+function getStudioService() {
+  if (studioService) return studioService;
+  studioService = new StudioService({
+    root: app.getPath('userData'), resources: app.isPackaged ? process.resourcesPath : app.getAppPath(), development: !app.isPackaged,
+    tool: name => { const path=resolveToolPath(name); if(!path)throw new Error('MEDIA_TOOL_MISSING');return path; },
+    notify: jobs => { if(mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:studio-jobs',jobs); },
+    render: async (value,output,signal) => {
+      const payload=value as CopyMediaOutputPayload;
+      if(!payload||typeof payload.sourcePath!=='string'||!['video','audio','gif','image','snapshot'].includes(payload.kind)||!Number.isFinite(payload.startSeconds)||!Number.isFinite(payload.endSeconds)||payload.endSeconds<=payload.startSeconds)throw new Error('INVALID_RENDER_REQUEST');
+      activeWork++;try{const result=await renderMediaOutput(payload,'file',output,signal);if(!result.ok)throw new Error(result.message??'RENDER_FAILED');}finally{activeWork--;}
+    },
+    pick: async (kind,ar) => {
+      if(kind==='save-project'){
+        const options={title:ar?'حفظ المشروع':'Save project',defaultPath:'Project.loaderly',filters:[{name:ar?'مشروع Loaderly':'Loaderly project',extensions:['loaderly']}]};
+        const result=mainWindowRef?await dialog.showSaveDialog(mainWindowRef,options):await dialog.showSaveDialog(options);return result.canceled||!result.filePath?[]:[result.filePath];
+      }
+      const options:OpenDialogOptions={title:kind==='directory'?(ar?'اختيار مجلد حفظ النتائج':'Choose a folder for output files'):(ar?'اختيار الملفات':'Choose files'),buttonLabel:kind==='directory'?(ar?'حفظ النتائج هنا':'Save results here'):undefined,properties:kind==='directory'?['openDirectory','createDirectory']:kind==='project'||kind==='project-media'?['openFile']:['openFile','multiSelections'],filters:kind==='directory'?undefined:[{name:ar?'الملفات المدعومة':'Supported files',extensions:kind==='images'?['png','jpg','jpeg','webp']:kind==='audio'?['wav','mp3','flac','m4a','ogg','opus']:kind==='project'?['loaderly']:kind==='project-media'?['*']:['mp4','mov','mkv','webm','avi','m4v','wav','mp3','flac','m4a','ogg','opus']}]};
+      const result=mainWindowRef?await dialog.showOpenDialog(mainWindowRef,options):await dialog.showOpenDialog(options);return result.canceled?[]:result.filePaths;
+    }
+  });
+  return studioService;
+}
 function registerIpcHandlers() {
+  handleTrustedIpc('loaderly:startup', async (_event, value: unknown) => {
+    const request = validateStartupRequest(value);
+    if (request.action === 'set') return startupManager.set(request.enabled);
+    if (request.action === 'settings') await startupManager.openSettings();
+    return startupManager.get();
+  });
+  handleTrustedIpc('loaderly:studio', (_event, request: StudioRequest) => getStudioService().request(request));
   handleTrustedIpc('loaderly:duplicate-choice',(event,id:unknown,choice:unknown)=>({ok:duplicatePrompts.reply(event.sender.id,id,choice)}));
   handleTrustedIpc('loaderly:trash-media',(_event,paths:unknown)=>trashMediaFiles(paths,path=>shell.trashItem(path)));
   handleTrustedIpc('loaderly:visualizer-cancel',()=>visualizerExportController?.abort());
@@ -383,7 +427,7 @@ function registerIpcHandlers() {
         if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',{phase:'canceled',percent:0});
         return {ok:false,canceled:true};
       }
-      return await exportVisualizerVideo({sourcePath:payload.sourcePath,outputPath:choice.filePath,options:payload.options,ffmpeg,signal:controller.signal,
+      return await exportVisualizerVideo({sourcePath:payload.sourcePath,outputPath:choice.filePath,options:{...payload.options,captions:audioCaptionsForOutput(payload.options.captions??[],{ranges:keptRangesFromCutOuts({startSeconds:start,endSeconds:end},payload.cutOutRanges??[]),speeds:(payload.effects?.speeds??[]).map(speed=>({startTime:speed.startSeconds??0,endTime:speed.endSeconds??duration,rate:speed.rate}))})},ffmpeg,signal:controller.signal,
         notify:state=>{if(!event.sender.isDestroyed())event.sender.send('loaderly:visualizer-progress',state);},
         prepareAudio:async(path,signal)=>{
           const audioPayload={...payload,kind:'audio' as const,startSeconds:start,endSeconds:end};
@@ -570,10 +614,46 @@ function registerIpcHandlers() {
     return getToolManager().install(toolName, progress => { if (!event.sender.isDestroyed()) event.sender.send('loaderly:tool-install-progress', progress); });
   });
 
+  handleTrustedIpc('loaderly:quick-capture', (_event, request: QuickCaptureCommand) => {
+    const capture = getQuickCapture();
+    if (request.action === 'configure') return capture.configure(request.settings);
+    if (request.action === 'ready') capture.connect();
+    if (request.action === 'focus') showMainWindow('downloads');
+    if (request.action === 'ack') capture.acknowledge(request.id);
+    if (request.action === 'capture') return capture.capture(request.kind === 'audio' ? 'audio' : 'video');
+    return capture.state();
+  });
   handleTrustedIpc('loaderly:download-url', async (event, payload: DownloadUrlPayload): Promise<DownloadUrlResult> => {
-    return downloadUrl(payload,state=>{
-      if(Number.isSafeInteger(payload?.rowId)&&!event.sender.isDestroyed())event.sender.send('loaderly:download-progress',{rowId:payload.rowId,...state});
-    });
+    await loadDownloadControls();
+    return downloadCoordinator.enqueue(payload.rowId!, async (signal, rateKib, phase) => {
+      const notify = (state: TransferProgress) => {
+        phase(state.phase);
+        if (!event.sender.isDestroyed()) event.sender.send('loaderly:download-progress', { rowId: payload.rowId, ...state });
+      };
+      let originalPath: string | undefined;
+      try {
+        const mode = downloadAudioMode(payload);
+        if (mode !== 'original') getStudioService().assertSeparationReady();
+        const result: DownloadUrlResult = mode !== 'original' && payload.originalPath
+          ? { ok: true, path: payload.originalPath, subtitlePath: payload.originalSubtitlePath }
+          : await downloadUrl({ ...payload, rateKib }, notify, signal);
+        if (mode === 'original' || !result.ok || !result.path) return result;
+        originalPath = result.path;
+        notify({ phase: 'waiting-audio', originalPath, subtitlePath: result.subtitlePath });
+        const path = await getStudioService().processDownloadAudio(originalPath, payload.quality === 'audio' ? 'audio' : 'video', mode, signal, notify);
+        return { ...result, ...await mediaFileDetails(path), path, originalPath, subtitlePath: result.subtitlePath };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'TASK_FAILED';
+        return { ok: false, originalPath: originalPath ?? payload.originalPath, message: originalPath ? `AUDIO_SEPARATION_FAILED:${detail}` : detail };
+      }
+    }, payload.scheduledAt);
+  });
+  handleTrustedIpc('loaderly:download-control',async(_event,request:DownloadControlRequest)=>{
+    await loadDownloadControls();
+    if(request.action==='configure'){const settings=normalizeDownloadControls(request.settings);const write=downloadControlsWrite.then(async()=>{await atomicJson(join(app.getPath('userData'),'download-controls.json'),settings);downloadCoordinator.configure(settings);});downloadControlsWrite=write.catch(()=>{});await write;}
+    if(request.action==='pause')downloadCoordinator.pause(request.id!);
+    if(request.action==='move')downloadCoordinator.move(request.id!,request.direction===-1?-1:1);
+    return downloadCoordinator.state();
   });
   handleTrustedIpc('loaderly:missing-library-files',(_event,paths:unknown)=>missingLibraryFiles(paths));
 
@@ -632,6 +712,7 @@ function registerIpcHandlers() {
     currentThemeMode = themeMode === 'dark' ? 'dark' : 'light';
     currentAppearance = normalizeAppearance(appearance);
     currentLocale = locale === 'ar' ? 'ar' : 'en';
+    floatingCapture?.refreshAppearance();
     nativeTheme.themeSource=currentThemeMode;
     if (process.platform !== 'win32' && trayRef) trayRef.setContextMenu(nativeTrayMenu());
 
@@ -641,7 +722,7 @@ function registerIpcHandlers() {
 
     const owner=BrowserWindow.fromWebContents(event.sender);
     const desktopGlass=owner?applyWindowAppearance(owner,currentAppearance,currentThemeMode==='dark',{platform:process.platform,release:hostRelease(),reduceTransparency:nativeTheme.prefersReducedTransparency||nativeTheme.shouldUseHighContrastColors}):false;
-    return { ok: true, desktopGlass };
+    return { ok: true, desktopGlass, backdropBlur:app.getGPUFeatureStatus().gpu_compositing?.startsWith('enabled')===true };
   });
 
   handleTrustedIpc('loaderly:tray-action', (_event, action: TrayAction) => {
@@ -677,7 +758,7 @@ function registerIpcHandlers() {
   });
 }
 
-async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferProgress)=>void=()=>{}): Promise<DownloadUrlResult> {
+async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferProgress)=>void=()=>{}, signal?:AbortSignal): Promise<DownloadUrlResult> {
   const normalizedUrl = normalizeDownloadUrl(payload?.url);
 
   if (normalizedUrl === undefined) {
@@ -685,12 +766,14 @@ async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferPr
   }
 
   const normalizedPayload: DownloadUrlPayload = { ...payload, url: normalizedUrl };
-  notify({phase:'preparing'});
+  const mode = normalizeDownloadEngine(payload.downloadEngine);
+  let engine: 'yt-dlp' | 'pytubefix' = mode === 'pytubefix' && isYouTubeMediaUrl(normalizedUrl) ? 'pytubefix' : 'yt-dlp';
   const toolPath = resolveToolPath('yt-dlp');
-
-  if (toolPath === undefined) {
-    return { ok: false, message: 'yt-dlp was not found.' };
-  }
+  const backup = new PytubeDownload(getToolManager().backup, join(app.getPath('userData'), 'backup-downloads'), () => resolveToolPath('ffmpeg'));
+  const progress = (state: TransferProgress) => notify({ ...state, engine });
+  const canFallback = (message: unknown) => mode === 'auto' && engine === 'yt-dlp' && !!getToolManager().backup.runtime() && !signal?.aborted && shouldTryBackup(normalizedUrl, message);
+  const switchEngine = () => { engine = 'pytubefix'; progress({ phase: 'preparing' }); };
+  progress({phase:'preparing'});
 
   const outputDirectory = resolveDownloadDirectory(
     normalizedPayload.downloadDirectory || defaultDownloadBaseDirectory(),
@@ -701,15 +784,31 @@ async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferPr
   if (directoryError) return { ok: false, message: directoryError };
 
   try {
-    const denoPath=resolveToolPath('deno');
-    const {stdout}=await execFileAsync(toolPath,[...ytDlpIsolationArgs,'--no-playlist','--skip-download','--dump-single-json','--windows-filenames','--output','%(title).180B [%(id)s].%(ext)s',...(denoPath?['--js-runtimes',`deno:${denoPath}`]:[]),'--',normalizedUrl],{timeout:90_000,windowsHide:true,maxBuffer:8*1024*1024});
-    const metadata=JSON.parse(stdout) as {title?:string;id?:string};
-    if(typeof metadata.title!=='string'||!metadata.title.trim())throw Error('Could not read the download title. Try again.');
+    const readMetadata = async (): Promise<{title:string;id?:string}> => {
+      if (engine === 'pytubefix') return backup.metadata(normalizedPayload, signal);
+      if (!toolPath) throw Error('yt-dlp was not found.');
+      const denoPath=resolveToolPath('deno');
+      const {stdout}=await studioProcess(toolPath,[...ytDlpIsolationArgs,'--no-playlist','--skip-download','--dump-single-json','--windows-filenames','--output','%(title).180B [%(id)s].%(ext)s',...(denoPath?['--js-runtimes',`deno:${denoPath}`]:[]),'--',normalizedUrl],{signal:AbortSignal.any([AbortSignal.timeout(90_000),...(signal?[signal]:[])]),maxOutput:8*1024*1024});
+      const metadata=JSON.parse(stdout.toString('utf8')) as {title:string;id?:string};
+      if(typeof metadata.title!=='string'||!metadata.title.trim())throw Error('Could not read the download title. Try again.');
+      return metadata;
+    };
+    let metadata: {title:string;id?:string};
+    try { metadata = await readMetadata(); }
+    catch (error) { if (!canFallback(error)) throw error; switchEngine(); metadata = await readMetadata(); }
     if(Number.isSafeInteger(payload.rowId)&&mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:download-identity',{rowId:payload.rowId,source:normalizedUrl,title:metadata.title,thumbnailUrl:youtubeThumbnailUrl(normalizedUrl)});
     const result=await managedDownload({directory:outputDirectory,title:metadata.title,identity:metadata.id,kind:payload.quality==='audio'?'audio':'video',knownFiles:Array.isArray(payload.knownFiles)?payload.knownFiles.filter((p):p is string=>typeof p==='string'):[],
       classify:async path=>{const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)return undefined;try{const {stdout}=await execFileAsync(ffprobe,['-v','error','-show_streams','-of','json',path],{timeout:15_000,windowsHide:true,maxBuffer:1024*1024});const streams=JSON.parse(stdout).streams as {codec_type:string;disposition?:{attached_pic?:number}}[];return streams.some(s=>s.codec_type==='video'&&!s.disposition?.attached_pic)?'video':streams.some(s=>s.codec_type==='audio')?'audio':undefined;}catch{return undefined;}},
-      choose:path=>confirmDuplicateDownload(path,metadata.title!,normalizedUrl),
-      download:stage=>runYtDlpDownload(toolPath,stage,normalizedPayload,notify)});
+      choose:path=>confirmDuplicateDownload(path,metadata.title!,normalizedUrl,signal),
+      stagingKey:createHash('sha256').update(JSON.stringify([normalizedUrl,normalizedPayload.quality])).digest('hex'),
+      download:async stage=>{
+        if (engine === 'pytubefix') return backup.download(normalizedPayload,stage,progress,signal);
+        let result: DownloadUrlResult;
+        try { result = await runYtDlpDownload(toolPath!,stage,normalizedPayload,progress,signal); }
+        catch(error) { if (!canFallback(error)) throw error; switchEngine(); return backup.download(normalizedPayload,stage,progress,signal); }
+        if (!result.ok && canFallback(result.message)) { switchEngine(); return backup.download(normalizedPayload,stage,progress,signal); }
+        return result;
+      }});
     if(!result.ok||!result.path)return result;
     return {...result,...await mediaFileDetails(result.path),subtitlePath:result.subtitlePath};
   } catch (error) {
@@ -722,15 +821,38 @@ async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferPr
   }
 }
 
+let quickCapture: QuickCapture | undefined;
+function getQuickCapture() {
+  return quickCapture ??= new QuickCapture({
+    read: () => clipboard.readText(),
+    register: (shortcut, action, kind) => globalShortcut.register(shortcut, () => { if (kind !== 'floating') showMainWindow('downloads'); action(); }),
+    unregister: shortcut => globalShortcut.unregister(shortcut),
+    send: request => { if (mainWindowRef && !mainWindowRef.isDestroyed()) mainWindowRef.webContents.send('loaderly:quick-capture-request', request); },
+    changed: state => {
+      if (mainWindowRef && !mainWindowRef.isDestroyed()) mainWindowRef.webContents.send('loaderly:quick-capture-state', state);
+      if (state.settings.floating && !floatingCapture) floatingCapture = new FloatingCapture({
+        capture: getQuickCapture,
+        appearance: () => ({ appearance: currentAppearance, dark: currentThemeMode === 'dark', ar: currentLocale === 'ar', fontCss: auxiliaryFontCss(currentLocale === 'ar') }),
+        downloads: () => showMainWindow('downloads'),
+        queue: () => downloadCoordinator.state(),
+        quitting: () => isQuitting,
+      });
+      if (!isQuitting) floatingCapture?.sync(state.settings);
+      if (trayRef && process.platform !== 'win32') trayRef.setContextMenu(nativeTrayMenu());
+    }
+  });
+}
+
 let duplicatePrompt:Promise<unknown>=Promise.resolve();
-function confirmDuplicateDownload(path:string,title:string,source:string):Promise<DuplicateChoice>{
+function confirmDuplicateDownload(path:string,title:string,source:string,signal?:AbortSignal):Promise<DuplicateChoice>{
   const owner=mainWindowRef?.webContents;
   const prompt=duplicatePrompt.catch(()=>{}).then(async()=>{
-    if(!owner||owner.isDestroyed())return 'skip' as const;
-    const closed=()=>duplicatePrompts.cancel(owner.id);
+    if(!owner||owner.isDestroyed()||signal?.aborted)return 'skip' as const;
+    const closed=()=>{duplicatePrompts.cancel(owner.id);if(!owner.isDestroyed())owner.send('loaderly:duplicate-prompt',undefined);};
     owner.once('destroyed',closed);owner.once('render-process-gone',closed);
-    try{return await duplicatePrompts.request(owner.id,{path,title,source,thumbnailUrl:youtubeThumbnailUrl(source)},value=>owner.send('loaderly:duplicate-prompt',value));}
-    finally{owner.removeListener('destroyed',closed);owner.removeListener('render-process-gone',closed);}
+    signal?.addEventListener('abort',closed,{once:true});
+    try{showMainWindow('downloads');return await duplicatePrompts.request(owner.id,{path,title,source,thumbnailUrl:youtubeThumbnailUrl(source)},value=>owner.send('loaderly:duplicate-prompt',value));}
+    finally{signal?.removeEventListener('abort',closed);owner.removeListener('destroyed',closed);owner.removeListener('render-process-gone',closed);}
   });
   duplicatePrompt=prompt;return prompt;
 }
@@ -739,7 +861,7 @@ function defaultDownloadBaseDirectory(): string {
   return defaultLoaderlyDownloadDirectory(app.getPath('downloads'));
 }
 
-async function runYtDlpDownload(toolPath: string, outputDirectory: string, payload: DownloadUrlPayload, notify:(state:TransferProgress)=>void): Promise<DownloadUrlResult> {
+async function runYtDlpDownload(toolPath: string, outputDirectory: string, payload: DownloadUrlPayload, notify:(state:TransferProgress)=>void, signal?:AbortSignal): Promise<DownloadUrlResult> {
   const startedAtMs = Date.now() - 2000;
   const existingMediaPaths = new Set(await listMediaFiles(outputDirectory).catch(() => []));
   const sourceIdentity = sourceIdentityFromUrl(payload.url);
@@ -750,6 +872,7 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
     ...downloadProgressArgs,
     '--no-playlist',
     '--continue',
+    ...downloadNetworkArgs(payload.rateKib),
     '--no-mtime',
     '--windows-filenames',
     '--retries',
@@ -760,8 +883,6 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
     '20',
     '--retry-sleep',
     'file_access:linear=1::3',
-    '-N',
-    '1',
     ...(denoPath ? ['--js-runtimes', `deno:${denoPath}`] : []),
     ...(ffmpegPath ? ['--ffmpeg-location', dirname(ffmpegPath)] : []),
     '--paths',
@@ -783,11 +904,12 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
   try {
     const result = await retryMediaTransfer(() => {
       notify({phase:'preparing'});
-      return runDownloadProcess(toolPath,args,notify);
+      return runDownloadProcess(toolPath,args,notify,signal);
     });
     stdout = result.stdout;
     notify({phase:'finalizing'});
   } catch (error) {
+    if(signal?.aborted)throw error;
     const message = execFailureMessage(error);
     const recoveredPath = await findChangedMediaFileWithRetry(
       outputDirectory,
@@ -1110,7 +1232,8 @@ async function saveMediaOutput(payload: CopyMediaOutputPayload, owner?: BrowserW
 async function renderMediaOutput(
   payload: CopyMediaOutputPayload,
   destination: 'clipboard' | 'file',
-  requestedOutputPath?: string
+  requestedOutputPath?: string,
+  signal?: AbortSignal
 ): Promise<CopyMediaOutputResult> {
   if (!existsSync(payload.sourcePath)) {
     return { ok: false, message: 'Source media file was not found.' };
@@ -1144,10 +1267,20 @@ async function renderMediaOutput(
     }
   }
 
-  const args = ffmpegCopyArgs({ ...payload, subtitlePath, textOverlays }, outputPath, sourceHasAudio, sourceDimensions);
+  const args = [...ffmpegCopyArgs({ ...payload, subtitlePath, textOverlays }, outputPath, sourceHasAudio, sourceDimensions)];
+  let filterScript:string|undefined;
 
   try {
+    const complex=args.indexOf('-filter_complex');
+    if(complex>=0){
+      // Tracked effects can exceed Windows' command-line limit. Keep the graph
+      // in an owned temporary file and bound filter threads for large graphs.
+      filterScript=join(dirname(outputPath),`.loaderly-filter-${randomUUID()}.txt`);
+      await writeFile(filterScript,args[complex+1],'utf8');args[complex]='-/filter_complex';args[complex+1]=filterScript;
+      args.unshift('-filter_complex_threads','1');
+    }
     await execFileAsync(toolPath, args, {
+      signal,
       timeout: 1000 * 60 * 5,
       windowsHide: true,
       maxBuffer: 1024 * 1024 * 4
@@ -1158,10 +1291,16 @@ async function renderMediaOutput(
       if (needsAudioEffects(payload.audio, outputDuration,payload.audioSections)) {
         const processed = join(dirname(outputPath), `${parse(outputPath).name}-audio-pass-${Date.now()}${extname(outputPath)}`);
         try {
-          await applyAudioEffects(toolPath, outputPath, processed, payload.audio, outputDuration, payload.kind === 'audio' ? 'libmp3lame' : 'aac', AbortSignal.timeout(300000),payload.audioSections);
+          await applyAudioEffects(toolPath, outputPath, processed, payload.audio, outputDuration, payload.kind === 'audio' ? 'libmp3lame' : 'aac', signal ?? AbortSignal.timeout(300000),payload.audioSections);
           await rename(processed, outputPath);
         } finally { await unlink(processed).catch(()=>{}); }
       }
+    }
+    if (payload.outputPreset || (payload.studio && hasStudioProcessing(normalizeStudioEdits(payload.studio)))) {
+      const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)throw new Error('MEDIA_TOOL_MISSING');
+      const fallback=[join(process.resourcesPath,'fonts/NotoSansArabic.ttf'),join(__dirname,'../renderer/fonts/NotoSansArabic.ttf')].find(existsSync)??'';
+      const font=textFontCandidates(defaultEditorTextFontFamily,process.platform,fallback).find(path=>path&&existsSync(path))??fallback;
+      await applyStudioOutput(toolPath,ffprobe,outputPath,payload,font,signal);
     }
     if (destination === 'file') {
       return { ok: true, path: outputPath };
@@ -1182,6 +1321,8 @@ async function renderMediaOutput(
       ok: false,
       message: error instanceof Error ? error.message : destination === 'file' ? 'Save failed.' : 'Copy failed.'
     };
+  } finally {
+    if(filterScript)await unlink(filterScript).catch(()=>{});
   }
 }
 
@@ -1643,7 +1784,7 @@ function composeOverlayGraph(
 
   for (const zoom of normalizedZooms(payload)) {
     const output = nextLabel('zoom');
-    appendZoomGraph(graph, currentLabel, output, zoom, payload, step);
+    appendZoomGraph(graph, currentLabel, output, zoom, payload, step, sourceDimensions);
     currentLabel = output;
   }
 
@@ -1716,7 +1857,8 @@ function appendZoomGraph(
   outputLabel: string,
   zoom: ZoomEffectPayload,
   payload: CopyMediaOutputPayload,
-  index: number
+  index: number,
+  sourceDimensions?: {width:number;height:number}
 ) {
   const range = relativeEffectRange(payload, zoom);
 
@@ -1725,6 +1867,7 @@ function appendZoomGraph(
     return;
   }
 
+  if(zoom.trackingKeyframes?.length&&sourceDimensions){appendTrackedZoom(graph,inputLabel,outputLabel,zoom.trackingKeyframes,{index,start:zoom.startSeconds??payload.startSeconds,end:zoom.endSeconds??payload.endSeconds,offset:payload.startSeconds,duration:payload.endSeconds-payload.startSeconds,...sourceDimensions,frame:payload.kind==='image'||payload.kind==='snapshot'?payload.frameSeconds:undefined});return;}
   const safeScale = formatFilterNumber(zoom.scale);
   const cropWidthPercent = 100 / zoom.scale;
   const cropHeightPercent = 100 / zoom.scale;
@@ -1737,8 +1880,9 @@ function appendZoomGraph(
   const enable = range ? `:${enableBetween(range)}` : '';
 
   graph.push(`[${inputLabel}]split[${base}][${source}]`);
-  graph.push(`[${source}]${zoomChain}[${zoomed}]`);
-  graph.push(`[${base}][${zoomed}]overlay=0:0${enable}[${outputLabel}]`);
+  const trim=range?`trim=start=${formatSeconds(range.startSeconds)}:end=${formatSeconds(range.endSeconds)},`:'';
+  graph.push(`[${source}]${trim}${zoomChain}[${zoomed}]`);
+  graph.push(`[${base}][${zoomed}]overlay=0:0:eof_action=pass${enable}[${outputLabel}]`);
 }
 
 function appendBlurGraph(
@@ -1757,6 +1901,7 @@ function appendBlurGraph(
     return;
   }
 
+  if(blur.trackingKeyframes?.length&&sourceDimensions){appendTrackedBlur(graph,inputLabel,outputLabel,blur.trackingKeyframes,{index,strength:blurAmount(blur.strength),shape:blur.shape,pixelated:blur.style==='pixelated',duration:payload.endSeconds-payload.startSeconds,...sourceDimensions,start:blur.startSeconds??payload.startSeconds,end:blur.endSeconds??payload.endSeconds,offset:payload.startSeconds,frame:payload.kind==='image'||payload.kind==='snapshot'?payload.frameSeconds:undefined});return;}
   const strength = blurAmount(blur.strength);
   const width = formatFilterNumber(Math.max(4, Math.min(100, blur.width)) / 100);
   const height = formatFilterNumber(Math.max(4, Math.min(100, blur.height)) / 100);
@@ -1777,9 +1922,9 @@ function appendBlurGraph(
   const shapeMask = alpha ? `,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='${alpha}'` : '';
   graph.push(`[${inputLabel}]split[${base}][${mask}]`);
   graph.push(
-    `[${mask}]format=rgba,crop=w=${cropW ?? `iw*${width}`}:h=${cropH ?? `ih*${height}`}:x=(iw-ow)*${xFactor}:y=(ih-oh)*${yFactor}:exact=1,${blurChain}${shapeMask}[${blurred}]`
+    `[${mask}]${range?`trim=start=${formatSeconds(range.startSeconds)}:end=${formatSeconds(range.endSeconds)},`:''}format=rgba,crop=w=${cropW ?? `iw*${width}`}:h=${cropH ?? `ih*${height}`}:x=(iw-ow)*${xFactor}:y=(ih-oh)*${yFactor}:exact=1,${blurChain}${shapeMask}[${blurred}]`
   );
-  graph.push(`[${base}][${blurred}]overlay=x=(W-w)*${xFactor}:y=(H-h)*${yFactor}${enable}[${outputLabel}]`);
+  graph.push(`[${base}][${blurred}]overlay=x=(W-w)*${xFactor}:y=(H-h)*${yFactor}:eof_action=pass${enable}[${outputLabel}]`);
 }
 
 function textOverlayFilter(overlay: TextOverlayPayload, payload: CopyMediaOutputPayload): string | undefined {
@@ -1844,7 +1989,7 @@ function relativeEffectRange(
   const relativeStart = Math.max(0, start - outputStart);
   const relativeEnd = Math.min(duration, end - outputStart);
 
-  if (relativeEnd <= 0 || relativeStart >= duration || relativeEnd <= relativeStart + 0.02) {
+  if (relativeEnd <= 0 || relativeStart >= duration || relativeEnd <= relativeStart + 0.0001) {
     return undefined;
   }
 
@@ -1859,7 +2004,7 @@ function relativeEffectRange(
 }
 
 function enableBetween(range: RelativeEffectRange): string {
-  return `enable=between(t\\,${formatSeconds(range.startSeconds)}\\,${formatSeconds(range.endSeconds)})`;
+  return `enable=gte(t\\,${formatSeconds(range.startSeconds)})*lt(t\\,${formatSeconds(range.endSeconds)})`;
 }
 
 function normalizedBlurs(payload: CopyMediaOutputPayload): readonly BlurEffectPayload[] {
@@ -1868,6 +2013,7 @@ function normalizedBlurs(payload: CopyMediaOutputPayload): readonly BlurEffectPa
   return source
     .filter((blur) => Number.isFinite(blur.strength) && blur.strength > 0)
     .map((blur) => ({
+      trackingKeyframes: blur.trackingKeyframes,
       strength: Math.max(1, Math.min(48, blur.strength)),
       shape: blur.shape,
       style: blur.style,
@@ -1886,6 +2032,7 @@ function normalizedZooms(payload: CopyMediaOutputPayload): readonly ZoomEffectPa
   return source
     .filter((zoom) => Number.isFinite(zoom.scale) && zoom.scale > 1)
     .map((zoom) => ({
+      trackingKeyframes: zoom.trackingKeyframes,
       scale: Math.max(1, Math.min(8, zoom.scale)),
       x: clampPercent(zoom.x),
       y: clampPercent(zoom.y),
@@ -2637,6 +2784,7 @@ function createMainWindow(): BrowserWindow {
     autoHideMenuBar: true,
     frame: process.platform === 'darwin',
     ...macLiquidGlass.windowOptions(),
+    ...linuxGlass.windowOptions(),
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 17 }, visualEffectState: 'active' as const } : {}),
     icon: iconPath,
     show: false,
@@ -2672,6 +2820,9 @@ function createMainWindow(): BrowserWindow {
     });
   };
   nativeTheme.on('updated', onNativeThemeUpdated);
+  const removeLinuxGlassListener=linuxGlass.onChange(()=>onNativeThemeUpdated(true));
+  mainWindow.on('focus',()=>{void linuxGlass.refresh();});
+  mainWindow.once('closed',removeLinuxGlassListener);
   macLiquidGlass.register(mainWindow,()=>onNativeThemeUpdated(true),{cornerRadius:0,windowButtons:true});
   mainWindow.once('closed', () => nativeTheme.removeListener('updated', onNativeThemeUpdated));
   let fallbackLoaded = false;
@@ -2840,6 +2991,10 @@ function trayActionFromUrl(url: string): TrayAction | undefined {
       case 'editor':
       case 'settings':
       case 'exit':
+      case 'capture-video':
+      case 'capture-audio':
+      case 'stop-capture':
+      case 'toggle-floating':
         return parsed.hostname;
       default:
         return undefined;
@@ -2864,6 +3019,7 @@ function trayHtmlUrl(desktopGlass: boolean): string {
   const logoPath = resolveAppIconPath();
   const logo = logoPath ? nativeImage.createFromPath(logoPath).resize({width:64,height:64}).toDataURL() : '';
   const html = buildTrayPopupHtml({
+    floating: getQuickCapture().state().settings.floating,
     platform: process.platform,
     osRelease: hostRelease(),
     appearance: currentAppearance,
@@ -2939,6 +3095,7 @@ function createTrayWindow(): BrowserWindow {
     show: false,
     frame: false,
     ...macLiquidGlass.windowOptions(),
+    ...linuxGlass.windowOptions(),
     // Keep DWM's frame so Windows can clip Acrylic and its shadow together.
     // Custom window regions only clipped hit testing, leaving square glass.
     thickFrame: supportsNativeTrayCorners(process.platform,hostRelease()),
@@ -2975,6 +3132,7 @@ function createTrayWindow(): BrowserWindow {
   });
   trayWindow.on('resize', () => refreshTrayWindowShape(trayWindow));
   const onNativeThemeUpdated = () => refreshTrayWindowAppearance(trayWindow);
+  const removeLinuxGlassListener=linuxGlass.onChange(onNativeThemeUpdated);
   nativeTheme.on('updated', onNativeThemeUpdated);
   macLiquidGlass.register(trayWindow,()=>{
     applyWindowAppearance(trayWindow,currentAppearance,currentThemeMode==='dark',{
@@ -2982,6 +3140,7 @@ function createTrayWindow(): BrowserWindow {
     },true);
   },{cornerRadius:trayPopupRadius(currentAppearance,'darwin',hostRelease()),windowButtons:false});
   trayWindow.on('closed', () => {
+    removeLinuxGlassListener();
     nativeTheme.removeListener('updated', onNativeThemeUpdated);
     trayWindowRef = undefined;
   });
@@ -2993,8 +3152,8 @@ function createTrayWindow(): BrowserWindow {
   return trayWindow;
 }
 
-function positionTrayWindow(trayWindow: BrowserWindow) {
-  const trayBounds = trayRef?.getBounds();
+function positionTrayWindow(trayWindow: BrowserWindow, anchor?: Electron.Rectangle) {
+  const trayBounds = anchor ?? trayRef?.getBounds();
 
   if (!trayBounds) {
     return;
@@ -3021,7 +3180,7 @@ function positionTrayWindow(trayWindow: BrowserWindow) {
   fitTrayPopupContentSize(trayWindow,trayWindowSize.width,trayWindowSize.height);
 }
 
-function toggleTrayWindow() {
+function toggleTrayWindow(anchor?: Electron.Rectangle) {
   const trayWindow = createTrayWindow();
 
   if (trayWindow.isVisible()) {
@@ -3029,15 +3188,29 @@ function toggleTrayWindow() {
     return;
   }
 
-  positionTrayWindow(trayWindow);
+  positionTrayWindow(trayWindow,anchor);
   trayWindow.show();
   trayWindow.focus();
 }
 
+let trayActivationRequest = 0;
+
 function runTrayAction(action: TrayAction) {
+  trayActivationRequest++;
   trayWindowRef?.hide();
 
   switch (action) {
+    case 'toggle-floating':
+      getQuickCapture().toggleFloating();
+      break;
+    case 'capture-video':
+    case 'capture-audio':
+      showMainWindow('downloads');
+      getQuickCapture().capture(action === 'capture-audio' ? 'audio' : 'video');
+      break;
+    case 'stop-capture':
+      getQuickCapture().configure({ ...getQuickCapture().state().settings, watch: false });
+      break;
     case 'open':
       showMainWindow('workspace');
       break;
@@ -3084,12 +3257,26 @@ function createTray() {
   }
 
   tray.setToolTip('Loaderly');
-  if (process.platform !== 'win32') {
+  if (process.platform === 'darwin') {
     tray.setContextMenu(nativeTrayMenu());
-    if (process.platform === 'linux') tray.on('click', () => showMainWindow());
+  } else if (process.platform === 'linux') {
+    // StatusNotifier hosts render the exported context menu themselves on
+    // right-click. Leaving it unset exposes an empty native menu on Cinnamon.
+    // Activate remains independent, so X11 left-click opens our quick actions.
+    tray.setContextMenu(nativeTrayMenu());
+    tray.on('click', async (_event,bounds,position) => {
+      const request = ++trayActivationRequest;
+      if (linuxTrayUsesNativeMenu()) { showMainWindow(); return; }
+      if (trayWindowRef?.isVisible()) { trayWindowRef.hide(); return; }
+      const pointer = await linuxGlass.cursorPoint();
+      if (request !== trayActivationRequest || isQuitting || tray.isDestroyed()) return;
+      const anchor = linuxTrayAnchor(bounds,position,pointer ? screen.screenToDipPoint(pointer) : undefined);
+      if (anchor) toggleTrayWindow(anchor);
+      else showMainWindow();
+    });
   } else {
-    tray.on('click', toggleTrayWindow);
-    tray.on('right-click', toggleTrayWindow);
+    tray.on('click', () => toggleTrayWindow());
+    tray.on('right-click', () => toggleTrayWindow());
   }
   tray.on('double-click', () => runTrayAction('open'));
   trayRef = tray;
@@ -3099,10 +3286,14 @@ function nativeTrayMenu() {
   const ar = currentLocale === 'ar';
   return Menu.buildFromTemplate([
     { label: `Loaderly ${app.getVersion()}`, enabled: false },
-    { label: ar ? 'الإجراءات السريعة…' : 'Quick actions…', click: toggleTrayWindow },
+    ...(process.platform === 'linux' ? [] : [{ label: ar ? 'الإجراءات السريعة…' : 'Quick actions…', click: () => toggleTrayWindow() }]),
     { type: 'separator' },
     { label: ar ? 'فتح Loaderly' : 'Open Loaderly', click: () => runTrayAction('open') },
     { label: ar ? 'التنزيلات' : 'Downloads', click: () => runTrayAction('downloads') },
+    { label: getQuickCapture().state().settings.floating ? (ar ? 'إخفاء الزر العائم' : 'Hide floating button') : (ar ? 'إظهار الزر العائم' : 'Show floating button'), click: () => runTrayAction('toggle-floating') },
+    { label: ar ? 'تنزيل الرابط المنسوخ كفيديو' : 'Download copied link as video', click: () => runTrayAction('capture-video') },
+    { label: ar ? 'تنزيل الرابط المنسوخ كصوت' : 'Download copied link as audio', click: () => runTrayAction('capture-audio') },
+    { label: ar ? 'إيقاف التقاط الروابط' : 'Stop clipboard capture', enabled: getQuickCapture().state().settings.watch, click: () => runTrayAction('stop-capture') },
     { type: 'separator' },
     { label: ar ? 'الإعدادات…' : 'Settings…', accelerator: process.platform === 'darwin' ? 'Command+,' : undefined, click: () => runTrayAction('settings') },
     { type: 'separator' },
@@ -3168,6 +3359,8 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showMainWindow('workspace'));
 
   app.whenReady().then(async () => {
+    await linuxGlass.initialize();
+    app.once('will-quit',()=>linuxGlass.dispose());
     Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate(macApplicationMenu(
       () => runTrayAction('settings'),
       () => { void shell.openExternal('https://loaderly.app/docs/'); }
@@ -3189,8 +3382,13 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
       powerMonitor.on('resume',()=>void automaticUpdateChecks?.check());
       app.once('will-quit',()=>automaticUpdateChecks?.stop());
     }
+    startupManager = createStartupManager();
+    // Do not delay the first window for the OS startup service. Reads and changes
+    // from Preferences queue behind this one-time initialization.
+    void startupManager.initialize().catch(error => console.warn('Startup initialization failed', error instanceof Error ? error.message : 'Unknown error'));
     registerIpcHandlers();
     mainWindowRef = createMainWindow();
+    mainWindowRef.webContents.on('did-start-loading', () => quickCapture?.disconnect());
     createTray();
 
     app.on('activate', () => {
@@ -3215,6 +3413,10 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
 }
 
 app.on('will-quit', () => {
+  floatingCapture?.close();
+  quickCapture?.close();
+  downloadCoordinator.stop();
+  void studioService?.close();
   if (trayWindowRef) {
     trayWindowRef.destroy();
     trayWindowRef = undefined;

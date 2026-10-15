@@ -6,10 +6,11 @@ import './experience.css';
 import '../shared/ui/tooltips.css';
 import './glass.css';
 import {installTooltips} from '../shared/ui/tooltips';
+import {installScrollActivity} from '../shared/ui/scrollActivity';
 
 document.title = window.loaderly?.appName ?? 'Loaderly';
 
-function Tooltips(){React.useEffect(()=>installTooltips(document),[]);return null;}
+function Tooltips(){React.useEffect(()=>installTooltips(document),[]);React.useEffect(()=>installScrollActivity(document),[]);return null;}
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
