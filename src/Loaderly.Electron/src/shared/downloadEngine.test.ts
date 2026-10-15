@@ -16,4 +16,8 @@ describe('optional YouTube fallback',()=>{
     for(const platform of ['win32','linux'])expect(shortcutLabel('Mod+Shift+Alt+V',platform)).toBe('Ctrl + Shift + Alt + V');
     expect(shortcutLabel('Mod+Shift+Alt+V','darwin')).toBe('⌘ + ⇧ + ⌥ + V');
   });
+  it('recognizes refused fragments for the optional backup without treating all 403s as media errors',()=>{
+    expect(shouldTryBackup(url, Error('ERROR: [download] Got error: HTTP Error 403: Forbidden\nERROR: fragment 1 not found, unable to continue'))).toBe(true);
+    expect(shouldTryBackup(url, Error('HTTP Error 403: Forbidden'))).toBe(false);
+  });
 });

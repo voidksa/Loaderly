@@ -1,3 +1,5 @@
+import { mediaTransferFailure } from './downloadTransferFailure';
+
 export const downloadEngines = ['auto', 'yt-dlp', 'pytubefix'] as const;
 export type DownloadEngine = typeof downloadEngines[number];
 export function normalizeDownloadEngine(value: unknown): DownloadEngine { return downloadEngines.includes(value as DownloadEngine) ? value as DownloadEngine : 'auto'; }
@@ -16,5 +18,6 @@ export function shouldTryBackup(url: string, error: unknown): boolean {
   const detail = error as { message?: string; stderr?: string } | undefined;
   const message = typeof error === 'string' ? error : `${detail?.message ?? ''} ${detail?.stderr ?? ''}`;
   if (/cancel|abort|ENOSPC|EACCES|EPERM|disk|permission|private video|sign in|login|log in|age.restrict|not available in your country|members.only|copyright|removed|HTTP Error (429|401)|confirm.*bot|ENOTFOUND|ECONN|network.*unreachable/i.test(message)) return false;
-  return /yt-dlp was not found|unable to extract|could not extract|signature|nsig|n challenge|player.*(error|failed)|requested format.*not available|unable to download (?:video|audio) data:.*HTTP Error 403|Could not read the download title|no video formats found/i.test(message);
+  return !!mediaTransferFailure(error) || /yt-dlp was not found|unable to extract|could not extract|signature|nsig|n challenge|player.*(error|failed)|requested format.*not available|Could not read the download title|no video formats found/i.test(message);
 }
+

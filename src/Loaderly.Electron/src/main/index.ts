@@ -867,12 +867,12 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
   const sourceIdentity = sourceIdentityFromUrl(payload.url);
   const ffmpegPath = resolveToolPath('ffmpeg');
   const denoPath = resolveToolPath('deno');
-  const args = [
+  const args = (directTransfer = false) => [
     ...ytDlpIsolationArgs,
     ...downloadProgressArgs,
     '--no-playlist',
-    '--continue',
-    ...downloadNetworkArgs(payload.rateKib),
+    directTransfer ? '--no-continue' : '--continue',
+    ...downloadNetworkArgs(payload.rateKib, directTransfer),
     '--no-mtime',
     '--windows-filenames',
     '--retries',
@@ -902,9 +902,9 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
 
   let stdout = '';
   try {
-    const result = await retryMediaTransfer(() => {
+    const result = await retryMediaTransfer(recovery => {
       notify({phase:'preparing'});
-      return runDownloadProcess(toolPath,args,notify,signal);
+      return runDownloadProcess(toolPath,args(recovery === 'direct'),notify,signal);
     });
     stdout = result.stdout;
     notify({phase:'finalizing'});
