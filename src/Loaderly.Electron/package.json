@@ -198,6 +198,13 @@
       ],
       "syncDesktopName": true
     },
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
+    "appImage": {
+      "artifactName": "Loaderly-${version}-${arch}.${ext}"
+    },
+    "afterAllArtifactBuild": "scripts/finalize-appimage.cjs",
     "deb": {
       "desktop": {
         "entry": {

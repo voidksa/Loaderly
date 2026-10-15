@@ -15,7 +15,13 @@ Install Loaderly from [Microsoft Store](https://apps.microsoft.com/detail/9N1R1H
 
 ## Linux
 
-Use the **amd64.deb** on Ubuntu or Debian and open it with your software installer. Alternatively, download the **x86_64.AppImage**, allow it to run as a program in its file properties, and open it. AppImage needs FUSE support from your distribution. Run Loaderly as your normal user.
+Use a 64-bit Intel or AMD computer with Ubuntu 22.04 or newer, Debian 12 or newer, or a compatible distribution with glibc 2.35 or newer. This release is not for ARM or musl-based distributions.
+
+Use the **amd64.deb** on Ubuntu or Debian and open it with your software installer. Alternatively, download **Loaderly-2.3.0-x86_64.AppImage**, allow it to run as a program in its file properties, and open it. Run Loaderly as your normal user.
+
+The refreshed AppImage includes a modern runtime, so a separate **libfuse2** installation is not needed. If your system does not allow FUSE mounting, run `./Loaderly-2.3.0-x86_64.AppImage --appimage-extract-and-run` instead. This needs temporary disk space.
+
+You can download a newer AppImage normally or use AppImageUpdate. Update information points only to the official **voidksa/Loaderly** GitHub releases. The accompanying **.zsync** file helps compatible update tools download changed parts. It is not an application to open.
 
 ## Your first clip
 
