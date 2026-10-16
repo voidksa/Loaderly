@@ -1,8 +1,9 @@
 import {constants} from 'node:fs';
-import {copyFile,lstat,mkdir,mkdtemp,readdir,rename,rm,stat} from 'node:fs/promises';
+import {copyFile,lstat,mkdir,mkdtemp,readFile,readdir,rename,rm,stat} from 'node:fs/promises';
 import {dirname,extname,isAbsolute,join,parse} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {LocalAiGate} from './localAiGate';
+import {atomicJson} from './studioFiles';
 
 export type DuplicateChoice='skip'|'replace'|'keep';
 type Kind='audio'|'video';
@@ -30,7 +31,7 @@ export async function missingLibraryFiles(input:unknown):Promise<string[]> {
  return missing;
 }
 export async function managedDownload(options:{directory:string;title:string;identity?:string;kind:Kind;knownFiles?:readonly string[];
- stagingKey?:string; signal?:AbortSignal;
+ stagingKey?:string; resumeOwner?:string; signal?:AbortSignal;
  classify:(path:string)=>Promise<Kind|undefined>; choose:(path:string)=>Promise<DuplicateChoice>;
  download:(stage:string)=>Promise<{ok:boolean;path?:string;message?:string;subtitlePath?:string}>;
 }):Promise<{ok:boolean;path?:string;message?:string;subtitlePath?:string;skipped?:boolean;replacedPath?:string}> {
@@ -55,15 +56,19 @@ async function run(options:Parameters<typeof managedDownload>[0]){
   const info=await lstat(path).catch(()=>undefined);if(!info?.isFile()||info.isSymbolicLink())continue;
   if(await options.classify(path)===options.kind){duplicate=path;break;}
  }
- const choice=duplicate?await options.choose(duplicate):'keep';
- check();
- if(choice==='skip')return {ok:false,skipped:true};
- const original=duplicate&&choice==='replace'?await stat(duplicate):undefined;
  const resumable=typeof options.stagingKey==='string'&&/^[a-f0-9]{64}$/.test(options.stagingKey);
  const stage=resumable?join(options.directory,`.loaderly-partial-${options.stagingKey}`):await mkdtemp(join(options.directory,'.loaderly-download-'));
  if(resumable){await mkdir(stage,{recursive:true});const info=await lstat(stage);if(!info.isDirectory()||info.isSymbolicLink())throw Error('Invalid download staging directory.');}
  let completed=false;
  try{
+ const original=duplicate?await stat(duplicate):undefined;
+ const fingerprint=original?JSON.stringify([duplicate,original.size,original.mtimeMs,original.ctimeMs,original.ino]):undefined;
+ let remembered:DuplicateChoice|undefined;
+ if(resumable&&options.resumeOwner&&fingerprint){try{const saved=JSON.parse(await readFile(join(stage,'duplicate-choice.json'),'utf8'));if(saved.owner===options.resumeOwner&&saved.fingerprint===fingerprint&&['replace','keep'].includes(saved.choice))remembered=saved.choice;}catch{/* No choice for this task and this file. */}}
+ const choice=duplicate?(remembered??await options.choose(duplicate)):'keep';
+ if(choice==='skip'){check();return {ok:false,skipped:true};}
+ if(resumable&&options.resumeOwner&&fingerprint)await atomicJson(join(stage,'duplicate-choice.json'),{owner:options.resumeOwner,fingerprint,choice});
+ check();
   const result=await options.download(stage);
   check();
   if(!result.ok||!result.path)return result;

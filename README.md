@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/loaderly-256.png" alt="Loaderly app icon" width="96" height="96">
-  <h1>Loaderly 2.3.1</h1>
+  <h1>Loaderly 2.3.2</h1>
   <p>Download, edit and make it yours. For Windows, macOS and Linux.</p>
   <p><a href="https://loaderly.app/#desktop-downloads"><strong>Download for Mac or Linux</strong></a> · <a href="https://loaderly.app/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
   <p><a href="https://apps.microsoft.com/detail/9n1r1h10hxr7?referrer=appbadge&amp;mode=full">
@@ -30,15 +30,15 @@ Windows downloads and future Windows updates are available only through Microsof
 
 Follow the [installation guide](https://loaderly.app/docs/installation/) for your system. Updating keeps your library and preferences. Finish active downloads and exports before installing.
 
-## New in 2.3.1
+## New in 2.3.2
 
-- **Save where you choose:** fixed downloads directly to drive roots and replacement on FAT32 removable drives.
-- **Stop a download from its row:** visible Pause and Cancel controls, a Canceled filter and reliable finished states.
-- **Know what is happening:** network transfer and final audio/video processing have separate, clearer status messages.
-- **Start transcription with less setup:** short local audio analysis suggests settings and a results folder. Set up and transcribe in one step, or use manual controls for quality, language and audio type.
-- **Start with Windows:** fixed the startup preference in the Microsoft Store edition.
+- **Know when a Store update is ready:** Windows checks automatically and downloads updates while you work. Save and install when your tasks finish.
+- **Continue paused downloads:** keep partial data, the selected transfer method and your Replace or Keep both choice for the same task.
+- **Keep your community account:** temporary connection failures preserve saved sign-in, with protected-session restoration after reopening or updating.
+- **Switch themes clearly:** choosing a built-in theme replaces the previous design’s colors and styling. Custom themes no longer look like a selected built-in preset.
+- **Dismiss notices comfortably:** a centered close button with clear keyboard focus in English and Arabic.
 
-[Explore the illustrated 2.3.1 guide](https://loaderly.app/docs/whats-new/). Microsoft Store provides the currently published Windows version.
+[Explore the 2.3.2 guide](https://loaderly.app/docs/whats-new/). Microsoft Store provides the currently published Windows version.
 
 ![Automatic transcription settings in Loaderly](docs/images/loaderly-transcription-en.png)
 

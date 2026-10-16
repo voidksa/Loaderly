@@ -14,5 +14,11 @@ export function useProgramUpdate() {
     }).catch(() => {});
     return () => { active = false; unsubscribe?.(); };
   }, []);
+  useEffect(() => {
+    if(state?.distribution !== 'store' || !['ready','installed'].includes(state.phase))return;
+    let active=true;
+    const timer=setInterval(()=>void window.loaderly?.programUpdate('state').then(next=>{if(active)setState(previous=>previous&&['ready','installed'].includes(previous.phase)?next:previous);}).catch(()=>{}),1500);
+    return ()=>{active=false;clearInterval(timer);};
+  },[state?.distribution,state?.phase]);
   return state;
 }

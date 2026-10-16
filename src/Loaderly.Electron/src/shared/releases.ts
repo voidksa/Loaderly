@@ -1,6 +1,6 @@
 export type ReleaseAsset = { platform: string; arch: string; format: 'exe'|'zip'|'AppImage'|'deb'; url: string; size: number; sha256: string };
 export type ReleaseManifest = { schema: 1; version: string; notes: string; notesAr?: string; publishedAt: string; assets: ReleaseAsset[] };
-export type UpdateState = { phase: 'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'error'; current: string; version?: string; notes?: string; notesAr?: string; progress?: number; checkedAt?: string; message?: string; automatic: boolean; distribution?: 'store'; installIssue?: 'location'|'verification'|'installation' };
+export type UpdateState = { phase: 'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'installing'|'installed'|'error'; current: string; version?: string; notes?: string; notesAr?: string; progress?: number; checkedAt?: string; message?: string; automatic: boolean; distribution?: 'store'; installIssue?: 'location'|'verification'|'installation'; storeIssue?: 'check'|'download'|'install'|'canceled'|'busy'; snoozedUntil?: number; workBusy?: boolean };
 export const releaseOrigin = 'https://loaderly.app';
 export function versionParts(version: string): number[] | undefined {
   if (!/^\d+\.\d+\.\d+$/.test(version)) return;

@@ -150,7 +150,10 @@
 .download-selection__actions>span { font-size:.875rem; }
 .download-selection>small { color:var(--muted);line-height:1.7; }
 .download-history-notice { display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;margin-block-end:12px;background:var(--control-fill);border-radius:var(--radius);font-size:.875rem; }
-.download-history-notice>.icon-button { margin-inline-start:auto; }
+.download-history-notice>.icon-button { margin-inline-start:auto;display:inline-flex;align-items:center;justify-content:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid transparent;border-radius:var(--radius);background:transparent;color:var(--muted);cursor:pointer; }
+.download-history-notice>.icon-button:hover { background:var(--control-hover);color:var(--foreground);border-color:var(--border-soft); }
+.download-history-notice>.icon-button:focus-visible { outline:2px solid var(--foreground);outline-offset:2px; }
+.download-history-notice>.icon-button>svg { flex:none;pointer-events:none; }
 .download-composer__footer { flex-wrap:wrap;align-items:center; }
 .download-composer__start { display:flex;align-items:center;gap:14px;flex-wrap:wrap; }
 .download-composer__start>.button { order:-1; }

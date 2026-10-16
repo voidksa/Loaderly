@@ -32,7 +32,7 @@ declare global {
       readonly communityDrafts:(input:import('../shared/communityDrafts').DraftRequest)=>Promise<import('../shared/communityDrafts').DraftResult>;
       readonly communityRatings:(id?:string,stars?:number)=>Promise<import('../shared/communityRatings').CommunityRatingsResult>;
       readonly communityAccount:(action:'sign-in'|'poll'|'sign-out'|'cancel'|'open')=>Promise<import('../shared/communityRatings').CommunityAccount>;
-      readonly programUpdate: (action:'state'|'check'|'download'|'cancel'|'install'|'automatic',automatic?:boolean)=>Promise<import('../shared/releases').UpdateState>;
+      readonly programUpdate: (action:'state'|'check'|'download'|'cancel'|'install'|'automatic'|'open-store'|'later'|'restart',automatic?:boolean)=>Promise<import('../shared/releases').UpdateState>;
       readonly onProgramUpdate: (callback:(state:import('../shared/releases').UpdateState)=>void)=>()=>void;
       readonly discoverModels: (connection:import('../shared/app-preferences/aiProviders').AiConnection) => Promise<{ok:boolean;models?:string[];message?:string}>;
       readonly translateSubtitles: (input:import('../shared/app-preferences/aiProviders').TranslationInput) => Promise<{ok:boolean;cues?:LoaderlySubtitleCue[];message?:string}>;

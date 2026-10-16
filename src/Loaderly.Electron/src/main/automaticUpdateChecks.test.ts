@@ -62,7 +62,7 @@ it('retries a failed check after one minute and checks when automatic updates ar
   expect(updater.check).toHaveBeenCalledTimes(3);
 });
 
-it('respects disabled checking, Store distribution and active or downloaded updates', async () => {
+it('respects disabled checking and active or downloaded updates', async () => {
   const { updater, scheduler } = fixture();
   updater.state.automatic = false;
   scheduler.start();
@@ -72,11 +72,14 @@ it('respects disabled checking, Store distribution and active or downloaded upda
     updater.state.phase = phase;
     await scheduler.check('enabled');
   }
-  updater.state.phase = 'idle';
-  updater.state.distribution = 'store';
-  await scheduler.check('enabled');
   expect(updater.check).not.toHaveBeenCalled();
   scheduler.stop();
-  scheduler.start();
   expect(vi.getTimerCount()).toBe(0);
+});
+it('checks Store shortly after opening and throttles background focus checks',async()=>{
+ const {updater,scheduler}=fixture();updater.state.distribution='store';scheduler.start();
+ await vi.advanceTimersByTimeAsync(4999);expect(updater.check).not.toHaveBeenCalled();
+ await vi.advanceTimersByTimeAsync(1);expect(updater.check).toHaveBeenCalledTimes(1);
+ await scheduler.check();await vi.advanceTimersByTimeAsync(60*60_000);expect(updater.check).toHaveBeenCalledTimes(1);
+ await vi.advanceTimersByTimeAsync(2*60*60_000+30_000);expect(updater.check).toHaveBeenCalledTimes(2);scheduler.stop();
 });

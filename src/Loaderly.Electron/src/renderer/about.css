@@ -7,3 +7,5 @@
 .program-updates .update-checked time {font-variant-numeric:tabular-nums;}
 .settings-page .settings-list[data-section=about] .about-links {display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:18px;padding-block-start:22px;text-align:center;}
 .settings-page .settings-list[data-section=about] .about-links nav {display:flex;align-items:center;flex-wrap:wrap;gap:12px 20px;}
+.store-install-dialog {max-width:460px;padding:28px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-raised);color:var(--foreground);line-height:1.7;}
+.store-install-dialog::backdrop {background:rgb(0 0 0 / .55);}

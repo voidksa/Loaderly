@@ -6,6 +6,13 @@ export type Appearance = { preset: string; accent: string; density: 'comfortable
 export const appearanceLimits = {radius:[0,20],textScale:[90,120],sidebarWidth:[188,280],panelRadius:[0,24],borderWidth:[0,2]} as const;
 export const defaultInterfaceTextScale = 120;
 export const defaultAppearance: Appearance = { preset: 'graphite', accent: '', density: 'comfortable', corners: 'rounded' };
+export function isBuiltinAppearance(value: Appearance): boolean {
+  return !value.accent && !value.colors && !value.glass && !value.opacity && value.radius===undefined && value.panelRadius===undefined && value.borderWidth===undefined && value.corners==='rounded';
+}
+export function selectBuiltinAppearance(value: Appearance, preset: string): Appearance {
+  // Replace the theme itself, retaining the user's reading size and workspace spacing.
+  return normalizeAppearance({...defaultAppearance,preset,textScale:value.textScale,sidebarWidth:value.sidebarWidth,density:value.density,glass:false});
+}
 export const defaultGlassOpacity: Readonly<Record<typeof opacityKeys[number],number>> = {background:15,sidebar:15,titlebar:15,surface:0,editor:15,popover:0};
 export function appearanceOpacity(value: Appearance,key: typeof opacityKeys[number]): number {
   return value.opacity?.[key] ?? (value.glass ? defaultGlassOpacity[key] : 100);

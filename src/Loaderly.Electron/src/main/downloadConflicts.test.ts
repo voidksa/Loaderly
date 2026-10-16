@@ -66,3 +66,19 @@ it('checks known library locations and removes only confirmed missing files',asy
  expect(await managedDownload({...options('skip'),knownFiles:[original]})).toMatchObject({skipped:true});
  const deleted=join(directory,'deleted.mp4'),unavailable=join(directory,'disconnected','Song.mp3');expect(await missingLibraryFiles([original,deleted,unavailable])).toEqual([deleted]);
 });
+it.each(['replace','keep'] as const)('remembers %s for a paused task and reuses its partial directory',async(choice)=>{
+ const original=join(directory,'Song.mp3');await writeFile(original,'original');
+ const first=options(choice),stagingKey='a'.repeat(64);let firstStage='';
+ first.download.mockImplementation(async stage=>{firstStage=stage;await writeFile(join(stage,'bytes.part'),'partial');throw Error('paused');});
+ await expect(managedDownload({...first,stagingKey,resumeOwner:'row-12'})).rejects.toThrow('paused');
+ const next=options(choice);next.download.mockImplementation(async stage=>{expect(stage).toBe(firstStage);expect(await readFile(join(stage,'bytes.part'),'utf8')).toBe('partial');const path=join(stage,'Song.mp3');await writeFile(path,'finished');return {ok:true,path};});
+ const result=await managedDownload({...next,stagingKey,resumeOwner:'row-12'});expect(result.ok).toBe(true);expect(next.choose).not.toHaveBeenCalled();
+ expect(await readFile(original,'utf8')).toBe(choice==='replace'?'finished':'original');
+});
+it('asks again when the existing file changes or a different task uses the same partial',async()=>{
+ const original=join(directory,'Song.mp3');await writeFile(original,'old');const stagingKey='b'.repeat(64);
+ const first=options('replace');first.download.mockRejectedValue(Error('paused'));await expect(managedDownload({...first,stagingKey,resumeOwner:'1'})).rejects.toThrow();
+ await writeFile(original,'changed by somebody else');
+ const second=options('keep');second.download.mockRejectedValue(Error('paused'));await expect(managedDownload({...second,stagingKey,resumeOwner:'1'})).rejects.toThrow();expect(second.choose).toHaveBeenCalledOnce();
+ const third=options('keep');await managedDownload({...third,stagingKey,resumeOwner:'2'});expect(third.choose).toHaveBeenCalledOnce();
+});

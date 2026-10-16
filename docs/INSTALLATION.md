@@ -1,10 +1,10 @@
-# Install Loaderly 2.3.1
+# Install Loaderly 2.3.2
 
 Download Loaderly for your computer from [the official website](https://loaderly.app).
 
 ## Windows
 
-Install Loaderly from [Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7). Microsoft Store delivers Windows updates. Finish any active downloads or exports before updating.
+Install Loaderly from [Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7). From 2.3.2, Loaderly checks the Store automatically after opening. Choose **Update now** to download while working, then **Save and install update** once your tasks finish. Windows may close Loaderly during installation. Manual checks, automatic-check preferences and installation status are in **Preferences > About**. **Later** hides the notice for 24 hours. Earlier versions must receive 2.3.2 through Microsoft Store first; availability depends on the Store rollout for your device.
 
 ## macOS
 
@@ -17,9 +17,9 @@ Install Loaderly from [Microsoft Store](https://apps.microsoft.com/detail/9N1R1H
 
 Use a 64-bit Intel or AMD computer with Ubuntu 22.04 or newer, Debian 12 or newer, or a compatible distribution with glibc 2.35 or newer. This release is not for ARM or musl-based distributions.
 
-Use the **amd64.deb** on Ubuntu or Debian and open it with your software installer. Alternatively, download **Loaderly-2.3.1-x86_64.AppImage**, allow it to run as a program in its file properties, and open it. Run Loaderly as your normal user.
+Use the **amd64.deb** on Ubuntu or Debian and open it with your software installer. Alternatively, download **Loaderly-2.3.2-x86_64.AppImage**, allow it to run as a program in its file properties, and open it. Run Loaderly as your normal user.
 
-The refreshed AppImage includes a modern runtime, so a separate **libfuse2** installation is not needed. If your system does not allow FUSE mounting, run `./Loaderly-2.3.1-x86_64.AppImage --appimage-extract-and-run` instead. This needs temporary disk space.
+The refreshed AppImage includes a modern runtime, so a separate **libfuse2** installation is not needed. If your system does not allow FUSE mounting, run `./Loaderly-2.3.2-x86_64.AppImage --appimage-extract-and-run` instead. This needs temporary disk space.
 
 You can download a newer AppImage normally or use AppImageUpdate. Update information points only to the official **voidksa/Loaderly** GitHub releases. The accompanying **.zsync** file helps compatible update tools download changed parts. It is not an application to open.
 

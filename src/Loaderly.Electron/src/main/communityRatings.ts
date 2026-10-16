@@ -1,6 +1,7 @@
 import {validDraft,type DraftRequest,type DraftResult} from '../shared/communityDrafts';
 import {safeStorage} from 'electron';
-import {readFile,writeFile,mkdir,rm,stat} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rm,stat,rename} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {releaseOrigin} from '../shared/releases';
 import {boundedResponse} from './communityCatalog';
@@ -8,8 +9,11 @@ import {validRating,type CommunityAccount,type CommunityRatingsResult} from '../
 
 export class CommunityRatings {
   private token='';
+  private login='';
+  private sessionOnly=false;
   private loaded=false;
   private loading?:Promise<void>;
+  private retryLoadAt=0;
   private generation=0;
   private persistence:Promise<void>=Promise.resolve();
   private pending?:{clientId:string;deviceCode:string;userCode:string;interval:number;next:number;expires:number};
@@ -18,29 +22,61 @@ export class CommunityRatings {
   private get interactiveStorage(){return this.platform==='darwin'||this.platform==='linux';}
   private secure(){return safeStorage.isEncryptionAvailable()&&(this.platform!=='linux'||safeStorage.getSelectedStorageBackend()!=='basic_text');}
   private async savedAccount():Promise<CommunityAccount>{
-    if(this.token||!this.interactiveStorage)return {};
+    if(this.token)return {...(this.login?{login:this.login}:{savedSession:true}),...(this.sessionOnly?{sessionOnly:true}:{})};
     try{const file=await stat(this.file);return file.isFile()&&file.size>0&&file.size<=4096?{savedSession:true}:{};}catch{return {};}
   }
-  private async load(){if(this.loaded)return;const generation=this.generation;this.loading??=(async()=>{try{
+  private async load(){if(this.loaded||Date.now()<this.retryLoadAt)return;const generation=this.generation;this.loading??=(async()=>{let missing=false;try{
     // Check for an actual saved session before asking the OS for its key.
     const encrypted=await readFile(this.file);
     if(encrypted.length>0&&encrypted.length<=4096&&this.secure()){
-      const token=safeStorage.decryptString(encrypted);
-      if(generation===this.generation&&/^[A-Za-z0-9_]{20,255}$/.test(token))this.token=token;
+      const decoded=safeStorage.decryptString(encrypted);
+      const saved=decoded.startsWith('{')?JSON.parse(decoded):{token:decoded};
+      if(generation===this.generation&&/^[A-Za-z0-9_]{20,255}$/.test(saved.token)){
+        this.token=saved.token;
+        this.login=typeof saved.login==='string'&&/^[a-zA-Z0-9-]{1,39}$/.test(saved.login)?saved.login:'';
+      }
     }
-  }catch{/* A missing OS key requires signing in again. */}finally{if(generation===this.generation)this.loaded=true;}})();await this.loading;}
-  private async json(url:string,init:RequestInit={},limit=100000){const response=await fetch(url,{...init,redirect:'error',signal:AbortSignal.timeout(12000)});if(!response.ok){if(response.status===401)await this.logout();throw Error('Request unavailable');}return JSON.parse(await boundedResponse(response,limit));}
-  async logout():Promise<CommunityAccount>{this.generation++;this.token='';this.pending=undefined;this.loaded=true;this.persistence=this.persistence.catch(()=>{}).then(()=>rm(this.file,{force:true}));await this.persistence;return {};}
+  }catch(error){missing=(error as NodeJS.ErrnoException).code==='ENOENT';}
+  finally{if(generation===this.generation){this.loaded=!!this.token||missing;this.retryLoadAt=this.loaded?0:Date.now()+30_000;}this.loading=undefined;}})();await this.loading;}
+  private async json(url:string,init:RequestInit={},limit=100000){const response=await fetch(url,{...init,redirect:'error',signal:AbortSignal.timeout(12000)});if(!response.ok)throw Object.assign(Error('Request unavailable'),{status:response.status});return JSON.parse(await boundedResponse(response,limit));}
+  private async saveSession(){
+    const generation=this.generation,token=this.token,login=this.login;
+    if(!token)return;
+    try{
+      if(!this.secure()){this.sessionOnly=true;return;}
+      const encrypted=safeStorage.encryptString(JSON.stringify({token,login}));
+      this.persistence=this.persistence.catch(()=>{}).then(async()=>{
+        if(generation!==this.generation)return;
+        await mkdir(this.directory,{recursive:true});const temporary=this.file+'.'+randomUUID()+'.tmp';
+        try{await writeFile(temporary,encrypted,{mode:0o600,flag:'wx'});
+          for(let attempt=0;;attempt++){try{await rename(temporary,this.file);break;}catch(error){if(attempt>=5||!['EPERM','EACCES','EBUSY'].includes((error as NodeJS.ErrnoException).code??''))throw error;await new Promise(r=>setTimeout(r,25*(attempt+1)));}}
+        }finally{await rm(temporary,{force:true});}
+      });
+      await this.persistence;if(generation===this.generation)this.sessionOnly=false;
+    }catch{if(generation===this.generation)this.sessionOnly=true;}
+  }
+  async logout():Promise<CommunityAccount>{this.generation++;this.token='';this.login='';this.sessionOnly=false;this.pending=undefined;this.loaded=true;this.persistence=this.persistence.catch(()=>{}).then(()=>rm(this.file,{force:true}));await this.persistence;return {};}
+  cancel():Promise<CommunityAccount>{this.generation++;this.pending=undefined;return this.savedAccount();}
   async ratings(lookId?:unknown,stars?:unknown):Promise<CommunityRatingsResult>{
     if(lookId!==undefined&&(typeof lookId!=='string'||lookId.length>80||!Number.isInteger(stars)||Number(stars)<1||Number(stars)>5))throw Error('Invalid rating');
     // Public browsing must never open a Keychain or secret-store prompt.
     if(!this.interactiveStorage)await this.load();
     const saved=await this.savedAccount();
+    const generation=this.generation,token=this.token;
     if(lookId!==undefined&&!this.token)return {available:true,ratings:[],account:{error:'sign-in-required'}};
     try {const result=await this.json(releaseOrigin+'/api/community/ratings',{method:lookId===undefined?'GET':'POST',headers:{...(this.token?{Authorization:`Bearer ${this.token}`} : {}),...(lookId===undefined?{}:{'Content-Type':'application/json'})},...(lookId===undefined?{}:{body:JSON.stringify({lookId,stars})})});
       if(!Array.isArray(result.ratings)||result.ratings.length>200)throw Error('Invalid ratings');
-      return {available:true,ratings:result.ratings.filter(validRating),account:typeof result.user?.login==='string'?{login:result.user.login.slice(0,40)}:saved};
-    }catch{return {available:false,ratings:[],account:{...saved,error:'unavailable'}};}
+      if(generation!==this.generation)return {available:false,ratings:[],account:await this.savedAccount()};
+      if(token){
+        if(typeof result.user?.login!=='string'||!/^[a-zA-Z0-9-]{1,39}$/.test(result.user.login))throw Error('Identity unavailable');
+        const changed=this.login!==result.user.login;this.login=result.user.login;if(changed||this.sessionOnly)await this.saveSession();
+      }
+      return {available:true,ratings:result.ratings.filter(validRating),account:token?await this.savedAccount():saved};
+    }catch(error){
+      if(generation!==this.generation)return {available:false,ratings:[],account:await this.savedAccount()};
+      if(token&&(error as {status?:number}).status===401){await this.logout();return {available:false,ratings:[],account:{error:'sign-in-required'}};}
+      return {available:false,ratings:[],account:{...await this.savedAccount(),error:'unavailable'}};
+    }
   }
   async drafts(input:DraftRequest):Promise<DraftResult>{
     if(!this.interactiveStorage)await this.load();if(!this.token)return {ok:false,error:'sign-in-required'};
@@ -64,7 +100,7 @@ export class CommunityRatings {
     const generation=++this.generation;this.pending=undefined;
     // Restoring a protected session is an explicit sign-in action on systems
     // whose key provider can ask the user to unlock their password store.
-    if(!this.token){this.loaded=false;this.loading=undefined;await this.load();}
+    if(!this.token){this.loaded=false;this.loading=undefined;this.retryLoadAt=0;await this.load();}
     if(generation!==this.generation)return {};
     if(this.token){const restored=await this.ratings();if(restored.account?.login||!restored.available)return restored.account??{error:'unavailable'};}
     if(generation!==this.generation)return {};
@@ -98,13 +134,10 @@ export class CommunityRatings {
       // Public identity is sufficient. Reject unexpectedly broader grants.
       if(typeof result.scope==='string'&&result.scope.trim()){this.pending=undefined;return {error:'unexpected-permissions'};}
       this.token=result.access_token;this.loaded=true;this.pending=undefined;
-      const generation=this.generation,token=this.token;
-      if(this.secure()){
-        this.persistence=this.persistence.catch(()=>{}).then(async()=>{if(generation!==this.generation)return;await mkdir(this.directory,{recursive:true});await writeFile(this.file,safeStorage.encryptString(token),{mode:0o600});});
-        await this.persistence;
-      }
+      const generation=this.generation;
+      await this.saveSession();
       if(generation!==this.generation)return {};
       const verified=await this.ratings();return verified.account??{};
-    }catch{return {error:'unavailable'};}
+    }catch{return this.pending===pending?{...waiting(),error:'unavailable'}:{};}
   }
 }

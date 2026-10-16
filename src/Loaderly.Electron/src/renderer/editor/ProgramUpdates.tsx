@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ArrowUpCircle, Download, ExternalLink, RefreshCcw } from 'lucide-react';
+import { ArrowUpCircle, Download, RefreshCcw } from 'lucide-react';
 import { useProgramUpdate } from './useProgramUpdate';
+import { StoreProgramUpdates } from './StoreProgramUpdates';
 
 export function ProgramUpdates({ ar, busy, beforeInstall }: { ar: boolean; busy: boolean; beforeInstall: () => boolean }) {
   const state = useProgramUpdate();
@@ -20,10 +21,7 @@ export function ProgramUpdates({ ar, busy, beforeInstall }: { ar: boolean; busy:
   const progress = Math.min(100, Math.max(0, Math.round(state?.progress ?? 0)));
   const checkedAt = state?.checkedAt ? new Date(state.checkedAt) : undefined;
   const checkedLabel = checkedAt && Number.isFinite(checkedAt.getTime()) ? new Intl.DateTimeFormat(ar ? 'ar-u-nu-latn' : 'en', {dateStyle:'medium',timeStyle:'short'}).format(checkedAt) : undefined;
-  if (state?.distribution === 'store') return <section className="program-updates" aria-label={t('Loaderly updates', 'تحديثات Loaderly')}>
-    <div className="setting-row"><span><strong>{t('Updates', 'التحديثات')}</strong><small>{t('Updates are managed by Microsoft Store.', 'يتولى متجر Microsoft التحديثات.')}</small></span><button className="button secondary" onClick={() => void action('check')}><ExternalLink size={15} aria-hidden="true" />{t('Open Microsoft Store', 'فتح متجر Microsoft')}</button></div>
-    {error && <p role="status">{t('Could not open Microsoft Store. Open it from the Start menu.', 'تعذّر فتح متجر Microsoft. افتحه من قائمة ابدأ.')}</p>}
-  </section>;
+  if (state?.distribution === 'store') return <StoreProgramUpdates state={state} ar={ar} busy={busy} beforeInstall={beforeInstall}/>;
   return <section className="program-updates" aria-label={t('Loaderly updates', 'تحديثات Loaderly')}>
     <div className="setting-row">
       <span><strong>{t('Updates', 'التحديثات')}</strong>{checkedLabel && <small className="update-checked"><span>{t('Last checked:', 'آخر فحص:')}</span><time dateTime={state!.checkedAt}><bdi dir={ar ? 'rtl' : 'ltr'}>{checkedLabel}</bdi></time></small>}</span>

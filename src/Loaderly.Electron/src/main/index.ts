@@ -25,6 +25,8 @@ import {linuxGlass} from './linuxGlass';
 import {buildTrayPopupHtml,fitTrayPopupContentSize,supportsNativeTrayCorners,trayPopupRadius,trayPopupShape} from './trayPopup';
 import { CommunityRatings } from './communityRatings';
 import { ProgramUpdates } from './programUpdates';
+import { StoreProgramUpdates } from './storeProgramUpdates';
+import { windowsStoreUpdates } from './windowsStoreUpdates';
 import { AutomaticUpdateChecks } from './automaticUpdateChecks';
 import { createStartupManager } from './startupIntegration';
 import { validateStartupRequest } from '../shared/startup';
@@ -35,7 +37,7 @@ import { reserveEditedCopy, saveMediaFile } from './saveMediaFile';
 import { downloadAudioMode } from '../shared/downloadAudio';
 import { extractAudioFile } from './extractAudio';
 import type { ExtractAudioRequest, ExtractAudioResult } from '../shared/audioExtraction';
-import { retryMediaTransfer } from './downloadRetry';
+import { resumableYtDlpTransfer, ytDlpResumeArgs } from './ytDlpResume';
 import { downloadProgressArgs, runDownloadProcess } from './downloadProgress';
 import { downloadNetworkArgs } from './downloadNetwork';
 import type { TransferProgress } from '../shared/downloadProgress';
@@ -160,11 +162,12 @@ if (isExportValidationRun) {
 }
 
 let visualizerExportController: AbortController | undefined;
-let programUpdater: ProgramUpdates;
+let programUpdater: ProgramUpdates | StoreProgramUpdates;
 let startupManager: StartupManager;
 let automaticUpdateChecks: AutomaticUpdateChecks | undefined;
 let activeWork = 0;
 let installingProgramUpdate = false;
+function updateWorkBusy() { return activeWork > 0 || !!studioService?.hasPendingWork() || downloadCoordinator.state().entries.length > 0; }
 let mainWindowRef: BrowserWindow | undefined;
 let trayRef: Tray | undefined;
 let trayWindowRef: BrowserWindow | undefined;
@@ -370,7 +373,8 @@ function handleTrustedIpc<Args extends unknown[], Result>(
       throw new Error(`Blocked untrusted IPC call: ${channel}`);
     }
 
-    const work = ['loaderly:playlist-preview','loaderly:download-url','loaderly:save-media-output','loaderly:copy-media-output','loaderly:extract-audio','loaderly:update-tool','loaderly:visualizer-export'].includes(channel);
+    const work = ['loaderly:playlist-preview','loaderly:download-url','loaderly:save-media-output','loaderly:copy-media-output','loaderly:extract-audio','loaderly:update-tool','loaderly:visualizer-export','loaderly:prepare-media-preview','loaderly:ai-translate'].includes(channel) ||
+      (channel === 'loaderly:studio' && !['jobs','local-status','cancel','read-transcript'].includes((args[0] as StudioRequest)?.action));
     if (work && installingProgramUpdate) throw Error('An update is starting');
     if (!work) return listener(event, ...(args as Args));
     activeWork++;
@@ -446,14 +450,34 @@ function registerIpcHandlers() {
   handleTrustedIpc('loaderly:community-account',async (_event,action:string)=>{
     if(action==='sign-in')return communityRatings.begin();
     if(action==='poll')return communityRatings.poll();
-    if(action==='sign-out'||action==='cancel')return communityRatings.logout();
+    if(action==='sign-out')return communityRatings.logout();
+    if(action==='cancel')return communityRatings.cancel();
     if(action==='open'){await shell.openExternal('https://github.com/login/device');return {};}
     throw Error('Invalid account action');
   });
   handleTrustedIpc('loaderly:program-update', async (_event, action:string, automatic?:boolean) => {
-    if(process.windowsStore){
-      if(action==='check')await shell.openExternal('ms-windows-store://pdp/?ProductId=9N1R1H10HXR7');
-      return programUpdater.state;
+    if(programUpdater instanceof StoreProgramUpdates){
+      if(action==='open-store')await shell.openExternal('ms-windows-store://pdp/?ProductId=9N1R1H10HXR7');
+      if(action==='check')await programUpdater.check();
+      if(action==='download')await programUpdater.download();
+      if(action==='later')await programUpdater.snooze();
+      if(action==='automatic'){
+        await programUpdater.preferences(automatic===true);
+        if(automatic===true)void automaticUpdateChecks?.check('enabled');
+      }
+      if(action==='install'){
+        if(installingProgramUpdate)return {...programUpdater.state,workBusy:updateWorkBusy()};
+        // Lock synchronously before Store awaits. Existing and queued studio work,
+        // model setup, downloads, previews, exports and tool installs all gate this.
+        if(updateWorkBusy())return {...programUpdater.state,workBusy:true,storeIssue:'busy'};
+        mainWindowRef?.webContents.session.flushStorageData();
+        installingProgramUpdate=true;
+        try { await programUpdater.install(); } finally { installingProgramUpdate=false; }
+      }
+      if(action==='restart'&&programUpdater.state.phase==='installed'&&!updateWorkBusy()){
+        mainWindowRef?.webContents.session.flushStorageData();app.relaunch();isQuitting=true;app.quit();
+      }
+      return {...programUpdater.state,workBusy:updateWorkBusy()};
     }
     if(action==='check')return programUpdater.check();
     if(action==='download')return programUpdater.download();
@@ -802,12 +826,19 @@ async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferPr
       classify:async path=>{const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)return undefined;try{const {stdout}=await execFileAsync(ffprobe,['-v','error','-show_streams','-of','json',path],{timeout:15_000,signal,windowsHide:true,maxBuffer:1024*1024});const streams=JSON.parse(stdout).streams as {codec_type:string;disposition?:{attached_pic?:number}}[];return streams.some(s=>s.codec_type==='video'&&!s.disposition?.attached_pic)?'video':streams.some(s=>s.codec_type==='audio')?'audio':undefined;}catch{return undefined;}},
       choose:path=>confirmDuplicateDownload(path,metadata.title!,normalizedUrl,signal),
       stagingKey:createHash('sha256').update(JSON.stringify([normalizedUrl,normalizedPayload.quality])).digest('hex'),
+      resumeOwner:Number.isSafeInteger(payload.rowId)?String(payload.rowId):undefined,
       download:async stage=>{
-        if (engine === 'pytubefix') return backup.download(normalizedPayload,stage,progress,signal);
+        const engineFile=join(stage,'transfer-engine.json');
+        if(mode==='auto'&&getToolManager().backup.runtime()){
+          const remembered=await readFile(engineFile,'utf8').then(text=>JSON.parse(text),()=>undefined).catch(()=>undefined);
+          if(remembered?.engine==='pytubefix')switchEngine();
+        }
+        const downloadBackup=async()=>{await atomicJson(engineFile,{engine:'pytubefix'});return backup.download(normalizedPayload,stage,progress,signal);};
+        if (engine === 'pytubefix') return downloadBackup();
         let result: DownloadUrlResult;
         try { result = await runYtDlpDownload(toolPath!,stage,normalizedPayload,progress,signal); }
-        catch(error) { if (!canFallback(error)) throw error; switchEngine(); return backup.download(normalizedPayload,stage,progress,signal); }
-        if (!result.ok && canFallback(result.message)) { switchEngine(); return backup.download(normalizedPayload,stage,progress,signal); }
+        catch(error) { if (!canFallback(error)) throw error; switchEngine(); return downloadBackup(); }
+        if (!result.ok && canFallback(result.message)) { switchEngine(); return downloadBackup(); }
         return result;
       }});
     if(!result.ok||!result.path)return result;
@@ -881,7 +912,7 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
     ...ytDlpIsolationArgs,
     ...downloadProgressArgs,
     '--no-playlist',
-    directTransfer ? '--no-continue' : '--continue',
+    ...ytDlpResumeArgs(outputDirectory,directTransfer),
     ...downloadNetworkArgs(payload.rateKib, directTransfer),
     '--no-mtime',
     '--windows-filenames',
@@ -895,8 +926,6 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
     'file_access:linear=1::3',
     ...(denoPath ? ['--js-runtimes', `deno:${denoPath}`] : []),
     ...(ffmpegPath ? ['--ffmpeg-location', dirname(ffmpegPath)] : []),
-    '--paths',
-    outputDirectory,
     '--output',
     '%(title).180B [%(id)s].%(ext)s',
     '--print',
@@ -912,9 +941,9 @@ async function runYtDlpDownload(toolPath: string, outputDirectory: string, paylo
 
   let stdout = '';
   try {
-    const result = await retryMediaTransfer(recovery => {
+    const result = await resumableYtDlpTransfer(outputDirectory, direct => {
       notify({phase:'preparing'});
-      return runDownloadProcess(toolPath,args(recovery === 'direct'),notify,signal);
+      return runDownloadProcess(toolPath,args(direct),notify,signal);
     });
     stdout = result.stdout;
     notify({phase:'finalizing'});
@@ -3383,9 +3412,12 @@ if (!isExportValidationRun && !app.requestSingleInstanceLock()) {
       return;
     }
 
-    programUpdater=new ProgramUpdates(join(app.getPath('userData'),'Updates'),app.getVersion(),state=>{if(mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:program-update-state',state);},undefined,process.windowsStore===true);
+    const notifyUpdate=(state:import('../shared/releases').UpdateState)=>{if(mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:program-update-state',{...state,workBusy:updateWorkBusy()});};
+    programUpdater=process.windowsStore
+      ?new StoreProgramUpdates(join(app.getPath('userData'),'Updates'),app.getVersion(),windowsStoreUpdates(process.resourcesPath,()=>mainWindowRef&&!mainWindowRef.isDestroyed()?mainWindowRef.getNativeWindowHandle():undefined),notifyUpdate,updateWorkBusy)
+      :new ProgramUpdates(join(app.getPath('userData'),'Updates'),app.getVersion(),notifyUpdate);
     await programUpdater.initialize();
-    if(app.isPackaged&&!process.windowsStore){
+    if(app.isPackaged){
       automaticUpdateChecks=new AutomaticUpdateChecks(programUpdater);
       automaticUpdateChecks.start();
       app.on('browser-window-focus',()=>void automaticUpdateChecks?.check());

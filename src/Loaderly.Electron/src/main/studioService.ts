@@ -19,6 +19,7 @@ import { processDownloadAudio, type MusicProgress } from './musicRemoval';
 type JobPayload={request:StudioRequest;output:string};
 type Context={root:string;resources:string;development:boolean;tool:(name:'ffmpeg'|'ffprobe')=>string;notify:(jobs:StudioJob[])=>void;render:(payload:unknown,output:string,signal:AbortSignal)=>Promise<void>;pick:(kind:'images'|'audio'|'files'|'project-media'|'project'|'save-project'|'directory',ar:boolean)=>Promise<string[]>};
 export class StudioService {
+  hasPendingWork() { return this.controllers.size > 0 || this.queue.list().some(job => job.state === 'queued' || job.state === 'running'); }
   private queue:StudioQueue<JobPayload>;
   private ready:Promise<void>;
   private ai:LocalMediaAi;

@@ -1,7 +1,12 @@
 import {describe,it,expect} from 'vitest';
-import {appearanceOpacity,appearanceVariables,decodeTheme,encodeTheme,normalizeAppearance,opacityKeys,themePresets} from './appearance';
+import {appearanceOpacity,appearanceVariables,decodeTheme,encodeTheme,normalizeAppearance,opacityKeys,themePresets,isBuiltinAppearance,selectBuiltinAppearance} from './appearance';
 const tintPercent=(fill:string)=>Number(fill.match(/ ([\d.]+)%/)![1]);
 describe('portable themes',()=>{
+ it('replaces a community theme completely while preserving reading size and workspace spacing',()=>{
+  const community=normalizeAppearance({preset:'graphite',colors:{dark:{background:'#19161f',accent:'#d8acff'},light:{background:'#f6f1fa'}},radius:10,glass:true,opacity:{background:10},panelRadius:20,borderWidth:2,textScale:110,sidebarWidth:240,density:'spacious'});
+  expect(isBuiltinAppearance(community)).toBe(false);
+  for(const preset of themePresets){const next=selectBuiltinAppearance(community,preset.id);expect(isBuiltinAppearance(next)).toBe(true);expect(next).toMatchObject({textScale:110,sidebarWidth:240,density:'spacious',glass:false});for(const dark of [true,false])expect(appearanceVariables(next,dark)['--background']).toBe((dark?preset.dark:preset.light)[0]);expect(next.colors).toBeUndefined();expect(next.opacity).toBeUndefined();expect(next.radius).toBeUndefined();}
+ });
  it('uses lighter option menus with readable primary labels over either desktop extreme',()=>{
   const channels=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
   const lum=(rgb:number[])=>rgb.reduce((sum,n,i)=>{n/=255;return sum+(n<=.04045?n/12.92:((n+.055)/1.055)**2.4)*[.2126,.7152,.0722][i]},0);

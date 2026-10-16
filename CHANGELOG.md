@@ -2,6 +2,15 @@
 
 Features, improvements and fixes in each Loaderly release.
 
+## 2.3.2 - 2026-10-16
+
+- **Update from inside Loaderly on Windows:** Automatic Microsoft Store checks, download while working, and explicit save/install after active tasks finish. Review status in About or postpone the notice for 24 hours.
+- **Continue paused downloads:** Preserve partial data and the working transfer method, including the optional YouTube backup. Changed sources are checked before saved bytes are reused.
+- **Remember duplicate decisions:** Resume the same task without repeating Replace or Keep both, unless the existing file changes.
+- **Keep community sign-in:** Temporary connection failures retain the saved account. Protected sessions can be restored after reopening or updating, and outdated requests cannot clear a newer session.
+- **Return to a built-in theme:** Replace previous custom colors, transparency and shapes while preserving reading size and workspace spacing. Clearly identify custom themes instead of highlighting their base preset.
+- **Close notices cleanly:** Fix the download-history close button in English and Arabic, with visible keyboard focus.
+
 ## 2.3.1 - 2026-10-16
 
 ### Download fixes and controls

@@ -9,4 +9,5 @@ module.exports = root => {
   if (!sdk) throw Error('Install the Windows SDK before building the startup helper.');
   mkdirSync(join(root,'build','native'), {recursive:true});
   execFileSync(join(framework,'csc.exe'), ['/nologo','/optimize+','/target:exe',`/out:${join(root,'build','native','LoaderlyStartupTask.exe')}`,`/reference:${join(metadata,sdk,'Windows.winmd')}`,`/reference:${join(framework,'System.Runtime.dll')}`,`/reference:${join(framework,'System.Runtime.WindowsRuntime.dll')}`,join(root,'native','StartupTask.cs')], {windowsHide:true, stdio:'pipe'});
+  execFileSync(join(framework,'csc.exe'), ['/nologo','/optimize+','/platform:x64','/target:exe',`/out:${join(root,'build','native','LoaderlyStoreUpdates.exe')}`,`/reference:${join(metadata,sdk,'Windows.winmd')}`,`/reference:${join(framework,'System.Runtime.dll')}`,`/reference:${join(framework,'System.Runtime.WindowsRuntime.dll')}`,`/reference:${join(framework,'System.Windows.Forms.dll')}`,join(root,'native','StoreUpdates.cs')], {windowsHide:true, stdio:'pipe'});
 };

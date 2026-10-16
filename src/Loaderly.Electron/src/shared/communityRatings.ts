@@ -1,5 +1,5 @@
 export type CommunityRating = {id:string;average:number;count:number;mine?:number|null};
-export type CommunityAccount = {login?:string;userCode?:string;interval?:number;pending?:boolean;savedSession?:boolean;error?:string};
+export type CommunityAccount = {login?:string;userCode?:string;interval?:number;pending?:boolean;savedSession?:boolean;sessionOnly?:boolean;error?:string};
 export type CommunityRatingsResult = {available:boolean;ratings:CommunityRating[];account?:CommunityAccount};
 export function validRating(value:unknown):value is CommunityRating {
   const r=value as CommunityRating;
