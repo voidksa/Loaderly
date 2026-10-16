@@ -241,7 +241,7 @@ import { TimelineView } from './editor/TimelineView';
 import { ToolRail, type EditorToolRailItem } from './editor/ToolRail';
 
 type NavigationKey = 'community' | 'workspace' | 'downloads' | 'library' | 'editor' | 'queue' | 'tools' | 'export' | 'settings';
-type MediaStatus = 'ready' | 'downloading' | 'queued' | 'edited' | 'failed';
+type MediaStatus = 'ready' | 'downloading' | 'queued' | 'edited' | 'failed' | 'canceled';
 type MediaSourceType = 'download' | 'local';
 type MediaKind = 'video' | 'audio';
 type WindowControlAction = 'minimize' | 'toggleMaximize' | 'close';
@@ -249,7 +249,7 @@ type AutosaveState = 'idle' | 'saving' | 'saved' | 'failed';
 type DownloadPhase = import('../shared/downloadProgress').DownloadProgress['phase'] | 'completed' | 'failed';
 type LibraryFilter = 'all' | 'video' | 'audio';
 type LibrarySort = 'recent' | 'name' | 'duration';
-type DownloadFilter = 'all' | 'active' | 'queued' | 'completed' | 'failed';
+type DownloadFilter = 'all' | 'active' | 'queued' | 'completed' | 'failed' | 'canceled';
 
 type MediaRow = {
   readonly downloadHidden?: boolean;
@@ -633,7 +633,7 @@ function readSavedMediaRows(): readonly MediaRow[] {
           source: source ?? filePath,
           duration,
           durationSeconds,
-          status: ready ? (row.status === 'edited' ? 'edited' : 'ready') : failed ? 'failed' : 'queued',
+          status: ready ? (row.status === 'edited' ? 'edited' : 'ready') : failed ? 'failed' : row.status === 'canceled' ? 'canceled' : 'queued',
           progress: ready ? 100 : 0,
           progressKnown: ready,
           downloadPhase: ready ? 'completed' : failed ? 'failed' : 'preparing',
@@ -1193,7 +1193,7 @@ export function App() {
   useEffect(()=>{
     const update=(state:DownloadControlState)=>{
       setDownloadQueue(state);
-      setMediaRows(rows=>rows.map(row=>{const entry=state.entries.find(e=>e.id===row.id);return entry?{...row,status:entry.phase==='queued'?'queued':'downloading',downloadPaused:false}:row;}));
+      setMediaRows(rows=>rows.map(row=>{const entry=state.entries.find(e=>e.id===row.id);return entry&&(row.status==='queued'||row.status==='downloading')?{...row,status:entry.phase==='queued'?'queued':'downloading',downloadPaused:false}:row;}));
     };
     void window.loaderly?.downloadControl({action:'state'}).then(update).catch(()=>{});
     return window.loaderly?.onDownloadQueue(update);
@@ -1793,7 +1793,7 @@ export function App() {
         ? row
         : {
             ...row,
-            status: row.status === 'failed' ? 'failed' as MediaStatus : 'queued' as MediaStatus,
+            status: row.status === 'failed' || row.status === 'canceled' ? row.status : 'queued' as MediaStatus,
             progress: 0,
             startedAtMs: undefined
           }
@@ -2287,6 +2287,8 @@ export function App() {
         return t('statusEdited');
       case 'failed':
         return preferences.locale === 'ar' ? 'فشل' : 'Failed';
+      case 'canceled':
+        return uiText(preferences.locale, 'Canceled', 'ملغى');
     }
   }
 
@@ -2327,7 +2329,7 @@ export function App() {
       case 'removing-music': return downloadAudioMode(row) === 'instrumental' ? uiText(preferences.locale, 'Separating music from vocals', 'فصل الموسيقى عن الغناء') : uiText(preferences.locale, 'Separating vocals from music', 'فصل الأصوات عن الموسيقى');
       case 'saving-audio': return uiText(preferences.locale, 'Saving the separated audio', 'حفظ النسخة بعد فصل الصوت');
       case 'processing':
-        return uiText(preferences.locale, 'Processing media', 'معالجة المقطع');
+        return row.quality==='audio'?uiText(preferences.locale, 'Preparing the audio file', 'تجهيز الملف الصوتي'):uiText(preferences.locale, 'Combining video and audio', 'دمج الفيديو والصوت');
       case 'subtitles':
         return uiText(preferences.locale, 'Downloading subtitles', 'تنزيل الترجمة');
       case 'finalizing':
@@ -2653,6 +2655,13 @@ export function App() {
 
 
 
+  async function controlDownload(row: MediaRow, action:'pause'|'cancel') {
+    if(action==='cancel'&&row.status==='queued'&&!downloadInFlightIdsRef.current.has(row.id)&&!downloadQueue.entries.some(entry=>entry.id===row.id)){
+      setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,status:'canceled',downloadPaused:false,downloadScheduledAt:undefined}:item));return;
+    }
+    try{await window.loaderly?.downloadControl({action,id:row.id});}
+    catch{setActivity(uiText(preferences.locale,'Could not stop the download. Try again.','تعذر إيقاف التنزيل. حاول مجددًا.'));}
+  }
   function retryDownload(row: MediaRow) {
     if (!row.source) {
       setActivity(preferences.locale === 'ar' ? 'لا يوجد رابط مصدر لهذا العنصر.' : 'This item has no source URL to retry.');
@@ -2664,7 +2673,7 @@ export function App() {
 
   function updateQueuedMediaQuality(rowId: number, quality: DownloadQuality) {
     setMediaRows((rows) =>
-      rows.map((row) => (row.id === rowId && (row.status === 'queued' || row.status === 'failed') ? { ...row, quality, downloadTarget:downloadLocationFor(preferences, quality) } : row))
+      rows.map((row) => (row.id === rowId && (row.status === 'queued' || row.status === 'failed' || row.status === 'canceled') ? { ...row, quality, downloadTarget:downloadLocationFor(preferences, quality) } : row))
     );
   }
 
@@ -3005,8 +3014,8 @@ export function App() {
         subtitleLanguages: shouldWriteSubtitles ? subtitleLanguagesForProfile(preferences.subtitleLanguageProfile) : undefined
       });
 
-      if((result as {paused?:boolean})?.paused){
-        setMediaRows(rows=>rows.map(row=>row.id===rowId?{...row,status:'queued',downloadPaused:true,downloadScheduledAt:undefined}:row));
+      if(result?.paused||result?.canceled){
+        setMediaRows(rows=>rows.map(row=>row.id===rowId?{...row,status:result.canceled?'canceled':'queued',downloadPaused:!result.canceled,downloadScheduledAt:undefined,startedAtMs:undefined}:row));
         return;
       }
       if(result?.skipped){
@@ -5779,14 +5788,17 @@ export function App() {
         const running = row.status === 'downloading';
         const downloaded = running && ['processing','subtitles','finalizing','waiting-audio','removing-music','saving-audio'].includes(row.downloadPhase??'');
         const removable = canRemoveDownloadHistory(row, downloadQueue.entries.map(entry => entry.id));
+        const queueEntry=downloadQueue.entries.find(entry=>entry.id===row.id);
+        const active=running||!!queueEntry;
+        const pausable=active&&['queued','preparing','downloading','waiting-audio','removing-music','saving-audio'].includes(queueEntry?.phase??row.downloadPhase??'preparing');
         return <article className={`download-entry${downloadSelecting ? ' download-entry--selecting' : ''}${downloadSelecting && removable && downloadSelection.includes(row.id) ? ' selected' : ''}`} key={row.id}>
           {downloadSelecting && <input className="download-entry__select" type="checkbox" checked={removable && downloadSelection.includes(row.id)} disabled={!removable} aria-label={uiText(preferences.locale, `Select ${title}`, `تحديد ${title}`)} data-tooltip={!removable ? uiText(preferences.locale, 'Finish the download before removing its history.', 'انتظر انتهاء التنزيل لإزالته من السجل.') : undefined} onChange={() => toggleDownloadSelection(row.id)}/>}
           <div className="download-entry__thumbnail">{renderMediaThumbnail(row)}</div>
           <div className="download-entry__body">
             <strong className="download-entry__title"><bdi>{title}</bdi></strong>
-            <div className="download-entry__metadata"><span className={`download-entry__state ${statusClass(row.status)}`}>{running ? downloaded ? <span className="download-stage-spinner"/> : <Download size={12}/> : ready ? <Check size={12}/> : row.status==='failed' ? <AlertTriangle size={12}/> : <Clock3 size={12}/>} {running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : displayStatus(row.status)}</span><span data-tooltip={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{row.downloadTarget?.path && <span data-tooltip={row.downloadTarget.path}>{row.downloadTarget.name || row.downloadTarget.path}</span>}{downloadAudioMode(row) !== 'original' && <span>{downloadAudioLabel(downloadAudioMode(row), preferences.locale === 'ar')}</span>}{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
+            <div className="download-entry__metadata"><span className={`download-entry__state ${statusClass(row.status)}`}>{running ? downloaded ? <span className="download-stage-spinner"/> : <Download size={12}/> : ready ? <Check size={12}/> : row.status==='failed' ? <AlertTriangle size={12}/> : <Clock3 size={12}/>} {running ? mediaProgressLabel(row) : ready ? uiText(preferences.locale, 'Completed', 'مكتمل') : row.downloadPaused ? uiText(preferences.locale,'Paused','متوقف مؤقتًا') : displayStatus(row.status)}</span><span data-tooltip={displayMediaSource(row)}>{mediaSourceLabel(row)}</span><span>{qualityLabel(row.quality ?? preferences.quality, preferences.locale)}</span>{row.downloadTarget?.path && <span data-tooltip={row.downloadTarget.path}>{row.downloadTarget.name || row.downloadTarget.path}</span>}{downloadAudioMode(row) !== 'original' && <span>{downloadAudioLabel(downloadAudioMode(row), preferences.locale === 'ar')}</span>}{ready ? <span>{displayMediaSize(row)}</span> : null}{ready ? <span>{displayMediaDuration(row)}</span> : null}</div>
             {running ? <div className="download-entry__progress">
-              {downloaded ? <div className="download-stage-summary" role="status"><span><Check size={14}/>{uiText(preferences.locale,'Download complete','اكتمل التنزيل')}</span></div> : <div className={`download-progress${row.progressKnown === false ? ' indeterminate' : ''}`} role="progressbar" dir={preferences.locale === 'ar' ? 'rtl' : 'ltr'} aria-valuetext={mediaProgressLabel(row)} aria-label={uiText(preferences.locale, 'Download progress', 'تقدم التنزيل')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progressKnown === false ? undefined : row.progress}><span style={{inlineSize: `${Math.max(0, Math.min(100, row.progress))}%`}} /></div>}
+              {downloaded ? <div className="download-stage-summary" role="status"><span><Check size={14}/>{uiText(preferences.locale,'Transfer complete','اكتمل نقل الملف')}</span></div> : <div className={`download-progress${row.progressKnown === false ? ' indeterminate' : ''}`} role="progressbar" dir={preferences.locale === 'ar' ? 'rtl' : 'ltr'} aria-valuetext={mediaProgressLabel(row)} aria-label={uiText(preferences.locale, 'Download progress', 'تقدم التنزيل')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progressKnown === false ? undefined : row.progress}><span style={{inlineSize: `${Math.max(0, Math.min(100, row.progress))}%`}} /></div>}
               {row.downloadPhase === 'removing-music' && <progress className="music-processing-progress" aria-label={uiText(preferences.locale,'Audio separation progress','تقدم فصل الصوت')} value={row.progressKnown ? row.progress : undefined} max={100}/>}
               <small><DownloadElapsedLabel fallbackDownloadingLabel={downloadPhaseLabel(row)} locale={preferences.locale} row={row} /></small>
               {downloadAudioMode(row) !== 'original' && <p className="download-entry__stage-hint">{row.downloadPhase === 'saving-audio'
@@ -5798,13 +5810,18 @@ export function App() {
             {row.status === 'failed' && row.errorMessage ? <p className="download-entry__error">{friendlyDownloadError(row.errorMessage, preferences.locale)}</p> : null}
           </div>
           <div className="download-entry__actions">
+            {active&&<>
+              {pausable&&<button className="button secondary" disabled={!!queueEntry?.stopping} onClick={()=>void controlDownload(row,'pause')}><Pause size={14}/>{queueEntry?.stopping==='pause'?uiText(preferences.locale,'Pausing…','جارٍ الإيقاف…'):uiText(preferences.locale,'Pause','إيقاف مؤقت')}</button>}
+              <button className="button secondary" disabled={!!queueEntry?.stopping} onClick={()=>void controlDownload(row,'cancel')}><X size={14}/>{queueEntry?.stopping==='cancel'?uiText(preferences.locale,'Canceling…','جارٍ الإلغاء…'):uiText(preferences.locale,'Cancel','إلغاء')}</button>
+            </>}
+            {!active&&row.status==='queued'&&<button className="button secondary" onClick={()=>void controlDownload(row,'cancel')}><X size={14}/>{uiText(preferences.locale,'Cancel','إلغاء')}</button>}
             {row.originalPath && <button className="button secondary" onClick={() => void window.loaderly?.showItemInFolder(row.originalPath!)}><FolderOpen size={14}/>{uiText(preferences.locale,'Show original','عرض الأصل')}</button>}
 
             {row.status === 'failed' && downloadFolderProblem(row.errorMessage ?? '') ? <button className="button secondary" onClick={async()=>{const picked=await window.loaderly?.pickDownloadDirectory();if(picked&&!picked.canceled&&picked.path)setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:{path:picked.path!,groupByPlatform:item.downloadTarget?.groupByPlatform??false,name:''}}:item));}} type="button"><FolderOpen size={14}/>{uiText(preferences.locale, 'Choose folder', 'اختيار مجلد')}</button> : null}
-            {!row.originalPath && (row.status === 'queued' || row.status === 'failed') ? <DesktopMenu ariaLabel={t('quality')} options={qualityMenuOptions} layout="detailed" value={row.quality ?? preferences.quality} valueLabel={qualityLabel(row.quality ?? preferences.quality, preferences.locale)} onChange={(quality) => updateQueuedMediaQuality(row.id, quality)} /> : null}
-            {!row.originalPath && (row.status==='queued'||row.status==='failed')?<DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={preferences.downloadLocations.find(l=>l.path===row.downloadTarget?.path)?.id??''} valueLabel={row.downloadTarget?.name||row.downloadTarget?.path||uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===((row.quality??preferences.quality)==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={id=>setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:downloadLocationFor(preferences,item.quality??preferences.quality,id)}:item))}/>:null}
-            {ready ? <button className="button secondary" onClick={() => { selectMediaRow(row.id); selectNavigation('library'); }} type="button"><Library size={14} />{uiText(preferences.locale, 'View in library', 'عرض في المكتبة')}</button> : !running ? <button className="button secondary" onClick={() => retryDownload(row)} type="button"><Play size={14} />{row.originalPath && downloadAudioMode(row) !== 'original' ? uiText(preferences.locale, 'Retry audio separation', 'إعادة فصل الصوت') : row.status === 'failed' ? uiText(preferences.locale, 'Retry', 'إعادة المحاولة') : uiText(preferences.locale, 'Start', 'بدء')}</button> : null}
-            <button aria-label={uiText(preferences.locale, `Remove from history: ${title}`, `إزالة من السجل: ${title}`)} data-tooltip={uiText(preferences.locale, 'Remove from download history', 'إزالة من سجل التنزيلات')} className="download-remove" disabled={!removable} onClick={() => removeDownloadHistory([row.id])} type="button"><X size={16} /></button>
+            {!row.originalPath && (row.status === 'queued' || row.status === 'failed' || row.status === 'canceled') ? <DesktopMenu ariaLabel={t('quality')} options={qualityMenuOptions} layout="detailed" value={row.quality ?? preferences.quality} valueLabel={qualityLabel(row.quality ?? preferences.quality, preferences.locale)} onChange={(quality) => updateQueuedMediaQuality(row.id, quality)} /> : null}
+            {!row.originalPath && (row.status==='queued'||row.status==='failed'||row.status==='canceled')?<DesktopMenu ariaLabel={uiText(preferences.locale,'Download location','مكان التنزيل')} value={preferences.downloadLocations.find(l=>l.path===row.downloadTarget?.path)?.id??''} valueLabel={row.downloadTarget?.name||row.downloadTarget?.path||uiText(preferences.locale,'Automatic location','المكان التلقائي')} options={[{value:'',label:uiText(preferences.locale,'Automatic location','المكان التلقائي')},...preferences.downloadLocations.filter(l=>l.kind==='all'||l.kind===((row.quality??preferences.quality)==='audio'?'audio':'video')).map(l=>({value:l.id,label:l.name}))]} onChange={id=>setMediaRows(rows=>rows.map(item=>item.id===row.id?{...item,downloadTarget:downloadLocationFor(preferences,item.quality??preferences.quality,id)}:item))}/>:null}
+            {ready ? <button className="button secondary" onClick={() => { selectMediaRow(row.id); selectNavigation('library'); }} type="button"><Library size={14} />{uiText(preferences.locale, 'View in library', 'عرض في المكتبة')}</button> : !active ? <button className="button secondary" onClick={() => retryDownload(row)} type="button"><Play size={14} />{row.originalPath && downloadAudioMode(row) !== 'original' ? uiText(preferences.locale, 'Retry audio separation', 'إعادة فصل الصوت') : row.status === 'failed' ? uiText(preferences.locale, 'Retry', 'إعادة المحاولة') : uiText(preferences.locale, 'Start', 'بدء')}</button> : null}
+            {!active&&<button aria-label={uiText(preferences.locale, `Remove from history: ${title}`, `إزالة من السجل: ${title}`)} data-tooltip={uiText(preferences.locale, 'Remove from download history', 'إزالة من سجل التنزيلات')} className="download-remove" disabled={!removable} onClick={() => removeDownloadHistory([row.id])} type="button"><X size={16} /></button>}
           </div>
         </article>;
       })}
@@ -8699,6 +8716,7 @@ export function App() {
     const queuedRows = downloadRows.filter((row) => row.status === 'queued');
     const completedRows = downloadRows.filter((row) => row.status === 'ready' || row.status === 'edited');
     const failedRows = downloadRows.filter((row) => row.status === 'failed');
+    const canceledRows = downloadRows.filter(row=>row.status==='canceled');
     const filteredDownloadRows = downloadRows.filter((row) => {
       switch (downloadFilter) {
         case 'active':
@@ -8709,6 +8727,8 @@ export function App() {
           return row.status === 'ready' || row.status === 'edited';
         case 'failed':
           return row.status === 'failed';
+        case 'canceled':
+          return row.status === 'canceled';
         default:
           return true;
       }
@@ -8718,7 +8738,8 @@ export function App() {
       { value: 'active', label: uiText(preferences.locale, 'Active', 'نشط'), count: downloadingRows.length },
       { value: 'queued', label: uiText(preferences.locale, 'Queued', 'منتظر'), count: queuedRows.length },
       { value: 'completed', label: uiText(preferences.locale, 'Completed', 'مكتمل'), count: completedRows.length },
-      { value: 'failed', label: uiText(preferences.locale, 'Failed', 'متعثر'), count: failedRows.length }
+      { value: 'failed', label: uiText(preferences.locale, 'Failed', 'متعثر'), count: failedRows.length },
+      { value: 'canceled', label: uiText(preferences.locale, 'Canceled', 'ملغى'), count: canceledRows.length }
     ];
     const hasQueuedDownloads = queuedRows.some((row) => Boolean(row.source));
     const busyDownloadIds = downloadQueue.entries.map(entry => entry.id);
@@ -9773,3 +9794,4 @@ export function App() {
     </main>
   );
 }
+

@@ -4,7 +4,7 @@
  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
  IgnorableNamespaces="uap desktop rescap">
- <Identity Name="voidksa.Loaderly" Publisher="CN=4F489940-76CE-47CF-93CD-B4D2480E6877" Version="2.3.0.0" ProcessorArchitecture="x64"/>
+ <Identity Name="voidksa.Loaderly" Publisher="CN=4F489940-76CE-47CF-93CD-B4D2480E6877" Version="2.3.1.0" ProcessorArchitecture="x64"/>
  <Properties><DisplayName>Loaderly</DisplayName><PublisherDisplayName>voidksa</PublisherDisplayName><Description>Download and edit video and audio in one workspace.</Description><Logo>Assets\Logo50.png</Logo></Properties>
  <Resources><Resource Language="en-US"/><Resource Language="ar-SA"/></Resources>
  <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0"/></Dependencies>

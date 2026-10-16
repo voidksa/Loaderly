@@ -1,7 +1,7 @@
 export const editorSessionStoragePrefix = 'loaderly:editor-session:v2:';
 export const legacyEditorSessionStoragePrefix = 'loaderly:editor-session:';
 
-export type EditorMediaStatus = 'ready' | 'edited' | 'downloading' | 'queued' | 'failed';
+export type EditorMediaStatus = 'ready' | 'edited' | 'downloading' | 'queued' | 'failed' | 'canceled';
 export type EditorMediaKind = 'video' | 'audio';
 
 export type EditorMediaReadinessInput = {

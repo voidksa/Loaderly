@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { StudioService } from './studioService';
 import { LocalMediaAi } from './localMediaAi';
+import * as analysis from './studioAnalysis';
 
 const roots:string[]=[];const services:StudioService[]=[];
 afterEach(async()=>{for(const service of services.splice(0))await service.close();for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});vi.restoreAllMocks();});
@@ -53,4 +54,21 @@ it('records empty recognition as an actionable outcome and forwards music mode',
   await service.request({action:'enqueue',kind:'transcribe',source:'song.mp3',speechMode:'music',outputDirectory:root});
   await vi.waitFor(async()=>expect((await service.request({action:'jobs'})).jobs?.[0]).toMatchObject({state:'completed',message:'NO_SPEECH_DETECTED'}));
   expect(run.mock.calls[0][1]).toMatchObject({source:'song.mp3',speechMode:'music'});
+});
+it('suggests the source folder without opening a picker, but rejects a missing source',async()=>{
+  const {root,service,pick}=await setup();const source=join(root,'voice.wav');await writeFile(source,'audio');
+  expect(await service.request({action:'default-output',source})).toEqual({ok:true,path:root});
+  expect((await service.request({action:'default-output',source:join(root,'missing.wav')})).ok).toBe(false);
+  expect(pick).not.toHaveBeenCalled();
+});
+it('reuses audio analysis until the source changes and preserves explicit transcription choices',async()=>{
+  const {root,service}=await setup();const source=join(root,'voice.wav');await writeFile(source,'audio');
+  vi.spyOn(analysis,'probeStudioMedia').mockResolvedValue({duration:60,audio:true,width:0,height:0,size:5});
+  const run=vi.spyOn(LocalMediaAi.prototype,'run').mockImplementation(async action=>action==='analyze-speech'?{analysis:{mode:'music',reason:'mixed',sampledSeconds:24}}:{transcript:{language:'en',cues:[],words:[]}});
+  expect((await service.request({action:'speech-plan',source})).speechPlan?.mode).toBe('music');
+  await service.request({action:'speech-plan',source});expect(run).toHaveBeenCalledTimes(1);
+  await writeFile(source,'changed audio');await service.request({action:'speech-plan',source});expect(run).toHaveBeenCalledTimes(2);
+  await service.request({action:'enqueue',kind:'transcribe',source,outputDirectory:root,model:'small',language:'en',speechMode:'speech'});
+  await vi.waitFor(()=>expect(run).toHaveBeenCalledTimes(3));
+  expect(run.mock.calls[2][1]).toMatchObject({speechMode:'speech',model:'small',language:'en',automatic:false});
 });

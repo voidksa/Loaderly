@@ -17,8 +17,14 @@ export async function prepareDownloadDirectory(directory: string, platform: Node
         if(!mounted)return 'DOWNLOAD_FOLDER_UNAVAILABLE';
       }
     }
-    if (create) await mkdir(directory, { recursive: true });
-    else if (!(await stat(directory)).isDirectory()) return 'DOWNLOAD_FOLDER_UNAVAILABLE';
+    // Windows rejects mkdir('F:\\', { recursive: true }) even when the drive is
+    // writable. Inspect an existing destination before attempting to create it.
+    try {
+      if (!(await stat(directory)).isDirectory()) return 'DOWNLOAD_FOLDER_UNAVAILABLE';
+    } catch (error) {
+      if (!create || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      await mkdir(directory, { recursive: true });
+    }
     // A saved path or successful stat does not establish write access (ACLs, TCC, read-only media).
     const probe = join(directory, `.loaderly-access-${randomUUID()}`);
     const handle = await open(probe, 'wx');

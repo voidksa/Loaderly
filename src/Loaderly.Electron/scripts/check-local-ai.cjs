@@ -3,6 +3,7 @@ const { join } = require('node:path');
 const { createHash } = require('node:crypto');
 module.exports = async context => {
   const root = context.packager.projectDir;
+  if (context.electronPlatformName === 'win32') require('./build-startup-helper.cjs')(root);
   const path = join(root,'build/local-ai/build.json');
   if (!existsSync(path)) throw new Error('Build the native local media runtime before packaging (npm run build:local-ai).');
   const manifest = JSON.parse(readFileSync(path,'utf8'));

@@ -19,15 +19,29 @@ describe('download destination recovery', () => {
     expect(mkdir).not.toHaveBeenCalled();
   });
   it('creates the chosen destination on a connected drive', async () => {
-    vi.mocked(stat).mockResolvedValue({ isDirectory: () => true } as Awaited<ReturnType<typeof stat>>);
+    vi.mocked(stat).mockResolvedValueOnce({ isDirectory: () => true } as Awaited<ReturnType<typeof stat>>)
+      .mockRejectedValueOnce(Object.assign(new Error('not created yet'), { code: 'ENOENT' }));
     expect(await prepareDownloadDirectory('/Volumes/Travel drive/Clips/YouTube', 'darwin')).toBeUndefined();
     expect(mkdir).toHaveBeenCalledWith('/Volumes/Travel drive/Clips/YouTube', { recursive: true });
   });
   it.each([['EACCES','permission'],['EPERM','permission'],['EROFS','readonly'],['ENOSPC','full'],['EDQUOT','full'],['ENODEV','unavailable']])('explains %s without exposing system details', async (code, problem) => {
+    vi.mocked(stat).mockRejectedValueOnce(Object.assign(new Error('not created yet'), { code: 'ENOENT' }));
     vi.mocked(mkdir).mockRejectedValue(Object.assign(new Error('private disk path'), { code }));
     const result = await prepareDownloadDirectory('/home/person/Downloads', 'linux');
     expect(downloadFolderProblem(result!)).toBe(problem);
     expect(result).not.toContain('private');
+  });
+  it.each(['F:\\', 'C:\\', '\\\\server\\share\\'])('writes to an existing Windows root without trying to recreate it: %s', async directory => {
+    vi.mocked(mkdir).mockRejectedValue(Object.assign(new Error('Windows cannot mkdir a root'), { code: 'EPERM' }));
+    expect(await prepareDownloadDirectory(directory, 'win32')).toBeUndefined();
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(handle.writeFile).toHaveBeenCalledWith('1');
+    expect(unlink).toHaveBeenCalled();
+  });
+  it('still detects a read-only Windows root through the write probe', async () => {
+    vi.mocked(open).mockRejectedValue(Object.assign(new Error('read only'), { code: 'EROFS' }));
+    expect(await prepareDownloadDirectory('F:\\', 'win32')).toBe('DOWNLOAD_FOLDER_READONLY');
+    expect(mkdir).not.toHaveBeenCalled();
   });
   it('translates saved errors from old releases and keeps unrelated errors separate', () => {
     const legacy = "Error invoking remote method 'loaderly:download-url': Error: EACCES: permission denied, mkdir '/Volumes/Private drive'";

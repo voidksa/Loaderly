@@ -43,6 +43,19 @@ it('keeps real extensions on replacement and never overwrites a different contai
 it('serializes simultaneous matching downloads so the second sees the first',async()=>{
  const a=options('skip'),b=options('skip');const [first,second]=await Promise.all([managedDownload(a),managedDownload(b)]);expect(first.ok).toBe(true);expect(second.skipped).toBe(true);expect(b.download).not.toHaveBeenCalled();
 });
+it('cancels a duplicate waiting for another download without breaking the lock',async()=>{
+ let finish!:()=>void;const first=options();first.download.mockImplementation(async stage=>{await new Promise<void>(r=>finish=r);const path=join(stage,'Song.mp3');await writeFile(path,'first');return {ok:true,path};});
+ const one=managedDownload(first);await vi.waitFor(()=>expect(finish).toBeTypeOf('function'));
+ const controller=new AbortController(),second=options('skip');const two=managedDownload({...second,signal:controller.signal});
+ controller.abort();await expect(two).rejects.toThrow('TASK_CANCELED');expect(second.download).not.toHaveBeenCalled();
+ const third=options('skip'),three=managedDownload(third);expect(third.choose).not.toHaveBeenCalled();
+ finish();await one;expect(await three).toMatchObject({skipped:true});expect(third.download).not.toHaveBeenCalled();
+});
+it('never commits a canceled transfer over an existing file',async()=>{
+ const original=join(directory,'Song.mp3');await writeFile(original,'original');const controller=new AbortController(),input=options('replace');
+ input.download.mockImplementation(async stage=>{const path=join(stage,'Song.mp3');await writeFile(path,'new');controller.abort();return {ok:true,path};});
+ await expect(managedDownload({...input,signal:controller.signal})).rejects.toThrow('TASK_CANCELED');expect(await readFile(original,'utf8')).toBe('original');
+});
 it('preserves the original when the new media cannot be probed',async()=>{
  const original=join(directory,'Song.mp3');await writeFile(original,'original');
  await expect(managedDownload({...options('replace'),classify:async path=>path===original?'audio':undefined})).rejects.toThrow('could not be verified');

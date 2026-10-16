@@ -176,7 +176,7 @@ let floatingCapture: FloatingCapture | undefined;
 const downloadCoordinator = new DownloadCoordinator<DownloadUrlResult>(() => ({ok:false, paused:true}), state => {
   if(mainWindowRef && !mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:download-queue',state);
   floatingCapture?.updateQueue(state);
-});
+}, () => ({ok:false,canceled:true}), result => result.ok);
 let downloadControlsLoaded: Promise<void> | undefined;
 let downloadControlsWrite: Promise<void> = Promise.resolve();
 function loadDownloadControls() {
@@ -652,6 +652,7 @@ function registerIpcHandlers() {
     await loadDownloadControls();
     if(request.action==='configure'){const settings=normalizeDownloadControls(request.settings);const write=downloadControlsWrite.then(async()=>{await atomicJson(join(app.getPath('userData'),'download-controls.json'),settings);downloadCoordinator.configure(settings);});downloadControlsWrite=write.catch(()=>{});await write;}
     if(request.action==='pause')downloadCoordinator.pause(request.id!);
+    if(request.action==='cancel')downloadCoordinator.cancel(request.id!);
     if(request.action==='move')downloadCoordinator.move(request.id!,request.direction===-1?-1:1);
     return downloadCoordinator.state();
   });
@@ -797,8 +798,8 @@ async function downloadUrl(payload: DownloadUrlPayload, notify:(state:TransferPr
     try { metadata = await readMetadata(); }
     catch (error) { if (!canFallback(error)) throw error; switchEngine(); metadata = await readMetadata(); }
     if(Number.isSafeInteger(payload.rowId)&&mainWindowRef&&!mainWindowRef.isDestroyed())mainWindowRef.webContents.send('loaderly:download-identity',{rowId:payload.rowId,source:normalizedUrl,title:metadata.title,thumbnailUrl:youtubeThumbnailUrl(normalizedUrl)});
-    const result=await managedDownload({directory:outputDirectory,title:metadata.title,identity:metadata.id,kind:payload.quality==='audio'?'audio':'video',knownFiles:Array.isArray(payload.knownFiles)?payload.knownFiles.filter((p):p is string=>typeof p==='string'):[],
-      classify:async path=>{const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)return undefined;try{const {stdout}=await execFileAsync(ffprobe,['-v','error','-show_streams','-of','json',path],{timeout:15_000,windowsHide:true,maxBuffer:1024*1024});const streams=JSON.parse(stdout).streams as {codec_type:string;disposition?:{attached_pic?:number}}[];return streams.some(s=>s.codec_type==='video'&&!s.disposition?.attached_pic)?'video':streams.some(s=>s.codec_type==='audio')?'audio':undefined;}catch{return undefined;}},
+    const result=await managedDownload({signal,directory:outputDirectory,title:metadata.title,identity:metadata.id,kind:payload.quality==='audio'?'audio':'video',knownFiles:Array.isArray(payload.knownFiles)?payload.knownFiles.filter((p):p is string=>typeof p==='string'):[],
+      classify:async path=>{const ffprobe=resolveToolPath('ffprobe');if(!ffprobe)return undefined;try{const {stdout}=await execFileAsync(ffprobe,['-v','error','-show_streams','-of','json',path],{timeout:15_000,signal,windowsHide:true,maxBuffer:1024*1024});const streams=JSON.parse(stdout).streams as {codec_type:string;disposition?:{attached_pic?:number}}[];return streams.some(s=>s.codec_type==='video'&&!s.disposition?.attached_pic)?'video':streams.some(s=>s.codec_type==='audio')?'audio':undefined;}catch{return undefined;}},
       choose:path=>confirmDuplicateDownload(path,metadata.title!,normalizedUrl,signal),
       stagingKey:createHash('sha256').update(JSON.stringify([normalizedUrl,normalizedPayload.quality])).digest('hex'),
       download:async stage=>{
@@ -854,7 +855,16 @@ function confirmDuplicateDownload(path:string,title:string,source:string,signal?
     try{showMainWindow('downloads');return await duplicatePrompts.request(owner.id,{path,title,source,thumbnailUrl:youtubeThumbnailUrl(source)},value=>owner.send('loaderly:duplicate-prompt',value));}
     finally{signal?.removeEventListener('abort',closed);owner.removeListener('destroyed',closed);owner.removeListener('render-process-gone',closed);}
   });
-  duplicatePrompt=prompt;return prompt;
+  duplicatePrompt=prompt;
+  if(!signal)return prompt;
+  if(signal.aborted)return Promise.resolve('skip');
+  // A download may be waiting behind a different duplicate prompt. Let its
+  // cancellation finish immediately while preserving the shared prompt order.
+  return new Promise<DuplicateChoice>((resolve,reject)=>{
+    const canceled=()=>resolve('skip');
+    signal.addEventListener('abort',canceled,{once:true});
+    prompt.then(resolve,reject).finally(()=>signal.removeEventListener('abort',canceled));
+  });
 }
 
 function defaultDownloadBaseDirectory(): string {

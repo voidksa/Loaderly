@@ -1,6 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DownloadCoordinator } from './downloadCoordinator';
 describe('one download coordinator across batches',()=>{
+ it('removes a worker before delivering its terminal result, including failure',async()=>{
+  const states:number[][]=[];const pool=new DownloadCoordinator(()=>false,state=>states.push(state.entries.map(e=>e.id)));
+  await pool.enqueue(1,async()=>false).then(()=>expect(pool.state().entries).toEqual([]));
+  await expect(pool.enqueue(2,async()=>{throw Error('no folder');})).rejects.toThrow('no folder');
+  expect(pool.state().entries).toEqual([]);expect(states.at(-1)).toEqual([]);pool.stop();
+ });
+ it.each(['preparing','downloading','processing','waiting-audio','removing-music','saving-audio','finalizing'] as const)('cancels %s and waits for the worker to release its files',async phase=>{
+  let release!:()=>void;const pool=new DownloadCoordinator(()=> 'paused',()=>{},()=> 'canceled');
+  const job=pool.enqueue(1,async(signal,_rate,update)=>{update(phase);await new Promise<void>(r=>{signal.addEventListener('abort',()=>{release=r;});});throw Error('TASK_CANCELED');});
+  await vi.waitFor(()=>expect(pool.state().entries[0].phase).toBe(phase));
+  expect(pool.cancel(1)).toBe(true);expect(pool.state().entries[0].stopping).toBe('cancel');expect(pool.cancel(1)).toBe(false);
+  release();expect(await job).toBe('canceled');expect(pool.state().entries).toEqual([]);pool.stop();
+ });
+ it('does not hide a committed successful file when cancellation arrives too late',async()=>{
+  let release!:()=>void;const pool=new DownloadCoordinator(()=>false,()=>{},()=>false,value=>value);
+  const job=pool.enqueue(1,async()=>{await new Promise<void>(r=>release=r);return true;});
+  await vi.waitFor(()=>expect(release).toBeTypeOf('function'));pool.cancel(1);release();expect(await job).toBe(true);pool.stop();
+ });
  it('drains the prior bandwidth allocation before applying a new total limit',async()=>{
   let finish!:()=>void;const rates:number[]=[],pool=new DownloadCoordinator(()=>false);pool.configure({concurrency:1,rateKib:10});
   const first=pool.enqueue(1,async(_s,rate)=>{rates.push(rate);await new Promise<void>(r=>finish=r);return true;});await vi.waitFor(()=>expect(finish).toBeTypeOf('function'));

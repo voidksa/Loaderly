@@ -15,6 +15,32 @@ def progress(phase, **fields):
     print(json.dumps({"phase": phase, **fields}, ensure_ascii=False), file=sys.stderr, flush=True)
 
 
+def analyze_speech_sample(source):
+    """Choose a conservative VAD policy, not a genre or singer classifier."""
+    import numpy as np
+    import soundfile as sf
+    from faster_whisper.vad import get_speech_timestamps, VadOptions
+    audio, rate = sf.read(str(source), dtype='float32')
+    if rate != 16000 or audio.ndim != 1 or len(audio) > 25 * rate:
+        raise ValueError('INVALID_SPEECH_SAMPLE')
+    frame = 320
+    padded = np.pad(audio, (0, (-len(audio)) % frame))
+    rms = np.sqrt(np.mean(padded.reshape(-1, frame) ** 2, axis=1))
+    active = rms > max(0.0005, float(np.max(rms, initial=0)) * 0.025)
+    duration = len(audio) / rate
+    if not np.any(active):
+        return {'mode': 'speech', 'reason': 'quiet', 'sampledSeconds': duration}
+    spans = get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=250, speech_pad_ms=0))
+    voices = np.zeros(len(active), dtype=bool)
+    for span in spans:
+        voices[span['start'] // frame:(span['end'] + frame - 1) // frame] = True
+    coverage = float(np.count_nonzero(active & voices) / np.count_nonzero(active))
+    # Uncertain / continuous non-speech sound uses full-audio recognition so
+    # the speech detector cannot silently discard singing or processed vocals.
+    mode = 'speech' if coverage >= 0.85 else 'music'
+    return {'mode': mode, 'reason': 'speech' if mode == 'speech' else 'mixed', 'sampledSeconds': duration}
+
+
 def verified_speech(cache, model, download=False, repaired=False):
     from huggingface_hub import snapshot_download
     spec = json.loads(Path(__file__).with_name('models.json').read_text())[model]
@@ -91,6 +117,8 @@ def run(request):
             raise ValueError("Unsupported engine")
         return {"ok": True, "engine": engine, "model": model}
     source = Path(request["source"]).resolve(strict=True)
+    if action == 'analyze-speech':
+        return {'ok': True, 'analysis': analyze_speech_sample(source)}
     output = Path(request["output"]).resolve()
     output.mkdir(parents=True, exist_ok=True)
     if action == "transcribe":
@@ -109,6 +137,14 @@ def run(request):
             cues.append({"startSeconds": segment.start, "endSeconds": segment.end, "text": segment.text.strip()})
             words.extend({"start": w.start, "end": w.end, "text": w.word, "probability": w.probability} for w in segment.words or [])
             progress("transcribing", seconds=segment.end, duration=info.duration)
+        if not cues and speech_mode == 'speech' and request.get('automatic'):
+            # Automatic selection is only a recommendation. Retry without the
+            # voice filter when it missed all words; explicit settings stay exact.
+            segments, info = engine.transcribe(str(source), language=None if language == 'auto' else language, word_timestamps=True, vad_filter=False, beam_size=5)
+            for segment in segments:
+                cues.append({'startSeconds': segment.start, 'endSeconds': segment.end, 'text': segment.text.strip()})
+                words.extend({'start': w.start, 'end': w.end, 'text': w.word, 'probability': w.probability} for w in segment.words or [])
+                progress('transcribing', seconds=segment.end, duration=info.duration)
         result = {"language": info.language, "cues": cues, "words": words}
         target = output / "transcript.json"
         target.with_suffix('.partial').write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")

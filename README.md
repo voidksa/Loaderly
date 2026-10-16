@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/loaderly-256.png" alt="Loaderly app icon" width="96" height="96">
-  <h1>Loaderly 2.3.0</h1>
+  <h1>Loaderly 2.3.1</h1>
   <p>Download, edit and make it yours. For Windows, macOS and Linux.</p>
   <p><a href="https://loaderly.app/#desktop-downloads"><strong>Download for Mac or Linux</strong></a> · <a href="https://loaderly.app/">Website & documentation</a> · <a href="README.ar.md">العربية</a></p>
   <p><a href="https://apps.microsoft.com/detail/9n1r1h10hxr7?referrer=appbadge&amp;mode=full">
@@ -30,17 +30,21 @@ Windows downloads and future Windows updates are available only through Microsof
 
 Follow the [installation guide](https://loaderly.app/docs/installation/) for your system. Updating keeps your library and preferences. Finish active downloads and exports before installing.
 
-## New in 2.3.0
+## New in 2.3.1
 
-- **From a copied link to your workspace:** use the floating download button, automatic link capture or customizable shortcuts that work across keyboard layouts.
-- **Choose the sound you want:** download the original, vocals only or instrumental. Separate vocals and music from local files too, keeping the original.
-- **Turn speech into text on your device:** transcribe audio and work with timed captions alongside your edit.
-- **Keep control of your projects:** save portable projects, return to named editing versions and export multiple clips with individual settings.
-- **More ways to shape video and audio:** adjust picture, motion, text, soundtracks and loudness, reduce noise and build custom audio visualizers.
-- **Smoother downloads:** parallel transfers where supported, recovery from refused segmented downloads, an optional YouTube backup and bulk history removal.
-- **A more consistent workspace:** clearer preferences, tool updates and improved Arabic layouts, keyboard shortcuts and scrolling.
+- **Save where you choose:** fixed downloads directly to drive roots and replacement on FAT32 removable drives.
+- **Stop a download from its row:** visible Pause and Cancel controls, a Canceled filter and reliable finished states.
+- **Know what is happening:** network transfer and final audio/video processing have separate, clearer status messages.
+- **Start transcription with less setup:** short local audio analysis suggests settings and a results folder. Set up and transcribe in one step, or use manual controls for quality, language and audio type.
+- **Start with Windows:** fixed the startup preference in the Microsoft Store edition.
 
-[Explore the illustrated 2.3.0 guide](https://loaderly.app/docs/whats-new/). Windows 2.3.0 will be available after Microsoft certification.
+[Explore the illustrated 2.3.1 guide](https://loaderly.app/docs/whats-new/). Microsoft Store provides the currently published Windows version.
+
+![Automatic transcription settings in Loaderly](docs/images/loaderly-transcription-en.png)
+
+## One workspace for video and audio
+
+Download the original sound, vocals only or instrumental. Edit video and audio, reduce noise, add subtitles, create custom visualizers and export your finished work. Keep portable projects and named editing versions, or export multiple clips with individual settings. The floating download button, automatic link capture and customizable shortcuts bring links into your workspace.
 
 ![Choose original audio, vocals or instrumental](docs/images/loaderly-downloads-en.png)
 

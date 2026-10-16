@@ -1,7 +1,7 @@
 {
   "name": "loaderly",
   "productName": "Loaderly",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
@@ -63,6 +63,10 @@
       ],
       "icon": "../../assets/loaderly.ico",
       "extraResources": [
+        {
+          "from": "build/native/LoaderlyStartupTask.exe",
+          "to": "native/LoaderlyStartupTask.exe"
+        },
         {
           "from": "../../assets/loaderly.ico",
           "to": "assets/loaderly.ico"

@@ -44,11 +44,11 @@ export function StartupSettings({ ar }: { ar: boolean }) {
     ? t('Allow Loaderly in Login Items to finish enabling startup.', 'اسمح بتشغيل Loaderly في عناصر تسجيل الدخول لإكمال التفعيل.')
     : state?.reason === 'unavailable'
     ? t('Automatic startup is unavailable on this system.', 'التشغيل التلقائي غير متاح على هذا النظام.')
-    : t('Open the app automatically when you sign in to your computer.', 'افتح البرنامج تلقائيًا عند تسجيل الدخول إلى جهازك.');
+    : t('Open Loaderly automatically after you sign in to Windows or your operating system.', 'افتح البرنامج تلقائيًا عند تسجيل الدخول إلى جهازك.');
   return <section className="startup-settings" aria-label={t('Startup', 'بدء التشغيل')}>
     <div className="preference-row startup-setting">
       <div className="startup-setting__copy">
-        <label className="startup-setting__label preference-row__copy" htmlFor="loaderly-start-at-login"><strong id="loaderly-startup-label">{t('Start Loaderly when I sign in', 'تشغيل Loaderly عند تسجيل الدخول')}</strong><small id="loaderly-startup-description">{description}</small></label>
+        <label className="startup-setting__label preference-row__copy" htmlFor="loaderly-start-at-login"><strong id="loaderly-startup-label">{t('Start Loaderly with my computer', 'تشغيل Loaderly مع بدء تشغيل الجهاز')}</strong><small id="loaderly-startup-description">{description}</small></label>
         {state?.settingsAvailable && <button className="startup-setting__system-link" type="button" disabled={busy} onClick={() => void window.loaderly!.startup({ action: 'settings' }).catch(() => setError(true))}><ExternalLink size={14} aria-hidden="true" />{t('System startup settings', 'إعدادات بدء التشغيل في النظام')}</button>}
       </div>
       <input id="loaderly-start-at-login" className="startup-setting__switch" type="checkbox" role="switch" checked={state?.enabled ?? false} disabled={!state?.canChange || busy} aria-labelledby="loaderly-startup-label" aria-describedby="loaderly-startup-description" onChange={event => void change(event.target.checked)} />
@@ -60,3 +60,4 @@ export function StartupSettings({ ar }: { ar: boolean }) {
     </div>
   </section>;
 }
+

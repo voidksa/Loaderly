@@ -10,7 +10,7 @@ export function createStartupManager(): StartupManager {
     backend = unavailableStartup('development');
   } else if (process.platform === 'win32') {
     const openSettings = () => shell.openExternal('ms-settings:startupapps');
-    backend = process.windowsStore ? windowsStartupTask(openSettings) : desktopStartup(app, 'win32', process.execPath, openSettings);
+    backend = process.windowsStore ? windowsStartupTask(openSettings, process.resourcesPath) : desktopStartup(app, 'win32', process.execPath, openSettings);
   } else if (process.platform === 'darwin') {
     backend = /\/AppTranslocation\/|^\/Volumes\//.test(process.execPath)
       ? unavailableStartup('temporary')

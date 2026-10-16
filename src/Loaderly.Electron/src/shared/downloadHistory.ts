@@ -6,7 +6,7 @@ export function isDownloadHistoryRow(row: DownloadHistoryRow): boolean {
 }
 
 export function canRemoveDownloadHistory(row: DownloadHistoryRow, busyIds: readonly number[] = []): boolean {
-  return isDownloadHistoryRow(row) && ['ready', 'edited', 'failed'].includes(row.status) && !busyIds.includes(row.id);
+  return isDownloadHistoryRow(row) && ['ready', 'edited', 'failed', 'canceled'].includes(row.status) && !busyIds.includes(row.id);
 }
 
 export function hideDownloadHistory<T extends DownloadHistoryRow>(rows: readonly T[], ids: readonly number[], busyIds: readonly number[] = []): readonly (T & { downloadHidden?: boolean })[] {

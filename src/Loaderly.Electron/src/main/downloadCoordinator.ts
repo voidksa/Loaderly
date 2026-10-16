@@ -6,8 +6,8 @@ export class DownloadCoordinator<T> {
   private settings: DownloadControls = normalizeDownloadControls();
   private stopped=false;
   private pendingSettings?: DownloadControls;
-  constructor(private paused:()=>T, private notify:(state:DownloadControlState)=>void = ()=>{}) {}
-  state():DownloadControlState { return {settings:{...(this.pendingSettings??this.settings)}, entries:this.entries.map(({id,phase,scheduledAt})=>({id,phase,scheduledAt}))}; }
+  constructor(private paused:()=>T, private notify:(state:DownloadControlState)=>void = ()=>{}, private canceled:()=>T=paused, private completed:(value:T)=>boolean=()=>false) {}
+  state():DownloadControlState { return {settings:{...(this.pendingSettings??this.settings)}, entries:this.entries.map(({id,phase,scheduledAt,stopping})=>({id,phase,scheduledAt,stopping}))}; }
   configure(settings:DownloadControls) {
     const next=normalizeDownloadControls(settings);
     // Drain workers using the old allocation before starting a different allocation.
@@ -22,8 +22,17 @@ export class DownloadCoordinator<T> {
   }
   pause(id:number) {
     const entry=this.entries.find(e=>e.id===id);if(!entry||!['queued','preparing','downloading','waiting-audio','removing-music','saving-audio'].includes(entry.phase))return false;
+    return this.interrupt(entry,'pause');
+  }
+  cancel(id:number) {
+    const entry=this.entries.find(e=>e.id===id);return entry?this.interrupt(entry,'cancel'):false;
+  }
+  private interrupt(entry:Entry<T>,action:'pause'|'cancel') {
+    if(entry.stopping)return false;
+    entry.stopping=action;
     entry.controller.abort();
-    if(!entry.active){this.entries=this.entries.filter(e=>e!==entry);entry.resolve(this.paused());this.pump();}
+    if(!entry.active){this.entries=this.entries.filter(e=>e!==entry);this.pump();entry.resolve(action==='cancel'?this.canceled():this.paused());}
+    else this.notify(this.state());
     return true;
   }
   move(id:number,direction:-1|1) {
@@ -40,9 +49,16 @@ export class DownloadCoordinator<T> {
       if(available<=0)break;if(entry.active||(entry.scheduledAt??0)>Date.now())continue;
       available--;entry.active=true;entry.phase='preparing';
       const rate=this.settings.rateKib ? this.settings.rateKib/this.settings.concurrency : 0;
-      Promise.resolve().then(()=>entry.run(entry.controller.signal,rate,phase=>{entry.phase=phase;this.notify(this.state());}))
-        .then(value=>entry.resolve(entry.controller.signal.aborted?this.paused():value),error=>entry.controller.signal.aborted?entry.resolve(this.paused()):entry.reject(error))
-        .finally(()=>{this.entries=this.entries.filter(e=>e!==entry);this.pump();});
+      const finish=()=>{this.entries=this.entries.filter(e=>e!==entry);this.pump();};
+      const interrupted=()=>entry.stopping==='cancel'?this.canceled():this.paused();
+      Promise.resolve().then(()=>{
+        if(entry.controller.signal.aborted)return interrupted();
+        return entry.run(entry.controller.signal,rate,phase=>{if(!entry.stopping){entry.phase=phase;this.notify(this.state());}});
+      }).then(value=>{
+        // Remove the worker before delivering the terminal result. Otherwise a
+        // queued notification can turn a finished/failed row into Preparing.
+        finish();entry.resolve(entry.controller.signal.aborted&&!this.completed(value)?interrupted():value);
+      },error=>{finish();if(entry.controller.signal.aborted)entry.resolve(interrupted());else entry.reject(error);});
     }
     const scheduled=this.entries.filter(e=>!e.active&&(e.scheduledAt??0)>Date.now()).map(e=>e.scheduledAt!);
     if(scheduled.length)this.timer=setTimeout(()=>this.pump(),Math.min(60000,Math.max(20,Math.min(...scheduled)-Date.now())));

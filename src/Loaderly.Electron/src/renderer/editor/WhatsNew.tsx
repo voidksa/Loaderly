@@ -6,22 +6,11 @@ import { announceSupportOpened, SupportNotice } from './SupportNotice';
 import { registerFloatingMaterial } from '../../shared/ui/floating-material';
 const seenKey='loaderly:whats-new-seen';
 const installedBuild=window.loaderly?.appBuild||whatsNewBuild;
-const sectionLabels: Record<typeof whatsNewSections[number]['id'], {en:string;ar:string}> = {
-  'app-tools': {en:'App and tools',ar:'التطبيق والأدوات'},
-  projects: {en:'Projects',ar:'المشاريع'},
-  editing: {en:'Editing',ar:'التحرير'},
-  sound: {en:'Audio',ar:'الصوت'},
-  visualizers: {en:'Audio visualizers',ar:'أطياف الصوت'},
-  captions: {en:'Captions',ar:'النصوص والترجمة'},
-  organizing: {en:'Downloads and library',ar:'التنزيلات والمكتبة'},
-  workflow: {en:'Shortcuts and templates',ar:'الاختصارات والقوالب'},
-  fixes: {en:'Improvements and fixes',ar:'تحسينات وإصلاحات'}
-};
 function WhatsNewSection({section,ar}:{section:typeof whatsNewSections[number];ar:boolean}) {
   const [expanded,setExpanded]=useState(false),id=useId(),locale=ar?'ar':'en';
   return <section className="whats-new-section" data-section={section.id}>
     <h4><button type="button" id={`${id}-toggle`} className="button secondary preset-library-toggle" aria-expanded={expanded} aria-controls={id} onClick={()=>setExpanded(value=>!value)}>
-      <span>{sectionLabels[section.id][locale]}</span><bdi className="whats-new-section__count" aria-label={ar?`عدد البنود: ${section.items.length}`:`${section.items.length} entries`}>{section.items.length}</bdi><ChevronDown className="disclosure-chevron" size={16} aria-hidden="true"/>
+      <span>{section.title[locale]}</span><bdi className="whats-new-section__count" aria-label={ar?`عدد البنود: ${section.items.length}`:`${section.items.length} entries`}>{section.items.length}</bdi><ChevronDown className="disclosure-chevron" size={16} aria-hidden="true"/>
     </button></h4>
     <div id={id} hidden={!expanded} aria-labelledby={`${id}-toggle`}>
       <ul>{section.items.map((item,i)=><li key={i}><strong>{item[locale][0]}</strong><p>{item[locale][1]}</p></li>)}</ul>

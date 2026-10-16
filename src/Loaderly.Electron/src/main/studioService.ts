@@ -2,7 +2,10 @@ import type { DownloadAudioMode } from '../shared/downloadAudio';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
+import { cpus, totalmem } from 'node:os';
+import { recommendedSpeechModel, type SpeechAnalysis } from '../shared/speechPlan';
+import { prepareDownloadDirectory } from './downloadDirectory';
 import type { StudioRequest, StudioResponse } from '../shared/studioApi';
 import { normalizeOutputPreset, normalizeStudioEdits, normalizeTranscript } from '../shared/editor-project/studio';
 import { cachedStudioAnalysis, measureStudioLoudness, createStudioProxy, probeStudioMedia } from './studioAnalysis';
@@ -21,6 +24,19 @@ export class StudioService {
   private ai:LocalMediaAi;
   private controllers=new Map<string,AbortController>();
   private cacheInUse=new Set<string>();
+  private speechPlans=new Map<string,SpeechAnalysis>();
+  private async speechPlan(source:string,signal?:AbortSignal){
+    const info=await stat(source);if(!info.isFile())throw Error('MISSING_MEDIA');
+    const key=JSON.stringify([source,info.size,info.mtimeMs]);let analysis=this.speechPlans.get(key);
+    if(!analysis){
+      const media=await probeStudioMedia(this.context.tool('ffprobe'),source,signal);if(!media.audio)throw Error('NO_AUDIO');
+      const result=await this.ai.run('analyze-speech',{source,duration:media.duration},join(this.context.root,'studio-cache'),signal);
+      if(!result.analysis)throw Error('AUDIO_ANALYSIS_FAILED');analysis=result.analysis;
+      if(this.speechPlans.size>=20)this.speechPlans.clear();this.speechPlans.set(key,analysis);
+    }
+    const installed=this.ai.status().speechModels,model=recommendedSpeechModel(installed,totalmem(),cpus().length);
+    return {...analysis,model,modelReady:installed.includes(model)};
+  }
   assertSeparationReady() {
     const state = this.ai.status();
     if (!state.runtime) throw new Error('LOCAL_RUNTIME_NOT_INSTALLED');
@@ -39,7 +55,7 @@ export class StudioService {
     this.ready=this.queue.load();
   }
   private async execute({request:r,output}:JobPayload,signal:AbortSignal,progress:(p:number)=>void){
-    await mkdir(output,{recursive:true});
+    const folderError=await prepareDownloadDirectory(output,process.platform,true);if(folderError)throw Error(folderError);
     if(r.kind==='render'){
       const payload=r.render as {kind?:string}; const extension=payload.kind==='audio'?'mp3':payload.kind==='gif'?'gif':payload.kind==='image'||payload.kind==='snapshot'?'png':'mp4';
       const target=join(output,safeOutputName(r.name??'Clip',extension));
@@ -47,7 +63,8 @@ export class StudioService {
     }
     if(r.kind==='transcribe'||r.kind==='separate'){
       const target=join(output,safeOutputName(r.kind,'results'));
-      const result=await this.ai.run(r.kind,{source:r.source,language:r.language,model:r.model,speechMode:r.speechMode},target,signal,progress);
+      const plan=r.kind==='transcribe'&&(!r.speechMode||r.speechMode==='auto')?await this.speechPlan(r.source!,signal):undefined;
+      const result=await this.ai.run(r.kind,{source:r.source,language:r.language,model:r.model??plan?.model,speechMode:plan?.mode??r.speechMode,automatic:!!plan&&plan.reason!=='quiet'},target,signal,progress);
       if(r.kind==='transcribe'){
         const transcript=normalizeTranscript(result.transcript);
         if(!transcript)throw new Error('INVALID_TRANSCRIPT');
@@ -83,6 +100,17 @@ export class StudioService {
       if(r.action==='retry'){await this.queue.retry(r.id??'');return {ok:true};}
       if(r.action==='move'){await this.queue.move(r.id??'',r.direction===-1?-1:1);return {ok:true};}
       if(r.action==='local-status')return {ok:true,local:this.ai.status()};
+      if(r.action==='default-output'){
+        if(!r.source||!isAbsolute(r.source)||!(await stat(r.source)).isFile())throw Error('MISSING_MEDIA');
+        const directory=dirname(r.source);
+        const error=await prepareDownloadDirectory(directory,process.platform,false);if(error)throw Error(error);
+        return {ok:true,path:directory};
+      }
+      if(r.action==='speech-plan'){
+        if(!r.source)throw Error('MISSING_MEDIA');
+        const controller=new AbortController(),id=r.id??'speech-plan';this.controllers.set(id,controller);
+        try{return {ok:true,speechPlan:await this.speechPlan(r.source,controller.signal)};}finally{this.controllers.delete(id);}
+      }
       if(r.action==='read-transcript'){
         if(!r.source||(await stat(r.source)).size>16*1024*1024)throw new Error('INVALID_TRANSCRIPT');
         const transcript=normalizeTranscript(JSON.parse(await readFile(r.source,'utf8')));if(!transcript)throw new Error('INVALID_TRANSCRIPT');

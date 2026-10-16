@@ -1,12 +1,13 @@
 import {constants} from 'node:fs';
-import {copyFile,link,lstat,mkdir,mkdtemp,readdir,rename,rm,stat} from 'node:fs/promises';
+import {copyFile,lstat,mkdir,mkdtemp,readdir,rename,rm,stat} from 'node:fs/promises';
 import {dirname,extname,isAbsolute,join,parse} from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {LocalAiGate} from './localAiGate';
 
 export type DuplicateChoice='skip'|'replace'|'keep';
 type Kind='audio'|'video';
 const extensions=new Set(['.mp4','.mkv','.webm','.mov','.avi','.m4v','.mp3','.wav','.flac','.m4a','.aac','.ogg','.opus','.wma','.aiff','.aif','.mpeg','.mpg','.3gp','.ts']);
-const locks=new Map<string,Promise<unknown>>();
+const locks=new Map<string,{gate:LocalAiGate;users:number}>();
 export function downloadTitleKey(value:string) {
  return value.normalize('NFC').replace(/[<>:"/\\|?*＜＞：＂／＼｜？＊\x00-\x1f]/g,'_').replace(/[ .]+$/,'').trim().toLowerCase();
 }
@@ -29,20 +30,21 @@ export async function missingLibraryFiles(input:unknown):Promise<string[]> {
  return missing;
 }
 export async function managedDownload(options:{directory:string;title:string;identity?:string;kind:Kind;knownFiles?:readonly string[];
- stagingKey?:string;
+ stagingKey?:string; signal?:AbortSignal;
  classify:(path:string)=>Promise<Kind|undefined>; choose:(path:string)=>Promise<DuplicateChoice>;
  download:(stage:string)=>Promise<{ok:boolean;path?:string;message?:string;subtitlePath?:string}>;
 }):Promise<{ok:boolean;path?:string;message?:string;subtitlePath?:string;skipped?:boolean;replacedPath?:string}> {
  const key=options.directory+'\0'+downloadTitleKey(options.title);
- const previous=locks.get(key)??Promise.resolve();
- const current=previous.catch(()=>{}).then(()=>run(options));locks.set(key,current);
- try{return await current;}finally{if(locks.get(key)===current)locks.delete(key);}
+ const lock=locks.get(key)??{gate:new LocalAiGate(),users:0};locks.set(key,lock);lock.users++;
+ try{return await lock.gate.run(()=>run(options),options.signal);}finally{if(--lock.users===0)locks.delete(key);}
 }
 async function run(options:Parameters<typeof managedDownload>[0]){
+ const check=()=>{if(options.signal?.aborted)throw Error('TASK_CANCELED');};check();
  const entries=await readdir(options.directory);
  const candidates=[...new Set([...entries.map(name=>join(options.directory,name)),...(options.knownFiles??[]).slice(0,10000)])];
  let duplicate:string|undefined;
  for(const path of candidates){
+  check();
   if(!isAbsolute(path)||!extensions.has(extname(path).toLowerCase()))continue;
   const stem=parse(path).name;
   // Separation outputs share the remote id but are not copies of the raw download.
@@ -54,6 +56,7 @@ async function run(options:Parameters<typeof managedDownload>[0]){
   if(await options.classify(path)===options.kind){duplicate=path;break;}
  }
  const choice=duplicate?await options.choose(duplicate):'keep';
+ check();
  if(choice==='skip')return {ok:false,skipped:true};
  const original=duplicate&&choice==='replace'?await stat(duplicate):undefined;
  const resumable=typeof options.stagingKey==='string'&&/^[a-f0-9]{64}$/.test(options.stagingKey);
@@ -62,9 +65,11 @@ async function run(options:Parameters<typeof managedDownload>[0]){
  let completed=false;
  try{
   const result=await options.download(stage);
+  check();
   if(!result.ok||!result.path)return result;
   if(dirname(result.path)!==stage)throw Error('Unexpected download output location.');
   if(await options.classify(result.path)!==options.kind)throw Error('The downloaded media could not be verified. The existing file was kept.');
+  check();
   const file=parse(result.path), replace=choice==='replace'?duplicate:undefined;
   const targetDirectory=replace?dirname(replace):options.directory;
   const stem=replace?parse(replace).name:file.name;
@@ -83,8 +88,10 @@ async function run(options:Parameters<typeof managedDownload>[0]){
    const incoming=join(targetDirectory,`.loaderly-incoming-${randomUUID()}`),backup=join(targetDirectory,`.loaderly-backup-${randomUUID()}`);
    await copyFile(result.path,incoming,constants.COPYFILE_EXCL);
    let backedUp=false;
-   try{await rename(replace,backup);backedUp=true;await link(incoming,target);}
-   catch(error){if(backedUp)await rename(backup,replace);throw error;}
+   // COPYFILE_EXCL also works on FAT32/exFAT removable drives, which do not
+   // support hard links. Keep a recoverable backup until the copy succeeds.
+   try{await rename(replace,backup);backedUp=true;await copyFile(incoming,target,constants.COPYFILE_EXCL);}
+   catch(error){if(backedUp)await copyFile(backup,replace,constants.COPYFILE_EXCL).then(()=>rm(backup),()=>{});throw error;}
    finally{await rm(incoming,{force:true});}
    await rm(backup,{force:true}).catch(()=>{});
   }

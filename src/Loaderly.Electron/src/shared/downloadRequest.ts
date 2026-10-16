@@ -8,7 +8,7 @@ export type DownloadUrlPayload = {
   audioMode?: import('./downloadAudio').DownloadAudioMode; removeMusic?: boolean; originalPath?: string; originalSubtitlePath?: string;
 };
 export type DownloadUrlResult = {
-  paused?: boolean; ok: boolean; skipped?: boolean; replacedPath?: string;
+  paused?: boolean; canceled?: boolean; ok: boolean; skipped?: boolean; replacedPath?: string;
   path?: string; fileUrl?: string; thumbnailUrl?: string; name?: string;
   sizeBytes?: number; durationSeconds?: number; subtitlePath?: string; message?: string;
   originalPath?: string;

@@ -1,7 +1,7 @@
 import { StudioSelect } from './StudioSelect';
 import { SettingsDialog } from './FloatingSurface';
 import { useState } from 'react';
-import { Pause, Play, ChevronUp, ChevronDown, Clock3, SlidersHorizontal } from 'lucide-react';
+import { Pause, Play, ChevronUp, ChevronDown, Clock3, SlidersHorizontal, X } from 'lucide-react';
 import type { DownloadControlState } from '../../shared/downloadControl';
 type Row={id:number;title?:string;source?:string;downloadPaused?:boolean;downloadScheduledAt?:number;status:string};
 export function DownloadQueueControls({ar,state,rows,onStart,onSchedule}:{ar:boolean;state:DownloadControlState;rows:readonly Row[];onStart:(id:number)=>void;onSchedule:(id:number,at?:number)=>void}){
@@ -16,7 +16,8 @@ export function DownloadQueueControls({ar,state,rows,onStart,onSchedule}:{ar:boo
  <p>{t('Changes apply after active downloads finish. The total limit is divided across available download slots. Scheduled downloads need Loaderly to be running. Interrupted transfers resume when supported by the source.','تُطبّق التغييرات بعد انتهاء التنزيلات النشطة. يُوزّع الحد الإجمالي على خانات التنزيل المتزامنة. الجدولة تتطلب تشغيل Loaderly. يُستكمل النقل المنقطع إذا كان المصدر يدعم ذلك.')}</p>
  {displayed.map(row=>{const entry=state.entries.find(e=>e.id===row.id);const queued=!entry||entry.phase==='queued';return <div className="studio-item" key={row.id}>
  <span dir="auto">{row.title??row.source}</span>{row.downloadPaused&&<span>{t('Paused','متوقف مؤقتًا')}</span>}
- {entry&&['queued','preparing','downloading','waiting-audio','removing-music','saving-audio'].includes(entry.phase)?<button className="button secondary" onClick={()=>control({action:'pause',id:row.id})}><Pause size={15}/>{t('Pause','إيقاف مؤقت')}</button>:!entry?<button className="button secondary" onClick={()=>onStart(row.id)}><Play size={15}/>{t('Start / resume','بدء أو استئناف')}</button>:<span>{t('Finishing file…','جارٍ تجهيز الملف…')}</span>}
+ {entry&&['queued','preparing','downloading','waiting-audio','removing-music','saving-audio'].includes(entry.phase)?<button className="button secondary" disabled={!!entry.stopping} onClick={()=>control({action:'pause',id:row.id})}><Pause size={15}/>{t('Pause','إيقاف مؤقت')}</button>:!entry?<button className="button secondary" onClick={()=>onStart(row.id)}><Play size={15}/>{t('Start / resume','بدء أو استئناف')}</button>:<span>{t('Finishing file…','جارٍ تجهيز الملف…')}</span>}
+ {entry&&<button className="button secondary" disabled={!!entry.stopping} onClick={()=>control({action:'cancel',id:row.id})}><X size={15}/>{entry.stopping?t('Stopping…','جارٍ الإيقاف…'):t('Cancel','إلغاء')}</button>}
  {queued&&entry&&<><button className="button secondary" aria-label={t('Move up','تحريك للأعلى')} onClick={()=>control({action:'move',id:row.id,direction:-1})}><ChevronUp size={16}/></button><button className="button secondary" aria-label={t('Move down','تحريك للأسفل')} onClick={()=>control({action:'move',id:row.id,direction:1})}><ChevronDown size={16}/></button></>}
  {!entry&&<label><Clock3 size={14}/>{t('Start at','البدء في')}<input type="datetime-local" aria-label={t('Start time','وقت البدء')} value={row.downloadScheduledAt?new Date(row.downloadScheduledAt-new Date(row.downloadScheduledAt).getTimezoneOffset()*60000).toISOString().slice(0,16):''} onChange={e=>{const at=new Date(e.target.value).getTime();onSchedule(row.id,Number.isFinite(at)?at:undefined);}}/></label>}
  </div>;})}{error&&<p role="status">{error}</p>}</div></SettingsDialog>}</div>;

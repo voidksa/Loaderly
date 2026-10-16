@@ -53,6 +53,7 @@ tmp/
 /src/Loaderly.Electron/build/local-ai/
 /src/Loaderly.Electron/build/local-ai-output/
 /src/Loaderly.Electron/build/local-ai-work/
+/src/Loaderly.Electron/build/native/
 __pycache__/
 /src/Loaderly.Electron/desktop-smoke/
 
