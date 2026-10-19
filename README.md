@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://loaderly.app/assets/identity/logo-192.png" width="80" height="80" alt="Loaderly">
+  <img src="assets/loaderly.png" width="80" height="80" alt="Loaderly">
   <h1>Loaderly</h1>
   <p>Your video. Your audio. Your way.</p>
   <p><a href="https://loaderly.app/">Website</a> · <a href="https://loaderly.app/docs/">Documentation</a> · <a href="https://loaderly.app/updates/">What's new</a> · <a href="README.ar.md">العربية</a></p>
