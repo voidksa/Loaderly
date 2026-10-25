@@ -5,7 +5,7 @@
   <p><a href="https://loaderly.app/">Website</a> · <a href="https://loaderly.app/docs/">Documentation</a> · <a href="https://loaderly.app/updates/">What's new</a> · <a href="README.ar.md">العربية</a></p>
 </div>
 
-Download and organize media, edit video and audio, add captions and make visualizers. Loaderly is a desktop app for Windows, macOS and Linux, with English and Arabic interfaces.
+Record your screen, organize media, edit video and audio, add captions and make visualizers. Loaderly is a desktop app for Windows, macOS and Linux, with English, Arabic, Spanish and Brazilian Portuguese interfaces.
 
 ## Download
 
@@ -21,9 +21,20 @@ Mac and Linux files are hosted in [GitHub Releases](https://github.com/voidksa/L
 
 See the [installation guide](https://loaderly.app/docs/installation/) for system requirements. Mac downloads now use DMG installers: quit Loaderly, open the DMG and replace the app in Applications. Existing Mac users must install this update manually; the older ZIP updater cannot install a DMG. Mac builds are not Apple Developer ID signed or notarized. Windows updates are managed by Microsoft Store; Linux users can check for updates inside Loaderly.
 
-## New in 2.4.0
+## New in 2.5.0
 
-A redesigned interface and a connected live-clipping workflow: capture a moment from Twitch, Kick, YouTube Live or TikTok LIVE, arrange cameras and HUD details, then open the saved clip in the editor. Local AI camera background removal, separate OBS sources, custom save shortcuts and 29 included community designs expand the workspace.
+- Screen and window recording with a camera layer and separate microphone and system audio where supported.
+- Smooth cursor motion, adjustable click feedback and automatic zoom that you can customize. Game mode leaves automatic zoom off.
+- Editable audio waveforms, voiceovers, microphone filters and community filter sharing.
+- Direct preview cropping, canvas styling, multiple timeline selection and quality controls with export progress.
+- Windows floating recording controls, on-screen drawing, game capture and instant replay on compatible setups.
+- Four interface and documentation languages, with a dark reading mode in the documentation.
+
+Features depend on the operating system and capture devices. Windows availability follows Microsoft Store approval. Read the [complete 2.5.0 guide](https://loaderly.app/docs/whats-new/) for details and platform limits.
+
+## Browser privacy
+
+[Loaderly Web Privacy](https://loaderly.app/browser-privacy/) lets you blur or hide selected webpage elements before recording. It follows elements as you scroll, works with any screen recorder and does not require pairing or an account. Visit the product page for Chrome Web Store availability.
 
 ## Get started
 
@@ -34,7 +45,7 @@ A redesigned interface and a connected live-clipping workflow: capture a moment 
 
 ## Support
 
-Visit [Troubleshooting](https://loaderly.app/docs/troubleshooting/) or email [support@loaderly.app](mailto:support@loaderly.app). News and previews: [@Loaderly on X](https://x.com/Loaderly).
+Visit [Troubleshooting](https://loaderly.app/docs/troubleshooting/) or use the [contact page](https://loaderly.app/contact/). News and previews: [@Loaderly on X](https://x.com/Loaderly).
 
 ## About this repository
 
