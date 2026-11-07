@@ -17,7 +17,7 @@ Record your screen, browse and download media, edit video and audio, add caption
 | Ubuntu / Debian, 64-bit | [DEB installer](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-linux-amd64.deb) |
 | Compatible Linux desktops, 64-bit | [AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-x86_64.AppImage) |
 
-Windows installation and updates are managed by Microsoft Store; availability follows Store certification. Install 2.6.0 manually on Mac and Linux using the links above. The signed in-app update feed currently serves the previous release.
+Windows installation and updates are managed by Microsoft Store. The Mac and Linux packages for 2.6.0 have been refreshed to receive future in-app updates. If Loaderly shows the update notice, download the current package and install it once over your existing copy, even if you already downloaded 2.6.0. Keep your recordings and settings folders.
 
 Mac requires macOS 13.3 or later. Quit Loaderly, open the DMG, and replace the app in Applications. Mac builds are not Apple Developer ID signed or notarized. See the [installation guide](https://loaderly.app/docs/installation/) for additional requirements.
 
