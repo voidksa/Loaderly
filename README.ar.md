@@ -2,7 +2,7 @@
   <img src="assets/loaderly.png" width="80" height="80" alt="Loaderly">
   <h1>Loaderly</h1>
   <p>فيديوهاتك وصوتك، بطريقتك.</p>
-  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.0">الجديد</a> · <a href="README.md">English</a></p>
+  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.1">الجديد</a> · <a href="README.md">English</a></p>
 </div>
 
 سجّل شاشتك، وتصفّح الوسائط ونزّلها، وحرّر الفيديو والصوت، وأضف النصوص وصمّم الأطياف الصوتية. يجمع Loaderly هذه الأدوات في مساحة عمل واحدة على ويندوز وماك ولينكس، بواجهات عربية وإنجليزية وإسبانية وبرتغالية برازيلية.
@@ -12,14 +12,20 @@
 | النظام | تنزيل Loaderly |
 | --- | --- |
 | Windows 10 / 11 | [متجر Microsoft](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| ماك بمعالج Apple silicon | [نسخة Apple silicon](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-mac-arm64.dmg) |
-| ماك بمعالج Intel | [نسخة Intel](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-mac-x64.dmg) |
-| Ubuntu / Debian، 64 بت | [مثبّت DEB](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-linux-amd64.deb) |
-| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-x86_64.AppImage) |
+| ماك بمعالج Apple silicon | [نسخة Apple silicon](https://github.com/voidksa/Loaderly/releases/download/v2.6.1/Loaderly-2.6.1-mac-arm64.dmg) |
+| ماك بمعالج Intel | [نسخة Intel](https://github.com/voidksa/Loaderly/releases/download/v2.6.1/Loaderly-2.6.1-mac-x64.dmg) |
+| Ubuntu / Debian، 64 بت | [مثبّت DEB](https://github.com/voidksa/Loaderly/releases/download/v2.6.1/Loaderly-2.6.1-linux-amd64.deb) |
+| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.1/Loaderly-2.6.1-x86_64.AppImage) |
 
 يتولى متجر Microsoft تثبيت ويندوز وتحديثاته. جُدّدت حزم 2.6.0 لماك ولينكس لاستقبال التحديثات القادمة من داخل التطبيق. إذا ظهر لك تنبيه التحديث في Loaderly، نزّل الحزمة الحالية وثبّتها مرة واحدة بدل نسختك الموجودة، حتى لو سبق ونزّلت 2.6.0. احتفظ بتسجيلاتك ومجلد الإعدادات.
 
 يتطلب ماك الإصدار 13.3 أو أحدث. أغلق Loaderly وافتح DMG واستبدل التطبيق في Applications. نسخ الماك غير موقعة بشهادة Apple Developer ID وغير موثقة لدى Apple. راجع [دليل التثبيت](https://loaderly.app/ar/docs/installation/) لبقية المتطلبات.
+
+## الجديد في 2.6.1
+
+- أرسل تقييمك بوضوح. يبقى زر إرسال التقييم ظاهرًا. وإذا احتجت تسجيل الدخول أو تعذّر الإرسال مؤقتًا، يوضّح Loaderly الخطوة التالية ويحفظ مسودتك للمحاولة مجددًا.
+- تواصل معنا من داخل Loaderly. افتح التواصل والمقترحات من حسابك أو القائمة. أرسل طلب مساعدة أو مشكلة أو فكرة ببريد حسابك المسجّل، واحصل على رقم الطلب عند قبول رسالتك. وتقدر تفتح التقييم مباشرة من حسابك.
+- تحقّق من التحديثات من الإعدادات. راجع إصدارك المثبت وابحث عن إصدار جديد وتابع حالة التنزيل أو تحديث Microsoft Store من داخل الإعدادات.
 
 ## الجديد في 2.6.0
 
