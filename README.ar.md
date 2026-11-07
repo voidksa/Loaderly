@@ -2,46 +2,46 @@
   <img src="assets/loaderly.png" width="80" height="80" alt="Loaderly">
   <h1>Loaderly</h1>
   <p>فيديوهاتك وصوتك، بطريقتك.</p>
-  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://loaderly.app/ar/updates/">الجديد</a> · <a href="README.md">English</a></p>
+  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.0">الجديد</a> · <a href="README.md">English</a></p>
 </div>
 
-سجّل شاشتك ونظّم الوسائط، وعدّل الفيديو والصوت، وأضف النصوص وصمّم الأطياف الصوتية. يعمل Loaderly على ويندوز وماك ولينكس، بواجهات عربية وإنجليزية وإسبانية وبرتغالية برازيلية.
+سجّل شاشتك، وتصفّح الوسائط ونزّلها، وحرّر الفيديو والصوت، وأضف النصوص وصمّم الأطياف الصوتية. يجمع Loaderly هذه الأدوات في مساحة عمل واحدة على ويندوز وماك ولينكس، بواجهات عربية وإنجليزية وإسبانية وبرتغالية برازيلية.
 
 ## التنزيل
 
 | النظام | تنزيل Loaderly |
 | --- | --- |
 | Windows 10 / 11 | [متجر Microsoft](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| ماك بمعالج Apple Silicon | [نسخة Apple Silicon](https://loaderly.app/download?platform=macArm) |
-| ماك بمعالج Intel | [نسخة Intel](https://loaderly.app/download?platform=macIntel) |
-| Ubuntu / Debian ‏64 بت | [مثبّت DEB](https://loaderly.app/download?platform=linuxDeb) |
-| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://loaderly.app/download?platform=linuxImage) |
+| ماك بمعالج Apple silicon | [نسخة Apple silicon](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-mac-arm64.dmg) |
+| ماك بمعالج Intel | [نسخة Intel](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-mac-x64.dmg) |
+| Ubuntu / Debian، 64 بت | [مثبّت DEB](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-linux-amd64.deb) |
+| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.0/Loaderly-2.6.0-x86_64.AppImage) |
 
-ملفات الماك ولينكس مستضافة في [GitHub Releases](https://github.com/voidksa/Loaderly/releases/latest)، ويختار الموقع الملف المناسب من الإصدار العام الحالي. تثبيت ويندوز وتحديثاته عبر متجر Microsoft.
+يتولى متجر Microsoft تثبيت ويندوز وتحديثاته، ويصل الإصدار بعد اعتماد المتجر. ثبّت 2.6.0 يدويًا على ماك ولينكس من الروابط أعلاه؛ يعرض فحص التحديثات داخل التطبيق الإصدار السابق حاليًا.
 
-راجع [دليل التثبيت](https://loaderly.app/ar/docs/installation/) لمعرفة المتطلبات. أصبح تنزيل الماك بصيغة DMG: أغلق Loaderly وافتح الملف واستبدل التطبيق في Applications. يحتاج مستخدمو الماك الحاليون إلى تثبيت هذا التحديث يدويًا؛ محدّث ZIP السابق لا يثبّت DMG. نسخ الماك غير موقعة بشهادة Apple Developer ID وغير موثقة لدى Apple. يتولى متجر Microsoft تحديث ويندوز، ويمكن لمستخدمي لينكس التحقق من التحديثات داخل التطبيق.
+يتطلب ماك الإصدار 13.3 أو أحدث. أغلق Loaderly وافتح DMG واستبدل التطبيق في Applications. نسخ الماك غير موقعة بشهادة Apple Developer ID وغير موثقة لدى Apple. راجع [دليل التثبيت](https://loaderly.app/ar/docs/installation/) لبقية المتطلبات.
 
-## الجديد في 2.5.0
+## الجديد في 2.6.0
 
-- تسجيل الشاشة والنوافذ مع طبقة كاميرا ومسارات منفصلة للمايك وصوت الجهاز حسب الدعم المتاح.
-- حركة مؤشر ناعمة وتأثير نقر قابل للضبط وزوم تلقائي يمكنك تخصيصه، ويكون متوقفًا في وضع الألعاب.
-- موجات صوتية وتعليق صوتي وفلاتر للمايك مع مشاركة الفلاتر في المجتمع.
-- قص مباشر من المعاينة وتخصيص الكانفاس وتحديد عدة عناصر بالتايم لاين وخيارات جودة مع تقدم التصدير.
-- شريط تسجيل عائم ورسم على الشاشة وتسجيل ألعاب وإعادة فورية في Windows على التجهيزات المتوافقة.
-- أربع لغات للواجهة والوثائق، مع وضع قراءة مظلم داخل الوثائق.
+- مساحة عمل جديدة تجمع الوسائط والتسجيل والمحرر وتصاميمي، مع البحث عن الإعدادات وشريط جانبي قابل للطي.
+- متصفح مدمج بتبويبات ومفضلة وأدوات لخصوصية الصفحة وتنزيل الوسائط المكتشفة. عاين الجودات واختر المقاطع من قوائم التشغيل الطويلة.
+- مؤشر Loaderly الافتراضي الجديد وحزم أكثر، مع معاينة الحالات والحركة. عودة ناعمة بعد الميل، وتمويه حركة متصل، وانتظار متحرك، وتأثير نقر ينتهي حتى أثناء الضغط المطوّل.
+- تايم لاين قابل لتعديل الارتفاع، وتحريك مباشر من المعاينة، وخيارات لنهاية الزوم، و24 خلفية جديدة، ومراجعة قص الصمت جزءًا بجزء.
+- تحويل الصوت إلى نص وترجمة ودبلجة على جهازك إلى 23 لغة. استخدم النص الذي راجعته واضبط صوت كل متحدث وتوقيته.
+- تحفظ تصاميمي الثيمات والأطياف وفلاتر المايك وإعدادات الصوت وقوالب التحرير محليًا. شارك ملف إعدادات دون حساب. أُوقف كتالوج المجتمع عبر الإنترنت.
+- استوديو تسجيل جديد وتحكم عائم على ويندوز وماك ولينكس. تختلف خيارات الالتقاط والصوت حسب النظام والأجهزة.
 
-تختلف الميزات حسب نظام التشغيل وأجهزة الالتقاط. يصل إصدار Windows بعد اعتماد Microsoft Store. راجع [دليل 2.5.0 الكامل](https://loaderly.app/ar/docs/whats-new/) للتفاصيل وحدود الدعم لكل نظام.
+راجع [ملاحظات إصدار 2.6.0](https://github.com/voidksa/Loaderly/releases/tag/v2.6.0).
 
 ## خصوصية المتصفح
 
-تتيح [Loaderly Web Privacy](https://loaderly.app/ar/browser-privacy/) تمويه عناصر الصفحة التي تختارها أو إخفاءها قبل التسجيل. يتبع التأثير العنصر أثناء التمرير، وتعمل الإضافة مع أي مسجل شاشة دون حساب أو ربط. تجد حالة توفرها في سوق Chrome بصفحة الإضافة.
+تتيح [Loaderly Web Privacy](https://loaderly.app/ar/browser-privacy/) أيضًا تمويه عناصر صفحة الويب أو إخفاءها داخل متصفحك قبل التسجيل. يتبع التأثير العنصر أثناء التمرير، وتعمل الإضافة مع أي مسجل شاشة دون حساب أو ربط.
 
 ## ابدأ بمقطعك
 
 - [خطواتك الأولى](https://loaderly.app/ar/docs/getting-started/)
 - [تنزيل الروابط](https://loaderly.app/ar/docs/downloads/)
 - [تحرير الفيديو والصوت](https://loaderly.app/ar/docs/editor/)
-- [تصاميم المجتمع](https://loaderly.app/ar/community/)
 
 ## المساعدة
 
