@@ -2,7 +2,7 @@
   <img src="assets/loaderly.png" width="80" height="80" alt="Loaderly">
   <h1>Loaderly</h1>
   <p>فيديوهاتك وصوتك، بطريقتك.</p>
-  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.2">الجديد</a> · <a href="README.md">English</a></p>
+  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.3">الجديد</a> · <a href="README.md">English</a></p>
 </div>
 
 سجّل شاشتك، وتصفّح الوسائط ونزّلها، وحرّر الفيديو والصوت، وأضف النصوص وصمّم الأطياف الصوتية. يجمع Loaderly هذه الأدوات في مساحة عمل واحدة على ويندوز وماك ولينكس، بواجهات عربية وإنجليزية وإسبانية وبرتغالية برازيلية.
@@ -11,15 +11,25 @@
 
 | النظام | تنزيل Loaderly |
 | --- | --- |
-| Windows 10 / 11 | [متجر Microsoft](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| ماك بمعالج Apple silicon | [نسخة Apple silicon](https://github.com/voidksa/Loaderly/releases/download/v2.6.2/Loaderly-2.6.2-mac-arm64.dmg) |
-| ماك بمعالج Intel | [نسخة Intel](https://github.com/voidksa/Loaderly/releases/download/v2.6.2/Loaderly-2.6.2-mac-x64.dmg) |
-| Ubuntu / Debian، 64 بت | [مثبّت DEB](https://github.com/voidksa/Loaderly/releases/download/v2.6.2/Loaderly-2.6.2-linux-amd64.deb) |
-| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.2/Loaderly-2.6.2-x86_64.AppImage) |
+| Windows 11 | [متجر Microsoft](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
+| ماك بمعالج Apple silicon | [نسخة Apple silicon](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-mac-arm64.dmg) |
+| ماك بمعالج Intel | [نسخة Intel](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-mac-x64.dmg) |
+| Ubuntu / Debian، 64 بت | [مثبّت DEB](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-linux-amd64.deb) |
+| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-x86_64.AppImage) |
+
+نوصي بويندوز 11 للحصول على أفضل تجربة. قد يعمل Loaderly على ويندوز 10، لكن لا نضمن عمل جميع الميزات عليه.
 
 يتولى متجر Microsoft تثبيت ويندوز وتحديثاته. جُدّدت حزم 2.6.0 لماك ولينكس لاستقبال التحديثات القادمة من داخل التطبيق. إذا ظهر لك تنبيه التحديث في Loaderly، نزّل الحزمة الحالية وثبّتها مرة واحدة بدل نسختك الموجودة، حتى لو سبق ونزّلت 2.6.0. احتفظ بتسجيلاتك ومجلد الإعدادات.
 
 يتطلب ماك الإصدار 13.3 أو أحدث. أغلق Loaderly وافتح DMG واستبدل التطبيق في Applications. نسخ الماك غير موقعة بشهادة Apple Developer ID وغير موثقة لدى Apple. راجع [دليل التثبيت](https://loaderly.app/ar/docs/installation/) لبقية المتطلبات.
+
+## الجديد في 2.6.3
+
+- تنزيل أسرع للملفات المباشرة المدعومة. تُنزّل الملفات المباشرة عبر عدة اتصالات عندما يدعم المصدر ذلك. يُحترم حد السرعة الذي تختاره، وتستخدم المصادر غير المتوافقة طريقة التنزيل المعتادة.
+- رسائلك أقرب لك. افتح «رسائلي» من الشريط العلوي وواصل استخدام لودرلي أثناء المحادثة. يظهر «التحدث مع الفريق» بجانب التحديث أعلى طلباتك.
+- محادثة أكثر استقرارًا. تصل الردود الجديدة دون إعادة رسم المحادثة أو مقاطعة ما تكتبه. يظهر تحديد واضح واحد حول حقل الرسالة ويتكيف مع ثيمك.
+- إعدادات تنزيل أوضح. صار الوصول إلى إعدادات التنزيل أسهل. تفتح إعدادات التنزيل وعدة نوافذ تحرير في نوافذ مستقلة بثيم البرنامج وأزرار النظام.
+- التحقق من التحديث من الإعدادات. أُصلح التحقق من التحديثات داخل الإعدادات ليستخدم خدمة التحديث نفسها المتاحة من القائمة الرئيسية.
 
 ## الجديد في 2.6.2
 
