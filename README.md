@@ -2,7 +2,7 @@
   <img src="assets/loaderly.png" width="80" height="80" alt="Loaderly">
   <h1>Loaderly</h1>
   <p>Your video. Your audio. Your way.</p>
-  <p><a href="https://loaderly.app/">Website</a> · <a href="https://loaderly.app/docs/">Documentation</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.3">What's new</a> · <a href="README.ar.md">العربية</a></p>
+  <p><a href="https://loaderly.app/">Website</a> · <a href="https://loaderly.app/docs/">Documentation</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.4">What's new</a> · <a href="README.ar.md">العربية</a></p>
 </div>
 
 Record your screen, browse and download media, edit video and audio, add captions, and make visualizers. Loaderly brings these tools into one desktop workspace for Windows, macOS, and Linux, with English, Arabic, Spanish, and Brazilian Portuguese interfaces.
@@ -12,16 +12,26 @@ Record your screen, browse and download media, edit video and audio, add caption
 | Platform | Get Loaderly |
 | --- | --- |
 | Windows 11 | [Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| Mac with Apple silicon | [Apple silicon DMG](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-mac-arm64.dmg) |
-| Mac with Intel | [Intel DMG](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-mac-x64.dmg) |
-| Ubuntu / Debian, 64-bit | [DEB installer](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-linux-amd64.deb) |
-| Compatible Linux desktops, 64-bit | [AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.3/Loaderly-2.6.3-x86_64.AppImage) |
+| Mac with Apple silicon | [Apple silicon DMG](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-mac-arm64.dmg) |
+| Mac with Intel | [Intel DMG](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-mac-x64.dmg) |
+| Ubuntu / Debian, 64-bit | [DEB installer](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-linux-amd64.deb) |
+| Compatible Linux desktops, 64-bit | [AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-x86_64.AppImage) |
 
 Windows 11 is recommended for the best experience. Loaderly may run on Windows 10, but correct operation of every feature is not guaranteed.
 
 Windows installation and updates are managed by Microsoft Store. The Mac and Linux packages for 2.6.0 have been refreshed to receive future in-app updates. If Loaderly shows the update notice, download the current package and install it once over your existing copy, even if you already downloaded 2.6.0. Keep your recordings and settings folders.
 
 Mac requires macOS 13.3 or later. Quit Loaderly, open the DMG, and replace the app in Applications. Mac builds are not Apple Developer ID signed or notarized. See the [installation guide](https://loaderly.app/docs/installation/) for additional requirements.
+
+## New in 2.6.4
+
+- Open links in conversations. Help links in replies are now clickable in My messages and open in your browser.
+- Manage closed conversations together. Select several closed conversations, use the context menu and confirm removal in a dialog that follows your app theme. Removing a conversation from your account keeps the support team’s copy.
+- A clearer recording workspace. The recording preview and saved recordings have their own space. Expanding side settings keeps recordings within reach.
+- Consistent download locations. Download settings and saved locations share a clearer layout. Browser audio downloads follow the selected audio location and temporarily use the default folder when a removable drive is unavailable.
+- Clearer media details. YouTube descriptions display more clearly in the browser, and the library shows where each file is actually saved.
+- More helpful replies from Loodi. Loodi uses the conversation, available device information and Loaderly guides to answer support questions in the language you write.
+- Clearer cursor names. The cursor picker uses the Cursorflow name consistently while preserving the original artwork.
 
 ## New in 2.6.3
 
