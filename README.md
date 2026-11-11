@@ -2,7 +2,7 @@
   <img src="assets/loaderly.png" width="80" height="80" alt="Loaderly">
   <h1>Loaderly</h1>
   <p>Your video. Your audio. Your way.</p>
-  <p><a href="https://loaderly.app/">Website</a> · <a href="https://loaderly.app/docs/">Documentation</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.6.4">What's new</a> · <a href="README.ar.md">العربية</a></p>
+  <p><a href="https://loaderly.app/">Website</a> · <a href="https://loaderly.app/docs/">Documentation</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.7.0">What's new</a> · <a href="README.ar.md">العربية</a></p>
 </div>
 
 Record your screen, browse and download media, edit video and audio, add captions, and make visualizers. Loaderly brings these tools into one desktop workspace for Windows, macOS, and Linux, with English, Arabic, Spanish, and Brazilian Portuguese interfaces.
@@ -12,16 +12,28 @@ Record your screen, browse and download media, edit video and audio, add caption
 | Platform | Get Loaderly |
 | --- | --- |
 | Windows 11 | [Microsoft Store](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| Mac with Apple silicon | [Apple silicon DMG](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-mac-arm64.dmg) |
-| Mac with Intel | [Intel DMG](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-mac-x64.dmg) |
-| Ubuntu / Debian, 64-bit | [DEB installer](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-linux-amd64.deb) |
-| Compatible Linux desktops, 64-bit | [AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.6.4/Loaderly-2.6.4-x86_64.AppImage) |
+| Mac with Apple silicon | [Apple silicon DMG](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-mac-arm64.dmg) |
+| Mac with Intel | [Intel DMG](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-mac-x64.dmg) |
+| Ubuntu / Debian, 64-bit | [DEB installer](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-linux-amd64.deb) |
+| Compatible Linux desktops, 64-bit | [AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-x86_64.AppImage) |
 
 Windows 11 is recommended for the best experience. Loaderly may run on Windows 10, but correct operation of every feature is not guaranteed.
 
 Windows installation and updates are managed by Microsoft Store. The Mac and Linux packages for 2.6.0 have been refreshed to receive future in-app updates. If Loaderly shows the update notice, download the current package and install it once over your existing copy, even if you already downloaded 2.6.0. Keep your recordings and settings folders.
 
 Mac requires macOS 13.3 or later. Quit Loaderly, open the DMG, and replace the app in Applications. Mac builds are not Apple Developer ID signed or notarized. See the [installation guide](https://loaderly.app/docs/installation/) for additional requirements.
+
+## New in 2.7.0
+
+- Lighter on memory. Settings, Updates and the other windows now share the main window's memory and open faster. Parts you use only sometimes load the first time you need them.
+- Background tabs go to sleep. A browser tab you have not opened for 15 minutes is released to free memory and loads again when you return to it. Tabs playing sound are kept. You can turn this off in Browser settings.
+- Downloads start sooner. A download begins sooner after you add it, and many downloads at once no longer slow the interface.
+- Text size reaches every text. The text size setting now applies to the editor, the small windows, the tray panel and the browser panels as well.
+- A newer browser engine. The built-in browser now runs on a newer version of Chromium.
+- A tidier editor. The editor's tools, menus and side panels were aligned in both themes and in Arabic, and the Tools button always opens the list of tools.
+- Calmer, consistent motion. Menus, tabs and selections now move with the same short motion across the app.
+- Speed up to 20×. A part of a clip can now be sped up to 20 times (the limit was 8). Above 16×, the preview plays at 16× and the export uses the exact speed.
+- A second home for your library and settings. Your library, settings and drafts are now also kept in a dedicated local store on this device, so they can be brought back if the app's own storage is lost.
 
 ## New in 2.6.4
 
