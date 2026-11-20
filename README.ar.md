@@ -2,7 +2,7 @@
   <img src="assets/loaderly.png" width="80" height="80" alt="Loaderly">
   <h1>Loaderly</h1>
   <p>فيديوهاتك وصوتك، بطريقتك.</p>
-  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://github.com/voidksa/Loaderly/releases/tag/v2.7.0">الجديد</a> · <a href="README.md">English</a></p>
+  <p><a href="https://loaderly.app/ar/">الموقع</a> · <a href="https://loaderly.app/ar/docs/">الوثائق</a> · <a href="https://github.com/voidksa/Loaderly/releases/latest">الجديد</a> · <a href="README.md">English</a></p>
 </div>
 
 سجّل شاشتك، وتصفّح الوسائط ونزّلها، وحرّر الفيديو والصوت، وأضف النصوص وصمّم الأطياف الصوتية. يجمع Loaderly هذه الأدوات في مساحة عمل واحدة على ويندوز وماك ولينكس، بواجهات عربية وإنجليزية وإسبانية وبرتغالية برازيلية.
@@ -12,16 +12,30 @@
 | النظام | تنزيل Loaderly |
 | --- | --- |
 | Windows 11 | [متجر Microsoft](https://apps.microsoft.com/detail/9N1R1H10HXR7) |
-| ماك بمعالج Apple silicon | [نسخة Apple silicon](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-mac-arm64.dmg) |
-| ماك بمعالج Intel | [نسخة Intel](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-mac-x64.dmg) |
-| Ubuntu / Debian، 64 بت | [مثبّت DEB](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-linux-amd64.deb) |
-| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://github.com/voidksa/Loaderly/releases/download/v2.7.0/Loaderly-2.7.0-x86_64.AppImage) |
+| ماك بمعالج Apple silicon | [نسخة Apple silicon](https://loaderly.app/download?platform=macArm) |
+| ماك بمعالج Intel | [نسخة Intel](https://loaderly.app/download?platform=macIntel) |
+| Ubuntu / Debian، 64 بت | [مثبّت DEB](https://loaderly.app/download?platform=linuxDeb) |
+| توزيعات لينكس المتوافقة، 64 بت | [ملف AppImage](https://loaderly.app/download?platform=linuxImage) |
 
 نوصي بويندوز 11 للحصول على أفضل تجربة. قد يعمل Loaderly على ويندوز 10، لكن لا نضمن عمل جميع الميزات عليه.
 
 يتولى متجر Microsoft تثبيت ويندوز وتحديثاته. جُدّدت حزم 2.6.0 لماك ولينكس لاستقبال التحديثات القادمة من داخل التطبيق. إذا ظهر لك تنبيه التحديث في Loaderly، نزّل الحزمة الحالية وثبّتها مرة واحدة بدل نسختك الموجودة، حتى لو سبق ونزّلت 2.6.0. احتفظ بتسجيلاتك ومجلد الإعدادات.
 
 يتطلب ماك الإصدار 13.3 أو أحدث. أغلق Loaderly وافتح DMG واستبدل التطبيق في Applications. نسخ الماك غير موقعة بشهادة Apple Developer ID وغير موثقة لدى Apple. راجع [دليل التثبيت](https://loaderly.app/ar/docs/installation/) لبقية المتطلبات.
+
+## الجديد في 2.8.1
+
+إذا تعطل التنزيل مؤقتًا، يحاول Loaderly من جديد تلقائيًا. وفي التنزيلات المباشرة المدعومة، يحتفظ بالأجزاء المكتملة التي تم التحقق منها بدل تنزيلها مرة أخرى. ما زالت تغييرات 2.8.0 متاحة في قسم قابل للفتح داخل نافذة **ما الجديد؟**.
+
+[تفاصيل إصدار 2.8.1](https://loaderly.app/ar/updates/2.8.1/)
+
+## الجديد في 2.8.0
+
+- **شاهد مكتبتك على شاشة أخرى.** شارك حلقة مكتملة أو ملفات تختارها أو المكتبة كاملة مع جوالك أو جهازك اللوحي أو التلفزيون. وللمشاهدة [خارج البيت](https://loaderly.app/ar/docs/watch-away/)، اربط الجهازين بشبكة Tailscale الخاصة نفسها واترك Loaderly مفتوحًا على الكمبيوتر.
+- **نزّل الرابط المباشر عبر عدة اتصالات** عندما يدعم الخادم ذلك. يضبط Loaderly عدد الاتصالات حسب استجابة الخادم، ويمكنه تقسيم آخر جزء بطيء بين اتصالين.
+- **تعرّف على حلقات الفلر والملخّصات** في المواقع المدعومة. وفي التسجيلات، يتبع **التقريب التلقائي** النقرات، وأُصلحت مشكلة كانت تجعل بعض المقاطع المصدّرة تتوقف عند الإطار الأول.
+
+[تفاصيل إصدار 2.8.0](https://loaderly.app/ar/updates/2.8.0/)
 
 ## الجديد في 2.7.0
 
